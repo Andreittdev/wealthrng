@@ -6,8 +6,14 @@ local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local upgradeStandEvent = remotes:WaitForChild("UpgradeStand")
 local updateStandLevelEvent = remotes:WaitForChild("UpdateStandLevel")
 local requestStandLevelEvent = remotes:WaitForChild("RequestStandLevel")
+local showNotificationEvent = remotes:WaitForChild("ShowNotification")
 
 local MAX_LEVEL = 5
+
+-- Cel mai ieftin item din joc costa $80 (vezi Clothing/Electronics Common).
+-- Sub acest prag, jucatorul nu ar mai putea cumpara nimic de la niciun NPC,
+-- deci nu ar mai avea nicio sursa de venit ca sa-si revina.
+local MIN_MONEY_AFTER_UPGRADE = 100
 
 local function getUpgradeCost(level)
 	return Economy.StandUpgradeCosts[level] or 0
@@ -69,7 +75,7 @@ upgradeStandEvent.OnServerEvent:Connect(function(player)
 		return
 	end
 
-	local cost = getUpgradeCost(standLevel.Value)
+	local cost = getUpgradeCost(standLevel.Value + 1)
 
 	local leaderstats = player:FindFirstChild("leaderstats")
 	if not leaderstats then return end
@@ -79,6 +85,14 @@ upgradeStandEvent.OnServerEvent:Connect(function(player)
 
 	if money.Value < cost then
 		warn("Not enough money for upgrade. Need $" .. cost)
+		showNotificationEvent:FireClient(player, "❌ Not enough money. Need $" .. cost)
+		sendLevel(player)
+		return
+	end
+
+	if money.Value - cost < MIN_MONEY_AFTER_UPGRADE then
+		warn("Upgrade blocked: would leave " .. player.Name .. " with less than $" .. MIN_MONEY_AFTER_UPGRADE)
+		showNotificationEvent:FireClient(player, "⚠️ Upgrading now would leave you with less than $" .. MIN_MONEY_AFTER_UPGRADE .. ". Save up a bit more first.")
 		sendLevel(player)
 		return
 	end

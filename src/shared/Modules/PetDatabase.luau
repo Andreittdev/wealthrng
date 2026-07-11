@@ -56,4 +56,30 @@ Pets.Eggs = {
 
 }
 
+local function sanitizeId(text)
+	text = tostring(text or "Pet")
+	text = text:gsub("[^%w_]", "")
+	return text
+end
+
+Pets.Pets = {}
+
+for _, eggData in pairs(Pets.Eggs) do
+	for _, rawPet in ipairs(eggData.Pets) do
+		local petId = sanitizeId(rawPet.Name)
+
+		Pets.Pets[petId] = {
+			DisplayName = rawPet.Name,
+			Rarity = rawPet.Rarity,
+			Image = rawPet.Image or "",
+
+			Bonuses = {
+				NpcLuck = rawPet.Luck or 0,
+				SellPrice = rawPet.Sell or 0,
+				NpcSpeed = rawPet.Speed or 0
+			}
+		}
+	end
+end
+
 return Pets

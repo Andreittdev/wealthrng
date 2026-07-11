@@ -1,4 +1,4 @@
-local Economy = require(script.Parent.Parent:WaitForChild("EconomyConfig"))
+local Economy = require(script.Parent:WaitForChild("EconomyConfig"))
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local marketUpdateEvent = remotes:WaitForChild("MarketUpdate")

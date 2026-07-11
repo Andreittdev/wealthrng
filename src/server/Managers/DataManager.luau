@@ -20,7 +20,8 @@ local function getDefaultData()
 			Chain = ""
 		},
         Pets = {},
-        EquippedPets = {"",""}
+        EquippedPets = {"",""},
+        StarterPackRedeemed = false
 	}
 end
 
@@ -47,6 +48,7 @@ function DataManager.LoadData(player)
 	data.EquippedCosmetics = data.EquippedCosmetics or getDefaultData().EquippedCosmetics
     data.Pets = data.Pets or {}
 	data.EquippedPets = data.EquippedPets or {"",""}
+	data.StarterPackRedeemed = data.StarterPackRedeemed or false
 
 	return data
 end
@@ -78,7 +80,8 @@ function DataManager.SaveData(player)
 		Cosmetics = {},
 		EquippedCosmetics = {},
         Pets = {},
-        EquippedPets = {"",""}
+        EquippedPets = {"",""},
+        StarterPackRedeemed = player:GetAttribute("StarterPackRedeemed") == true
 	}
 
 	for _, item in ipairs(inventory:GetChildren()) do
@@ -149,6 +152,8 @@ function DataManager.ApplyData(player, data)
 	if money then
 		money.Value = data.Money or 500
 	end
+
+	player:SetAttribute("StarterPackRedeemed", data.StarterPackRedeemed == true)
 
 	local bankMoney = player:FindFirstChild("BankMoney")
 	if not bankMoney then

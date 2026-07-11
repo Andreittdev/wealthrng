@@ -1,0 +1,236 @@
+<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4">
+	<Meta name="ExplicitAutoJoints">true</Meta>
+	<External>null</External>
+	<External>nil</External>
+	<Item class="ScreenGui" referent="RBX47B22D9B49FD4F03A2AD5E78ACCBDEF1">
+		<Properties>
+			<bool name="ClipToDeviceSafeArea">true</bool>
+			<int name="DisplayOrder">0</int>
+			<token name="SafeAreaCompatibility">1</token>
+			<token name="ScreenInsets">2</token>
+			<bool name="Enabled">true</bool>
+			<bool name="ResetOnSpawn">true</bool>
+			<token name="ZIndexBehavior">1</token>
+			<bool name="AutoLocalize">true</bool>
+			<Ref name="RootLocalizationTable">null</Ref>
+			<token name="SelectionBehaviorDown">0</token>
+			<token name="SelectionBehaviorLeft">0</token>
+			<token name="SelectionBehaviorRight">0</token>
+			<token name="SelectionBehaviorUp">0</token>
+			<bool name="SelectionGroup">false</bool>
+			<BinaryString name="AttributesSerialize"></BinaryString>
+			<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+			<bool name="DefinesCapabilities">false</bool>
+			<string name="Name">TradeGui</string>
+			<int64 name="SourceAssetId">-1</int64>
+			<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+		</Properties>
+		<Item class="LocalScript" referent="RBXE09C9F2A78084DE08563981A73B71069">
+			<Properties>
+				<ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+
+local tradeGui = script.Parent
+local remotes = ReplicatedStorage:WaitForChild("Remotes")
+
+local buyItem = remotes:WaitForChild("BuyItem")
+local skipItem = remotes:WaitForChild("SkipTrade")
+local showTrade = remotes:WaitForChild("ShowTrade")
+
+local isMobile = UserInputService.TouchEnabled
+local currentItem = nil
+
+local rarityColors = {
+	Common = Color3.fromRGB(160, 160, 160),
+	Rare = Color3.fromRGB(60, 150, 255),
+	Epic = Color3.fromRGB(170, 90, 255),
+	Legendary = Color3.fromRGB(255, 180, 40)
+}
+
+local function addCorner(obj, radius)
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = radius
+	corner.Parent = obj
+end
+
+local function addStroke(obj, color, thickness)
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = color
+	stroke.Thickness = thickness
+	stroke.Parent = obj
+end
+
+local function safe(value, fallback)
+	if value == nil then
+		return tostring(fallback)
+	end
+
+	return tostring(value)
+end
+
+tradeGui.Enabled = true
+tradeGui.DisplayOrder = 180
+
+local tradeFrame = Instance.new("Frame")
+tradeFrame.Name = "TradeFrame"
+tradeFrame.Parent = tradeGui
+tradeFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+tradeFrame.Position = UDim2.new(0.5, 0, 0.53, 0)
+tradeFrame.BackgroundColor3 = Color3.fromRGB(10, 15, 28)
+tradeFrame.BorderSizePixel = 0
+tradeFrame.Visible = false
+tradeFrame.ZIndex = 50
+
+if isMobile then
+	tradeFrame.Size = UDim2.new(0.72, 0, 0.58, 0)
+else
+	tradeFrame.Size = UDim2.new(0.38, 0, 0.56, 0)
+end
+
+addCorner(tradeFrame, UDim.new(0.05, 0))
+addStroke(tradeFrame, Color3.fromRGB(70, 140, 255), 3)
+
+local title = Instance.new("TextLabel")
+title.Name = "Title"
+title.Parent = tradeFrame
+title.Text = "TRADE OFFER"
+title.BackgroundTransparency = 1
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.TextScaled = true
+title.Font = Enum.Font.GothamBlack
+title.Position = UDim2.new(0.08, 0, 0.04, 0)
+title.Size = UDim2.new(0.84, 0, 0.10, 0)
+title.ZIndex = 60
+
+local subtitle = Instance.new("TextLabel")
+subtitle.Name = "Subtitle"
+subtitle.Parent = tradeFrame
+subtitle.Text = "Dealer wants to sell you:"
+subtitle.BackgroundTransparency = 1
+subtitle.TextColor3 = Color3.fromRGB(200, 210, 230)
+subtitle.TextScaled = true
+subtitle.Font = Enum.Font.GothamBold
+subtitle.Position = UDim2.new(0.08, 0, 0.14, 0)
+subtitle.Size = UDim2.new(0.84, 0, 0.07, 0)
+subtitle.ZIndex = 60
+
+local itemImage = Instance.new("ImageLabel")
+itemImage.Name = "ItemImage"
+itemImage.Parent = tradeFrame
+itemImage.BackgroundTransparency = 1
+itemImage.Image = ""
+itemImage.Position = UDim2.new(0.30, 0, 0.24, 0)
+itemImage.Size = UDim2.new(0.40, 0, 0.22, 0)
+itemImage.ScaleType = Enum.ScaleType.Fit
+itemImage.ZIndex = 60
+
+local itemName = Instance.new("TextLabel")
+itemName.Name = "ItemName"
+itemName.Parent = tradeFrame
+itemName.BackgroundTransparency = 1
+itemName.TextColor3 = Color3.fromRGB(255, 255, 255)
+itemName.TextScaled = true
+itemName.TextWrapped = true
+itemName.Font = Enum.Font.GothamBlack
+itemName.Position = UDim2.new(0.08, 0, 0.47, 0)
+itemName.Size = UDim2.new(0.84, 0, 0.12, 0)
+itemName.ZIndex = 60
+
+local rarityLabel = Instance.new("TextLabel")
+rarityLabel.Name = "Rarity"
+rarityLabel.Parent = tradeFrame
+rarityLabel.BackgroundTransparency = 1
+rarityLabel.TextScaled = true
+rarityLabel.Font = Enum.Font.GothamBold
+rarityLabel.Position = UDim2.new(0.20, 0, 0.59, 0)
+rarityLabel.Size = UDim2.new(0.60, 0, 0.08, 0)
+rarityLabel.ZIndex = 60
+
+local priceLabel = Instance.new("TextLabel")
+priceLabel.Name = "Price"
+priceLabel.Parent = tradeFrame
+priceLabel.BackgroundTransparency = 1
+priceLabel.TextColor3 = Color3.fromRGB(80, 255, 120)
+priceLabel.TextScaled = true
+priceLabel.Font = Enum.Font.GothamBlack
+priceLabel.Position = UDim2.new(0.15, 0, 0.68, 0)
+priceLabel.Size = UDim2.new(0.70, 0, 0.09, 0)
+priceLabel.ZIndex = 60
+
+local buyButton = Instance.new("TextButton")
+buyButton.Name = "BuyButton"
+buyButton.Parent = tradeFrame
+buyButton.Text = "BUY"
+buyButton.BackgroundColor3 = Color3.fromRGB(70, 200, 90)
+buyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+buyButton.TextScaled = true
+buyButton.Font = Enum.Font.GothamBlack
+buyButton.Position = UDim2.new(0.08, 0, 0.83, 0)
+buyButton.Size = UDim2.new(0.40, 0, 0.11, 0)
+buyButton.ZIndex = 70
+addCorner(buyButton, UDim.new(0.25, 0))
+
+local skipButton = Instance.new("TextButton")
+skipButton.Name = "SkipButton"
+skipButton.Parent = tradeFrame
+skipButton.Text = "SKIP"
+skipButton.BackgroundColor3 = Color3.fromRGB(220, 80, 80)
+skipButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+skipButton.TextScaled = true
+skipButton.Font = Enum.Font.GothamBlack
+skipButton.Position = UDim2.new(0.52, 0, 0.83, 0)
+skipButton.Size = UDim2.new(0.40, 0, 0.11, 0)
+skipButton.ZIndex = 70
+addCorner(skipButton, UDim.new(0.25, 0))
+
+showTrade.OnClientEvent:Connect(function(data)
+	currentItem = data
+	tradeFrame.Visible = true
+
+	local rarity = safe(data.Rarity, "Common")
+	local color = rarityColors[rarity] or Color3.fromRGB(255, 255, 255)
+
+	itemName.Text = safe(data.ItemName, "Unknown Item")
+	rarityLabel.Text = rarity
+	rarityLabel.TextColor3 = color
+	priceLabel.Text = "$" .. safe(data.BuyPrice, 0)
+
+	itemImage.Image = data.Image or ""
+
+	local stroke = tradeFrame:FindFirstChildOfClass("UIStroke")
+	if stroke then
+		stroke.Color = color
+	end
+end)
+
+buyButton.Activated:Connect(function()
+	if currentItem then
+		buyItem:FireServer(currentItem)
+		tradeFrame.Visible = false
+	end
+end)
+
+skipButton.Activated:Connect(function()
+	skipItem:FireServer()
+	tradeFrame.Visible = false
+end)]]></ProtectedString>
+				<bool name="Disabled">false</bool>
+				<Content name="LinkedSource"><null></null></Content>
+				<token name="RunContext">0</token>
+				<string name="ScriptGuid">{B6DA3B83-87FE-48DA-AD34-910C2A8C9EE8}</string>
+				<BinaryString name="AttributesSerialize"></BinaryString>
+				<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+				<bool name="DefinesCapabilities">false</bool>
+				<string name="Name">TradeClient</string>
+				<int64 name="SourceAssetId">-1</int64>
+				<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+			</Properties>
+		</Item>
+	</Item>
+	<SharedStrings>
+		<SharedString md5="yuZpQdnvvUBOTYh1jqZ2cA=="></SharedString>
+	</SharedStrings>
+</roblox>

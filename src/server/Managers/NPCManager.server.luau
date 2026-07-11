@@ -11,12 +11,12 @@ local NPCDatabase = require(modulesFolder:WaitForChild("NPCDatabase"))
 local TradeManager = require(script.Parent:WaitForChild("TradeManager"))
 local InventoryManager = require(script.Parent:WaitForChild("InventoryManager"))
 local SellManager = require(script.Parent:WaitForChild("SellManager"))
-local DataManager = require(script.Parent.Parent:WaitForChild("DataManager"))
-local MarketManager = require(modulesFolder:WaitForChild("Market"):WaitForChild("MarketManager"))
+local DataManager = require(script.Parent:WaitForChild("DataManager"))
+local MarketManager = require(modulesFolder:WaitForChild("MarketManager"))
 local StandDisplayManager = require(script.Parent:WaitForChild("StandDisplayManager"))
-local CosmeticManager = require(script.Parent.Parent:WaitForChild("CosmeticManager"))
+local CosmeticManager = require(script.Parent:WaitForChild("CosmeticManager"))
 local Economy = require(modulesFolder:WaitForChild("EconomyConfig"))
-local PetManager = require(script.Parent.Parent:WaitForChild("PetManager"))
+local PetManager = require(script.Parent:WaitForChild("PetManager"))
 
 local showTradeEvent = remotesFolder:WaitForChild("ShowTrade")
 local buyItemEvent = remotesFolder:WaitForChild("BuyItem")
@@ -248,8 +248,9 @@ local function spawnNPCForPlayer(player)
 
 	local petBonuses = PetManager.GetBonuses(player)
 	local vipLuck = player:GetAttribute("IsVIP") and Economy.VIP.Luck or 0
+	local starterPackLuck = player:GetAttribute("HasStarterPack") and Economy.StarterPack.LuckBonus or 0
 
-	local totalLuck = bonuses.Luck + cosmeticBonuses.NpcLuck + petBonuses.NpcLuck + vipLuck
+	local totalLuck = bonuses.Luck + cosmeticBonuses.NpcLuck + petBonuses.NpcLuck + vipLuck + starterPackLuck
 	totalLuck = math.clamp(totalLuck, 0, Economy.Caps.Luck)
 
 	local offer = TradeManager.CreateOffer(npcType, totalLuck)
@@ -381,7 +382,7 @@ local function onPlayerAdded(player)
 	task.wait(1)
 	DataManager.ApplyData(player, data)
 
-	marketUpdateEvent:FireClient(player, state, event)
+	marketUpdateEvent:FireClient(player, MarketManager.GetClientData())
 
 	task.wait(7)
 	spawnNPCForPlayer(player)

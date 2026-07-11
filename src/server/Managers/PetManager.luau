@@ -326,6 +326,37 @@ function PetManager.OpenEgg(player, eggType, hatchCount)
 	return results, nil
 end
 
+-- Acorda un pet aleatoriu de o raritate anume, in afara sistemului de oua platite
+-- (ex. recompensa unica dintr-un gamepass). Refoloseste logica de duplicate din OpenEgg.
+function PetManager.GrantRandomPetByRarity(player, rarity)
+	if not player then
+		return nil
+	end
+
+	PetManager.CreateInventory(player)
+
+	local pool = {}
+
+	for _, eggData in pairs(PetDatabase.Eggs) do
+		if type(eggData.Pets) == "table" then
+			for _, rawPet in ipairs(eggData.Pets) do
+				if rawPet.Rarity == rarity then
+					table.insert(pool, rawPet)
+				end
+			end
+		end
+	end
+
+	if #pool == 0 then
+		warn("GrantRandomPetByRarity: no pets found for rarity", rarity)
+		return nil
+	end
+
+	local rolledPet = normalizePetData(pool[math.random(1, #pool)])
+
+	return processRolledPet(player, rolledPet)
+end
+
 -- Compatibilitate temporară cu NPCManager-ul vechi.
 -- OpenCrate întoarce un singur pet, ca înainte.
 function PetManager.OpenCrate(player, crateType)

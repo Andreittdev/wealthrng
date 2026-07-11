@@ -51,6 +51,17 @@ Economy.VIP = {
 }
 
 -- ============================
+-- STARTER PACK (gamepass)
+-- ============================
+Economy.StarterPack = {
+	GamePassId = 1908301457,
+	RobuxPrice = 2, -- doar text afisat in UI; pretul real e cel setat in Creator Dashboard
+	Money = 2000,
+	PetRarity = "Common",
+	LuckBonus = 2 -- +2%, permanent, cat timp detii gamepass-ul
+}
+
+-- ============================
 -- PETS (echipare)
 -- ============================
 Economy.EquippedPetSlots = 2

@@ -11,7 +11,7 @@ local categoryModules = {
 }
 
 for _, moduleName in ipairs(categoryModules) do
-	local module = script:FindFirstChild(moduleName)
+	local module = script.Parent:FindFirstChild(moduleName)
 
 	if module then
 		local items = require(module)

@@ -2,7 +2,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local modulesFolder = ReplicatedStorage:WaitForChild("Modules")
-local PetManager = require(ServerScriptService:WaitForChild("PetManager"))
+local PetManager = require(script.Parent:WaitForChild("PetManager"))
 
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local requestEggHatchEvent = remotes:WaitForChild("RequestEggHatch")

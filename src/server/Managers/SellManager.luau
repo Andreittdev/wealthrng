@@ -2,11 +2,11 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local modulesFolder = ReplicatedStorage:WaitForChild("Modules")
-local MarketManager = require(modulesFolder:WaitForChild("Market"):WaitForChild("MarketManager"))
+local MarketManager = require(modulesFolder:WaitForChild("MarketManager"))
 local Economy = require(modulesFolder:WaitForChild("EconomyConfig"))
-local PetManager = require(ServerScriptService:WaitForChild("PetManager"))
+local PetManager = require(script.Parent:WaitForChild("PetManager"))
 
-local CosmeticManager = require(ServerScriptService:WaitForChild("CosmeticManager"))
+local CosmeticManager = require(script.Parent:WaitForChild("CosmeticManager"))
 
 local SellManager = {}
 

@@ -4,7 +4,7 @@ local modulesFolder = ReplicatedStorage:WaitForChild("Modules")
 
 local ItemDatabase = require(modulesFolder:WaitForChild("ItemDatabase"))
 local NPCDatabase = require(modulesFolder:WaitForChild("NPCDatabase"))
-local MarketManager = require(modulesFolder:WaitForChild("Market"):WaitForChild("MarketManager"))
+local MarketManager = require(modulesFolder:WaitForChild("MarketManager"))
 
 local TradeManager = {}
 
