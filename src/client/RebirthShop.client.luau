@@ -1,0 +1,460 @@
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local modulesFolder = ReplicatedStorage:WaitForChild("Modules")
+local Economy = require(modulesFolder:WaitForChild("EconomyConfig"))
+
+local remotes = ReplicatedStorage:WaitForChild("Remotes")
+local requestRebirthEvent = remotes:WaitForChild("RequestRebirth")
+local rebirthResultEvent = remotes:WaitForChild("RebirthResult")
+
+local REQUIRED_LEVEL = Economy.Rebirth.RequiredStandLevel
+
+local FONT_DISPLAY = Enum.Font.Bangers
+local FONT_BODY = Enum.Font.FredokaOne
+
+local PURPLE_LIGHT = Color3.fromRGB(196, 140, 255)
+local PURPLE_MID = Color3.fromRGB(147, 51, 234)
+local PURPLE_DEEP = Color3.fromRGB(76, 20, 130)
+local OUTLINE_DARK = Color3.fromRGB(45, 10, 80)
+local TEXT_LIGHT = Color3.fromRGB(240, 230, 255)
+local GREEN_OK = Color3.fromRGB(90, 230, 130)
+local RED_MISSING = Color3.fromRGB(255, 110, 110)
+
+local function formatMoney(amount)
+	local s = tostring(math.floor(amount))
+	local formatted = s:reverse():gsub("(%d%d%d)", "%1,"):reverse()
+	if formatted:sub(1, 1) == "," then
+		formatted = formatted:sub(2)
+	end
+	return "$" .. formatted
+end
+
+-- ================= Date live ale jucatorului =================
+
+local standLevelValue = player:WaitForChild("StandLevel", 10)
+local leaderstats = player:WaitForChild("leaderstats")
+local moneyValue = leaderstats:WaitForChild("Money")
+local rebirthsValue = leaderstats:WaitForChild("Rebirths")
+local tokensValue = player:WaitForChild("RebirthTokens", 10)
+
+local function getStandLevel()
+	return standLevelValue and standLevelValue.Value or 1
+end
+
+-- ================= ScreenGui =================
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "RebirthShop"
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent = playerGui
+
+-- ================= Toggle button (dreapta, sub Starter Pack, mov) =================
+
+local toggleButton = Instance.new("TextButton")
+toggleButton.Name = "RebirthButton"
+toggleButton.AnchorPoint = Vector2.new(1, 0.5)
+toggleButton.Position = UDim2.new(1, -16, 0.5, 81)
+toggleButton.Size = UDim2.new(0, 156, 0, 66)
+toggleButton.BackgroundColor3 = PURPLE_MID
+toggleButton.AutoButtonColor = false
+toggleButton.Text = ""
+toggleButton.ZIndex = 10
+toggleButton.Parent = screenGui
+
+Instance.new("UICorner", toggleButton).CornerRadius = UDim.new(0.22, 0)
+
+local toggleGradient = Instance.new("UIGradient")
+toggleGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, PURPLE_LIGHT),
+	ColorSequenceKeypoint.new(0.35, PURPLE_MID),
+	ColorSequenceKeypoint.new(1, PURPLE_DEEP),
+})
+toggleGradient.Rotation = 90
+toggleGradient.Parent = toggleButton
+
+local toggleStroke = Instance.new("UIStroke")
+toggleStroke.Color = OUTLINE_DARK
+toggleStroke.Thickness = 3
+toggleStroke.Parent = toggleButton
+
+local toggleTitle = Instance.new("TextLabel")
+toggleTitle.BackgroundTransparency = 1
+toggleTitle.Position = UDim2.new(0, 10, 0, 8)
+toggleTitle.Size = UDim2.new(1, -20, 0, 32)
+toggleTitle.Text = "REBIRTH"
+toggleTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleTitle.TextStrokeColor3 = OUTLINE_DARK
+toggleTitle.TextStrokeTransparency = 0
+toggleTitle.Font = FONT_DISPLAY
+toggleTitle.TextScaled = true
+toggleTitle.ZIndex = 11
+toggleTitle.Parent = toggleButton
+
+local toggleSubtitle = Instance.new("TextLabel")
+toggleSubtitle.BackgroundTransparency = 1
+toggleSubtitle.Position = UDim2.new(0, 10, 0, 40)
+toggleSubtitle.Size = UDim2.new(1, -20, 0, 20)
+toggleSubtitle.Text = "Rebirths: 0"
+toggleSubtitle.TextColor3 = TEXT_LIGHT
+toggleSubtitle.Font = FONT_BODY
+toggleSubtitle.TextScaled = true
+toggleSubtitle.ZIndex = 11
+toggleSubtitle.Parent = toggleButton
+
+local function addHoverPop(button)
+	button.MouseEnter:Connect(function()
+		TweenService:Create(button, TweenInfo.new(0.12), {Size = button.Size + UDim2.new(0, 6, 0, 6)}):Play()
+	end)
+	button.MouseLeave:Connect(function()
+		TweenService:Create(button, TweenInfo.new(0.12), {Size = button.Size - UDim2.new(0, 6, 0, 6)}):Play()
+	end)
+end
+
+-- ================= Overlay + Card =================
+
+local overlay = Instance.new("Frame")
+overlay.Name = "RebirthOverlay"
+overlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+overlay.BackgroundTransparency = 0.45
+overlay.Size = UDim2.new(1, 0, 1, 0)
+overlay.Visible = false
+overlay.ZIndex = 20
+overlay.Parent = screenGui
+
+local card = Instance.new("Frame")
+card.Name = "Card"
+card.AnchorPoint = Vector2.new(0.5, 0.5)
+card.Position = UDim2.new(0.5, 0, 0.5, 0)
+card.Size = UDim2.new(0, 340, 0, 470)
+card.BackgroundColor3 = PURPLE_MID
+card.ClipsDescendants = true
+card.ZIndex = 21
+card.Parent = overlay
+
+Instance.new("UICorner", card).CornerRadius = UDim.new(0, 22)
+
+local cardStroke = Instance.new("UIStroke")
+cardStroke.Color = OUTLINE_DARK
+cardStroke.Thickness = 5
+cardStroke.Parent = card
+
+local cardGradient = Instance.new("UIGradient")
+cardGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, PURPLE_LIGHT),
+	ColorSequenceKeypoint.new(0.18, Color3.fromRGB(230, 210, 255)),
+	ColorSequenceKeypoint.new(0.4, PURPLE_MID),
+	ColorSequenceKeypoint.new(1, PURPLE_DEEP),
+})
+cardGradient.Rotation = 90
+cardGradient.Parent = card
+
+local closeButton = Instance.new("TextButton")
+closeButton.Name = "CloseButton"
+closeButton.AnchorPoint = Vector2.new(1, 0)
+closeButton.Position = UDim2.new(1, -12, 0, 12)
+closeButton.Size = UDim2.new(0, 32, 0, 32)
+closeButton.BackgroundColor3 = OUTLINE_DARK
+closeButton.Text = "✕"
+closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeButton.Font = FONT_DISPLAY
+closeButton.TextScaled = true
+closeButton.ZIndex = 25
+closeButton.Parent = card
+
+Instance.new("UICorner", closeButton).CornerRadius = UDim.new(0.5, 0)
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.BackgroundTransparency = 1
+titleLabel.Position = UDim2.new(0, 0, 0, 18)
+titleLabel.Size = UDim2.new(1, 0, 0, 48)
+titleLabel.Text = "✨ REBIRTH"
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.TextStrokeColor3 = OUTLINE_DARK
+titleLabel.TextStrokeTransparency = 0
+titleLabel.Font = FONT_DISPLAY
+titleLabel.TextScaled = true
+titleLabel.ZIndex = 22
+titleLabel.Parent = card
+
+local rebirthCountLabel = Instance.new("TextLabel")
+rebirthCountLabel.BackgroundTransparency = 1
+rebirthCountLabel.Position = UDim2.new(0, 0, 0, 70)
+rebirthCountLabel.Size = UDim2.new(1, 0, 0, 24)
+rebirthCountLabel.Text = "You have rebirthed 0 times"
+rebirthCountLabel.TextColor3 = TEXT_LIGHT
+rebirthCountLabel.Font = FONT_BODY
+rebirthCountLabel.TextScaled = true
+rebirthCountLabel.ZIndex = 22
+rebirthCountLabel.Parent = card
+
+-- ---- Cerinte (checklist) ----
+
+local requirementsFrame = Instance.new("Frame")
+requirementsFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+requirementsFrame.BackgroundTransparency = 0.85
+requirementsFrame.Position = UDim2.new(0, 24, 0, 100)
+requirementsFrame.Size = UDim2.new(1, -48, 0, 96)
+requirementsFrame.ZIndex = 22
+requirementsFrame.Parent = card
+
+Instance.new("UICorner", requirementsFrame).CornerRadius = UDim.new(0.12, 0)
+
+local reqLayout = Instance.new("UIListLayout")
+reqLayout.Padding = UDim.new(0, 6)
+reqLayout.SortOrder = Enum.SortOrder.LayoutOrder
+reqLayout.Parent = requirementsFrame
+
+local reqPadding = Instance.new("UIPadding")
+reqPadding.PaddingTop = UDim.new(0, 8)
+reqPadding.PaddingLeft = UDim.new(0, 12)
+reqPadding.PaddingRight = UDim.new(0, 12)
+reqPadding.Parent = requirementsFrame
+
+local function createRequirementRow(order)
+	local row = Instance.new("Frame")
+	row.BackgroundTransparency = 1
+	row.Size = UDim2.new(1, 0, 0, 34)
+	row.LayoutOrder = order
+	row.ZIndex = 22
+	row.Parent = requirementsFrame
+
+	local check = Instance.new("TextLabel")
+	check.Name = "Check"
+	check.BackgroundTransparency = 1
+	check.Size = UDim2.new(0, 28, 1, 0)
+	check.Text = "❌"
+	check.TextScaled = true
+	check.ZIndex = 22
+	check.Parent = row
+
+	local label = Instance.new("TextLabel")
+	label.Name = "Label"
+	label.BackgroundTransparency = 1
+	label.Position = UDim2.new(0, 34, 0, 0)
+	label.Size = UDim2.new(1, -34, 1, 0)
+	label.TextColor3 = TEXT_LIGHT
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Font = FONT_BODY
+	label.TextScaled = true
+	label.ZIndex = 22
+	label.Parent = row
+
+	return row, check, label
+end
+
+local levelRow, levelCheck, levelLabel = createRequirementRow(1)
+local moneyRow, moneyCheck, moneyLabel = createRequirementRow(2)
+
+-- ---- Perks-urile pentru URMATORUL rebirth (nu cumulate, nu pet-ul) ----
+
+local perksTitle = Instance.new("TextLabel")
+perksTitle.BackgroundTransparency = 1
+perksTitle.Position = UDim2.new(0, 24, 0, 204)
+perksTitle.Size = UDim2.new(1, -48, 0, 26)
+perksTitle.Text = "Next Rebirth Perks:"
+perksTitle.TextColor3 = Color3.fromRGB(255, 215, 90)
+perksTitle.Font = FONT_DISPLAY
+perksTitle.TextScaled = true
+perksTitle.ZIndex = 22
+perksTitle.Parent = card
+
+local perksLabel = Instance.new("TextLabel")
+perksLabel.BackgroundTransparency = 1
+perksLabel.Position = UDim2.new(0, 24, 0, 230)
+perksLabel.Size = UDim2.new(1, -48, 0, 46)
+perksLabel.Text = "+0% Sell   +0% Luck   +0% Speed"
+perksLabel.TextColor3 = GREEN_OK
+perksLabel.TextWrapped = true
+perksLabel.Font = FONT_BODY
+perksLabel.TextScaled = true
+perksLabel.ZIndex = 22
+perksLabel.Parent = card
+
+local resetInfoLabel = Instance.new("TextLabel")
+resetInfoLabel.BackgroundTransparency = 1
+resetInfoLabel.Position = UDim2.new(0, 24, 0, 282)
+resetInfoLabel.Size = UDim2.new(1, -48, 0, 40)
+resetInfoLabel.Text = "Resets: Money & Stand Level  |  Keeps: Pets & Upgrades"
+resetInfoLabel.TextColor3 = TEXT_LIGHT
+resetInfoLabel.TextWrapped = true
+resetInfoLabel.Font = FONT_BODY
+resetInfoLabel.TextSize = 14
+resetInfoLabel.ZIndex = 22
+resetInfoLabel.Parent = card
+
+local tokenLabel = Instance.new("TextLabel")
+tokenLabel.BackgroundTransparency = 1
+tokenLabel.Position = UDim2.new(0, 24, 0, 328)
+tokenLabel.Size = UDim2.new(1, -48, 0, 26)
+tokenLabel.Text = "🔥 Rebirth Tokens: 0"
+tokenLabel.TextColor3 = TEXT_LIGHT
+tokenLabel.Font = FONT_BODY
+tokenLabel.TextScaled = true
+tokenLabel.ZIndex = 22
+tokenLabel.Parent = card
+
+-- ---- Buton Rebirth ----
+
+local rebirthButton = Instance.new("TextButton")
+rebirthButton.Name = "RebirthConfirmButton"
+rebirthButton.AnchorPoint = Vector2.new(0.5, 1)
+rebirthButton.Position = UDim2.new(0.5, 0, 1, -24)
+rebirthButton.Size = UDim2.new(1, -48, 0, 54)
+rebirthButton.BackgroundColor3 = RED_MISSING
+rebirthButton.AutoButtonColor = false
+rebirthButton.Text = "REBIRTH"
+rebirthButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+rebirthButton.Font = FONT_DISPLAY
+rebirthButton.TextScaled = true
+rebirthButton.ZIndex = 22
+rebirthButton.Parent = card
+
+Instance.new("UICorner", rebirthButton).CornerRadius = UDim.new(0.3, 0)
+
+local rebirthButtonStroke = Instance.new("UIStroke")
+rebirthButtonStroke.Color = OUTLINE_DARK
+rebirthButtonStroke.Thickness = 3
+rebirthButtonStroke.Parent = rebirthButton
+
+-- ================= Actualizare live a starii =================
+
+local isEligible = false
+
+local function refreshState()
+	local level = getStandLevel()
+	local money = moneyValue.Value
+	local rebirths = rebirthsValue.Value
+	local tokens = tokensValue and tokensValue.Value or 0
+
+	local requiredMoney = Economy.Rebirth.GetRequiredMoney(rebirths + 1)
+
+	local hasLevel = level >= REQUIRED_LEVEL
+	local hasMoney = money >= requiredMoney
+
+	levelCheck.Text = hasLevel and "✅" or "❌"
+	levelLabel.Text = "Stand Level " .. level .. " / " .. REQUIRED_LEVEL
+	levelLabel.TextColor3 = hasLevel and GREEN_OK or RED_MISSING
+
+	moneyCheck.Text = hasMoney and "✅" or "❌"
+	moneyLabel.Text = formatMoney(money) .. " / " .. formatMoney(requiredMoney)
+	moneyLabel.TextColor3 = hasMoney and GREEN_OK or RED_MISSING
+
+	rebirthCountLabel.Text = "You have rebirthed " .. rebirths .. " time" .. (rebirths == 1 and "" or "s")
+
+	local nextPerks = Economy.Rebirth.GetPerks(rebirths + 1)
+	perksLabel.Text = "+" .. nextPerks.Sell .. "% Sell   +" .. nextPerks.Luck .. "% Luck   +" .. nextPerks.Speed .. "% Speed"
+
+	tokenLabel.Text = "🔥 Rebirth Tokens: " .. tokens
+
+	toggleSubtitle.Text = "Rebirths: " .. rebirths
+
+	isEligible = hasLevel and hasMoney
+
+	if isEligible then
+		rebirthButton.BackgroundColor3 = GREEN_OK
+		rebirthButton.Text = "REBIRTH NOW"
+	else
+		rebirthButton.BackgroundColor3 = RED_MISSING
+		rebirthButton.Text = "LOCKED"
+	end
+end
+
+refreshState()
+
+moneyValue:GetPropertyChangedSignal("Value"):Connect(refreshState)
+rebirthsValue:GetPropertyChangedSignal("Value"):Connect(refreshState)
+if standLevelValue then
+	standLevelValue:GetPropertyChangedSignal("Value"):Connect(refreshState)
+end
+if tokensValue then
+	tokensValue:GetPropertyChangedSignal("Value"):Connect(refreshState)
+end
+
+-- ================= Scalare responsive (mobil) =================
+
+local toggleScale = Instance.new("UIScale")
+toggleScale.Parent = toggleButton
+
+local cardScale = Instance.new("UIScale")
+cardScale.Parent = card
+
+local BASE_VIEWPORT_WIDTH = 1200
+local MIN_UI_SCALE = 0.75
+
+local function updateUIScale()
+	local camera = workspace.CurrentCamera
+	if not camera then
+		return
+	end
+
+	local scale = math.clamp(camera.ViewportSize.X / BASE_VIEWPORT_WIDTH, MIN_UI_SCALE, 1)
+	toggleScale.Scale = scale
+	cardScale.Scale = scale
+end
+
+local function bindCamera()
+	updateUIScale()
+
+	local camera = workspace.CurrentCamera
+	if camera then
+		camera:GetPropertyChangedSignal("ViewportSize"):Connect(updateUIScale)
+	end
+end
+
+bindCamera()
+workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(bindCamera)
+
+-- ================= Behaviour =================
+
+local isOpen = false
+
+local function setOpen(open)
+	if open == isOpen then
+		return
+	end
+	isOpen = open
+
+	if open then
+		refreshState()
+		overlay.Visible = true
+		card.Size = UDim2.new(0, 280, 0, 390)
+		TweenService:Create(
+			card,
+			TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+			{Size = UDim2.new(0, 340, 0, 470)}
+		):Play()
+	else
+		overlay.Visible = false
+	end
+end
+
+toggleButton.Activated:Connect(function()
+	setOpen(not isOpen)
+end)
+
+closeButton.Activated:Connect(function()
+	setOpen(false)
+end)
+
+addHoverPop(toggleButton)
+
+rebirthButton.Activated:Connect(function()
+	if not isEligible then
+		return
+	end
+
+	requestRebirthEvent:FireServer()
+end)
+
+rebirthResultEvent.OnClientEvent:Connect(function(data)
+	if data and data.Success then
+		setOpen(false)
+	end
+	refreshState()
+end)

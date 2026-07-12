@@ -357,6 +357,37 @@ function PetManager.GrantRandomPetByRarity(player, rarity)
 	return processRolledPet(player, rolledPet)
 end
 
+-- Acorda direct un pet predefinit (nu il ruleaza din nicio oua) -- pentru
+-- recompense unice, ca pet-ul exclusiv de Rebirth. Il salveaza mereu; e
+-- responsabilitatea apelantului sa nu cheme asta de doua ori pentru acelasi
+-- jucator (ex. un flag "deja primit").
+function PetManager.GrantSpecificPet(player, petData)
+	if not player or not petData then
+		return nil
+	end
+
+	PetManager.CreateInventory(player)
+
+	local savedPet = savePet(player, petData)
+
+	if not savedPet then
+		return nil
+	end
+
+	return {
+		InstanceName = savedPet.Name,
+		PetId = petData.PetId,
+		DisplayName = petData.DisplayName,
+		Rarity = petData.Rarity,
+		Image = petData.Image,
+		Bonuses = petData.Bonuses,
+
+		IsDuplicate = false,
+		AutoSold = false,
+		AutoSellCash = 0
+	}
+end
+
 -- Compatibilitate temporară cu NPCManager-ul vechi.
 -- OpenCrate întoarce un singur pet, ca înainte.
 function PetManager.OpenCrate(player, crateType)

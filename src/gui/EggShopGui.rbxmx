@@ -43,7 +43,38 @@ local eggHatchResultEvent = remotes:WaitForChild("EggHatchResult")
 print("=== EggHatchResult found, continuing ===")
 
 local screenGui = script.Parent
-local isMobile = UserInputService.TouchEnabled
+
+-- "Mobil" = are touch SAU ecranul e mic/scund (unele device-uri/ferestre
+-- raporteaza TouchEnabled=false chiar si pe telefon in Studio), ca sa se
+-- activeze layout-ul compact deja construit mai jos (carduri stivuite,
+-- fonturi/padding mai mici) -- nu doar marimea panoului principal.
+local function computeIsMobile()
+	local camera = workspace.CurrentCamera
+	local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+	return UserInputService.TouchEnabled or viewport.X < 700 or viewport.Y < 500
+end
+
+local isMobile = computeIsMobile()
+
+-- Marimea panoului principal. Pe PC ramane neschimbata (900x560, fix).
+-- Pe mobil se calculeaza procentual din ecranul real, cu margine vizibila.
+local function getMainFrameSize(scaleFactor)
+	scaleFactor = scaleFactor or 1
+
+	if not isMobile then
+		return UDim2.fromOffset(900 * scaleFactor, 560 * scaleFactor)
+	end
+
+	local camera = workspace.CurrentCamera
+	local viewport = camera and camera.ViewportSize or Vector2.new(400, 700)
+
+	local width = math.min(viewport.X * 0.85, viewport.X - 40) * scaleFactor
+	local height = math.min(viewport.Y * 0.7, viewport.Y - 40) * scaleFactor
+
+	print("[EggShop DEBUG] viewport=", viewport, "isMobile=", isMobile, "-> size=", width, height)
+
+	return UDim2.fromOffset(width, height)
+end
 
 local EGG_DATA = {
 	{
@@ -843,9 +874,7 @@ mainFrame.Name = "MainFrame"
 mainFrame.Parent = overlay
 mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 mainFrame.Position = UDim2.fromScale(0.5, 0.5)
-mainFrame.Size = isMobile
-	and UDim2.fromScale(0.94, 0.88)
-	or UDim2.fromOffset(900, 560)
+mainFrame.Size = getMainFrameSize()
 mainFrame.BackgroundColor3 = Color3.fromRGB(26, 27, 35)
 mainFrame.BorderSizePixel = 0
 
@@ -989,7 +1018,7 @@ resultPopup.Parent = overlay
 resultPopup.AnchorPoint = Vector2.new(0.5, 0.5)
 resultPopup.Position = UDim2.fromScale(0.5, 0.5)
 resultPopup.Size = isMobile
-	and UDim2.fromScale(0.8, 0.5)
+	and UDim2.fromScale(0.85, 0.6)
 	or UDim2.fromOffset(420, 320)
 resultPopup.BackgroundColor3 = Color3.fromRGB(30, 31, 40)
 resultPopup.BorderSizePixel = 0
@@ -1003,8 +1032,8 @@ local resultTitle = createText(
 	resultPopup,
 	"ResultTitle",
 	"🎉 YOU GOT",
-	UDim2.new(1, -20, 0, 40),
-	UDim2.new(0, 10, 0, 20),
+	UDim2.new(1, -20, 0.18, 0),
+	UDim2.new(0, 10, 0.08, 0),
 	isMobile and 20 or 26,
 	Color3.fromRGB(255, 255, 255)
 )
@@ -1014,8 +1043,8 @@ local resultPetName = createText(
 	resultPopup,
 	"ResultPetName",
 	"",
-	UDim2.new(1, -20, 0, 40),
-	UDim2.new(0, 10, 0, 70),
+	UDim2.new(1, -20, 0.22, 0),
+	UDim2.new(0, 10, 0.30, 0),
 	isMobile and 22 or 30,
 	Color3.fromRGB(255, 210, 80)
 )
@@ -1025,8 +1054,8 @@ local resultPetRarity = createText(
 	resultPopup,
 	"ResultPetRarity",
 	"",
-	UDim2.new(1, -20, 0, 30),
-	UDim2.new(0, 10, 0, 115),
+	UDim2.new(1, -20, 0.16, 0),
+	UDim2.new(0, 10, 0.55, 0),
 	isMobile and 16 or 20,
 	Color3.fromRGB(200, 200, 210)
 )
@@ -1034,8 +1063,8 @@ resultPetRarity.ZIndex = 31
 
 local resultCloseButton = Instance.new("TextButton")
 resultCloseButton.Parent = resultPopup
-resultCloseButton.Size = UDim2.new(0.6, 0, 0, 44)
-resultCloseButton.Position = UDim2.new(0.2, 0, 1, -60)
+resultCloseButton.Size = UDim2.new(0.6, 0, 0.16, 0)
+resultCloseButton.Position = UDim2.new(0.2, 0, 0.78, 0)
 resultCloseButton.BackgroundColor3 = Color3.fromRGB(70, 140, 255)
 resultCloseButton.Text = "CONTINUE"
 resultCloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1243,13 +1272,9 @@ local function openShop()
 print("=== openshop()CALLED ===")
 	overlay.Visible = true
 
-	mainFrame.Size = isMobile
-		and UDim2.fromScale(0.84, 0.76)
-		or UDim2.fromOffset(800, 500)
+	mainFrame.Size = getMainFrameSize(0.88)
 
-	local targetSize = isMobile
-		and UDim2.fromScale(0.94, 0.88)
-		or UDim2.fromOffset(900, 560)
+	local targetSize = getMainFrameSize()
 
 	TweenService:Create(
 		mainFrame,
@@ -1268,6 +1293,19 @@ local function closeShop()
 	infoPopup.Visible = false
 	overlay.Visible = false
 end
+
+-- Daca jucatorul roteste telefonul cat timp shop-ul e deschis, recalculam marimea.
+do
+	local camera = workspace.CurrentCamera
+	if camera then
+		camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+			if overlay.Visible then
+				mainFrame.Size = getMainFrameSize()
+			end
+		end)
+	end
+end
+
 eggHatchResultEvent.OnClientEvent:Connect(function(data)
 	if not data or not data.Success then
 		warn(data and data.Message or "Hatch failed")

@@ -62,12 +62,24 @@ local function getStandBonuses(player)
 	return Economy.StandBonuses[level] or Economy.StandBonuses[1]
 end
 
+local function getRebirthBonuses(player)
+	local leaderstats = player:FindFirstChild("leaderstats")
+	local rebirths = leaderstats and leaderstats:FindFirstChild("Rebirths")
+
+	if not rebirths then
+		return {Sell = 0, Luck = 0, Speed = 0}
+	end
+
+	return Economy.Rebirth.GetCumulativeBonuses(rebirths.Value)
+end
+
 local function getSpawnDelay(player)
 	local bonuses = getStandBonuses(player)
 	local cosmeticBonuses = CosmeticManager.GetBonuses(player)
 	local petBonuses = PetManager.GetBonuses(player)
+	local rebirthBonuses = getRebirthBonuses(player)
 
-	local totalSpeed = bonuses.Speed + (cosmeticBonuses.NpcSpeed or 0) + (petBonuses.NpcSpeed or 0)
+	local totalSpeed = bonuses.Speed + (cosmeticBonuses.NpcSpeed or 0) + (petBonuses.NpcSpeed or 0) + rebirthBonuses.Speed
 	totalSpeed = math.clamp(totalSpeed, 0, Economy.Caps.Speed)
 
 	local reduction = 1 - (totalSpeed / 100)
@@ -249,8 +261,10 @@ local function spawnNPCForPlayer(player)
 	local petBonuses = PetManager.GetBonuses(player)
 	local vipLuck = player:GetAttribute("IsVIP") and Economy.VIP.Luck or 0
 	local starterPackLuck = player:GetAttribute("HasStarterPack") and Economy.StarterPack.LuckBonus or 0
+	local rebirthLuck = getRebirthBonuses(player).Luck
+	local titleLuck = Economy.TokenShop.GetTitleLuckBonus(player)
 
-	local totalLuck = bonuses.Luck + cosmeticBonuses.NpcLuck + petBonuses.NpcLuck + vipLuck + starterPackLuck
+	local totalLuck = bonuses.Luck + cosmeticBonuses.NpcLuck + petBonuses.NpcLuck + vipLuck + starterPackLuck + rebirthLuck + titleLuck
 	totalLuck = math.clamp(totalLuck, 0, Economy.Caps.Luck)
 
 	local offer = TradeManager.CreateOffer(npcType, totalLuck)

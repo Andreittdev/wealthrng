@@ -38,7 +38,17 @@ local INVENTORY_PASS_ID = 1899734044
 
 local storeGui = script.Parent
 local mainFrame = storeGui:WaitForChild("MainFrame")
-local isMobile = UserInputService.TouchEnabled
+
+-- TouchEnabled singur nu e de incredere (poate fi false pe telefon in
+-- anumite ferestre/Studio) -- verificam si dimensiunea reala a ecranului,
+-- acelasi fix aplicat si la EggShopGui.
+local function computeIsMobile()
+	local camera = workspace.CurrentCamera
+	local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+	return UserInputService.TouchEnabled or viewport.X < 700 or viewport.Y < 500
+end
+
+local isMobile = computeIsMobile()
 
 local header = mainFrame:WaitForChild("Header")
 local closeButton = header:WaitForChild("CloseButton")
@@ -60,15 +70,11 @@ local function applyLayout()
 	header.ClipsDescendants = false
 
 	if isMobile then
-		mainFrame.Position = UDim2.new(0.58, 0, 0.50, 0)
-		mainFrame.Size = UDim2.new(0.56, 0, 0.68, 0)
 		header.Size = UDim2.new(1, 0, 0.15, 0)
 
 		vipCard.Position = UDim2.new(0.05, 0, 0.20, 0)
-		vipCard.Size = UDim2.new(0.90, 0, 0.36, 0)
-
 		inventoryCard.Position = UDim2.new(0.05, 0, 0.60, 0)
-		inventoryCard.Size = UDim2.new(0.90, 0, 0.30, 0)
+
 		local function limitTextSize(parent, maxSize)
 			for _, obj in ipairs(parent:GetDescendants()) do
 				if obj:IsA("TextLabel") then
@@ -91,14 +97,40 @@ local function applyLayout()
 		limitTextSize(vipCard, 18)
 		limitTextSize(inventoryCard, 20)
 
-		vipBuyButton.TextScaled = true
-		inventoryBuyButton.TextScaled = true
+		-- Titlurile si descrierile au nevoie de dimensiuni fixe, nu doar
+		-- constrangerea generica de mai sus, ca sa ramana lizibile pe un
+		-- card ingust (era dublat mai jos, intr-un al doilea "if isMobile",
+		-- care rula DUPA asta si suprascria valorile -- acum e un singur loc).
+		mainFrame.Position = UDim2.new(0.50, 0, 0.50, 0)
+		mainFrame.Size = UDim2.new(0.62, 0, 0.60, 0)
 
-		vipBuyButton.TextScaled = false
-		vipBuyButton.TextSize = 18
+		vipCard.Size = UDim2.new(0.92, 0, 0.36, 0)
+		inventoryCard.Size = UDim2.new(0.92, 0, 0.36, 0)
 
-		inventoryBuyButton.TextScaled = false
-		inventoryBuyButton.TextSize = 18
+		vipTitle.TextScaled = false
+		vipTitle.TextSize = 20
+
+		inventoryTitle.TextScaled = false
+		inventoryTitle.TextSize = 18
+
+		vipDescription.Position = UDim2.new(0.32, 0, 0.38, 0)
+		vipDescription.Size = UDim2.new(0.42, 0, 0.52, 0)
+		vipDescription.TextScaled = false
+		vipDescription.TextSize = 9
+		vipDescription.TextWrapped = true
+		vipDescription.TextYAlignment = Enum.TextYAlignment.Top
+		vipDescription.TextXAlignment = Enum.TextXAlignment.Left
+
+		-- inventoryDescription nu avea NICIO pozitie/marime proprie pe mobil
+		-- inainte (doar TextSize, setat in celalalt bloc) -- ramanea la
+		-- pozitia de PC, care putea sa iasa din card sau sa se suprapuna.
+		inventoryDescription.Position = UDim2.new(0.32, 0, 0.38, 0)
+		inventoryDescription.Size = UDim2.new(0.42, 0, 0.52, 0)
+		inventoryDescription.TextScaled = false
+		inventoryDescription.TextSize = 12
+		inventoryDescription.TextWrapped = true
+		inventoryDescription.TextYAlignment = Enum.TextYAlignment.Top
+		inventoryDescription.TextXAlignment = Enum.TextXAlignment.Left
 
 		vipBuyButton.Size = UDim2.new(0.23, 0, 0.35, 0)
 		vipBuyButton.Position = UDim2.new(0.72, 0, 0.34, 0)
@@ -136,17 +168,33 @@ local function setOwned(button)
 	button.AutoButtonColor = false
 end
 
+-- Pretul era scris de mana ("139 ROBUX"), dezactualizat fata de pretul real
+-- (299) -- il luam direct de la Roblox, ca sa nu mai poata sa se dezactualizeze.
+local function getPassPrice(passId)
+	local success, info = pcall(function()
+		return MarketplaceService:GetProductInfo(passId, Enum.InfoType.GamePass)
+	end)
+
+	if success and info and info.PriceInRobux then
+		return info.PriceInRobux
+	end
+
+	return nil
+end
+
 local function refreshStore()
 	if ownsPass(VIP_PASS_ID) then
 		setOwned(vipBuyButton)
 	else
-		vipBuyButton.Text = "139 ROBUX"
+		local price = getPassPrice(VIP_PASS_ID)
+		vipBuyButton.Text = price and (price .. " ROBUX") or "BUY"
 	end
 
 	if ownsPass(INVENTORY_PASS_ID) then
 		setOwned(inventoryBuyButton)
 	else
-		inventoryBuyButton.Text = "49 ROBUX"
+		local price = getPassPrice(INVENTORY_PASS_ID)
+		inventoryBuyButton.Text = price and (price .. " ROBUX") or "BUY"
 	end
 end
 
@@ -184,34 +232,18 @@ end)
 closeButton.Activated:Connect(function()
 	mainFrame.Visible = false
 end)
-if isMobile then
-	
-	mainFrame.Size = UDim2.new(0.62, 0, 0.60, 0)
-	mainFrame.Position = UDim2.new(0.50, 0, 0.50, 0)
 
-	
-	vipCard.Size = UDim2.new(0.92, 0, 0.36, 0)
-	inventoryCard.Size = UDim2.new(0.92, 0, 0.36, 0)
-
-	
-	vipTitle.TextScaled = false
-	vipTitle.TextSize = 20
-
-	inventoryTitle.TextScaled = false
-	inventoryTitle.TextSize = 18
-
-
-	vipDescription.Position = UDim2.new(0.32, 0, 0.38, 0)
-	vipDescription.Size = UDim2.new(0.42, 0, 0.52, 0)
-	vipDescription.TextScaled = false
-	vipDescription.TextSize = 9
-	vipDescription.TextWrapped = true
-	vipDescription.TextYAlignment = Enum.TextYAlignment.Top
-	vipDescription.TextXAlignment = Enum.TextXAlignment.Left
-
-	inventoryDescription.TextScaled = false
-	inventoryDescription.TextSize = 12
-	inventoryDescription.TextWrapped = true
+-- Daca jucatorul roteste telefonul cat timp e deschis, recalculam.
+do
+	local camera = workspace.CurrentCamera
+	if camera then
+		camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+			if mainFrame.Visible then
+				isMobile = computeIsMobile()
+				applyLayout()
+			end
+		end)
+	end
 end
 
 refreshStore()]]></ProtectedString>
@@ -421,7 +453,7 @@ refreshStore()]]></ProtectedString>
 						<int name="MaxVisibleGraphemes">-1</int>
 						<string name="OpenTypeFeatures"></string>
 						<bool name="RichText">false</bool>
-						<string name="Text">&#240;&#159;&#155;&#146; STORE</string>
+						<string name="Text">🛒 STORE</string>
 						<Color3 name="TextColor3">
 							<R>1</R>
 							<G>1</G>
@@ -757,7 +789,7 @@ end)]]></ProtectedString>
 						<int name="MaxVisibleGraphemes">-1</int>
 						<string name="OpenTypeFeatures"></string>
 						<bool name="RichText">false</bool>
-						<string name="Text">&#240;&#159;&#147;&#166; +100 Inventory Slots</string>
+						<string name="Text">📦 +100 Inventory Slots</string>
 						<Color3 name="TextColor3">
 							<R>1</R>
 							<G>1</G>
@@ -852,7 +884,7 @@ end)]]></ProtectedString>
 						<int name="MaxVisibleGraphemes">-1</int>
 						<string name="OpenTypeFeatures"></string>
 						<bool name="RichText">false</bool>
-						<string name="Text">Increase capacity: 50 &#226;&#134;&#146; 150</string>
+						<string name="Text">Increase capacity: 50 → 150</string>
 						<Color3 name="TextColor3">
 							<R>0.70588237</R>
 							<G>0.70588237</G>
@@ -1378,7 +1410,7 @@ end)]]></ProtectedString>
 						<int name="MaxVisibleGraphemes">-1</int>
 						<string name="OpenTypeFeatures"></string>
 						<bool name="RichText">false</bool>
-						<string name="Text">&#240;&#159;&#145;&#145; VIP</string>
+						<string name="Text">👑 VIP</string>
 						<Color3 name="TextColor3">
 							<R>1</R>
 							<G>1</G>
@@ -1474,10 +1506,10 @@ end)]]></ProtectedString>
 						<string name="OpenTypeFeatures"></string>
 						<bool name="RichText">false</bool>
 						<string name="Text"><![CDATA[Perks:
-+50% more NPC Luck
++15% more NPC Luck
 x1.5 more Money (stacks)
 +25 Inventory Slots (stacks)
-Exclusive Chat and In-Game Tag]]></string>
+Exclusive In-Game Tag]]></string>
 						<Color3 name="TextColor3">
 							<R>0.70588237</R>
 							<G>0.70588237</G>

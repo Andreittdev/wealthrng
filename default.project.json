@@ -21,6 +21,15 @@
           "$path": "src/client"
         }
       }
+    },
+
+    "StarterGui": {
+      "EggShopGui": {
+        "$path": "src/gui/EggShopGui.rbxmx"
+      },
+      "StoreGui": {
+        "$path": "src/gui/StoreGui.rbxmx"
+      }
     }
   }
 }

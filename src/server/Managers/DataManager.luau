@@ -21,7 +21,12 @@ local function getDefaultData()
 		},
         Pets = {},
         EquippedPets = {"",""},
-        StarterPackRedeemed = false
+        StarterPackRedeemed = false,
+        RebirthCount = 0,
+        RebirthTokens = 0,
+        RebirthPetClaimed = false,
+        DailyStreakDay = 0,
+        DailyLastClaimTimestamp = 0
 	}
 end
 
@@ -49,6 +54,11 @@ function DataManager.LoadData(player)
     data.Pets = data.Pets or {}
 	data.EquippedPets = data.EquippedPets or {"",""}
 	data.StarterPackRedeemed = data.StarterPackRedeemed or false
+	data.RebirthCount = data.RebirthCount or 0
+	data.RebirthTokens = data.RebirthTokens or 0
+	data.RebirthPetClaimed = data.RebirthPetClaimed or false
+	data.DailyStreakDay = data.DailyStreakDay or 0
+	data.DailyLastClaimTimestamp = data.DailyLastClaimTimestamp or 0
 
 	return data
 end
@@ -81,7 +91,12 @@ function DataManager.SaveData(player)
 		EquippedCosmetics = {},
         Pets = {},
         EquippedPets = {"",""},
-        StarterPackRedeemed = player:GetAttribute("StarterPackRedeemed") == true
+        StarterPackRedeemed = player:GetAttribute("StarterPackRedeemed") == true,
+        RebirthCount = leaderstats:FindFirstChild("Rebirths") and leaderstats.Rebirths.Value or 0,
+        RebirthTokens = player:FindFirstChild("RebirthTokens") and player.RebirthTokens.Value or 0,
+        RebirthPetClaimed = player:GetAttribute("RebirthPetClaimed") == true,
+        DailyStreakDay = player:GetAttribute("DailyStreakDay") or 0,
+        DailyLastClaimTimestamp = player:GetAttribute("DailyLastClaimTimestamp") or 0
 	}
 
 	for _, item in ipairs(inventory:GetChildren()) do
@@ -154,6 +169,26 @@ function DataManager.ApplyData(player, data)
 	end
 
 	player:SetAttribute("StarterPackRedeemed", data.StarterPackRedeemed == true)
+
+	local rebirths = leaderstats:FindFirstChild("Rebirths")
+	if not rebirths then
+		rebirths = Instance.new("IntValue")
+		rebirths.Name = "Rebirths"
+		rebirths.Parent = leaderstats
+	end
+	rebirths.Value = data.RebirthCount or 0
+
+	local rebirthTokens = player:FindFirstChild("RebirthTokens")
+	if not rebirthTokens then
+		rebirthTokens = Instance.new("IntValue")
+		rebirthTokens.Name = "RebirthTokens"
+		rebirthTokens.Parent = player
+	end
+	rebirthTokens.Value = data.RebirthTokens or 0
+
+	player:SetAttribute("RebirthPetClaimed", data.RebirthPetClaimed == true)
+	player:SetAttribute("DailyStreakDay", data.DailyStreakDay or 0)
+	player:SetAttribute("DailyLastClaimTimestamp", data.DailyLastClaimTimestamp or 0)
 
 	local bankMoney = player:FindFirstChild("BankMoney")
 	if not bankMoney then

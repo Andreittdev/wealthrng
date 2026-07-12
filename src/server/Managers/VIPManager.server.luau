@@ -29,7 +29,7 @@ local function createVIPTag(character)
 	local label = Instance.new("TextLabel")
 	label.Size = UDim2.new(1, 0, 1, 0)
 	label.BackgroundTransparency = 1
-	label.Text = "?? VIP"
+	label.Text = "VIP"
 	label.TextColor3 = Color3.fromRGB(255, 215, 80)
 	label.TextStrokeTransparency = 0.3
 	label.Font = Enum.Font.GothamBold

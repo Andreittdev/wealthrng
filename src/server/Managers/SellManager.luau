@@ -50,6 +50,17 @@ local function getStandSellBonus(player)
 	return bonus.Sell or 0
 end
 
+local function getRebirthSellBonus(player)
+	local leaderstats = player:FindFirstChild("leaderstats")
+	local rebirths = leaderstats and leaderstats:FindFirstChild("Rebirths")
+
+	if not rebirths then
+		return 0
+	end
+
+	return Economy.Rebirth.GetCumulativeBonuses(rebirths.Value).Sell
+end
+
 function SellManager.CalculateSellPrice(player, itemFolder)
 	if not player or not itemFolder then
 		return 0
@@ -82,17 +93,26 @@ function SellManager.CalculateSellPrice(player, itemFolder)
 		moneyMultiplier *= Economy.VIP.MoneyMultiplier
 	end
 
-	local totalSellBonus = standSellBonus + cosmeticSellBonus + petSellBonus
+	local rebirthSellBonus = getRebirthSellBonus(player)
+
+	local totalSellBonus = standSellBonus + cosmeticSellBonus + petSellBonus + rebirthSellBonus
 	totalSellBonus = math.clamp(totalSellBonus, 0, Economy.Caps.Sell)
 
 	local rawPrice = baseValue
 	rawPrice *= marketMultiplier
 	rawPrice *= (1 + totalSellBonus / 100)
-	rawPrice *= moneyMultiplier
 
 	local finalPrice = math.floor(rawPrice)
 
 	finalPrice = math.clamp(finalPrice, minSell, maxSell)
+
+	-- moneyMultiplier (VIP, cosmetice) se aplica DUPA clamp-ul per-item, nu
+	-- inainte -- altfel bonusul se pierde in mare parte in clamp-ul de
+	-- MaxSell (ex. un jucator nou, fara alte bonusuri, primea doar +33% in
+	-- loc de +50% promis de VIP, iar la jucatori cu Sell% deja mare, VIP nu
+	-- mai adauga nimic). Aplicat aici, VIP livreaza mereu bonusul integral,
+	-- indiferent cat de saturate sunt celelalte bonusuri de Sell%.
+	finalPrice = math.floor(finalPrice * moneyMultiplier)
 
 	return finalPrice
 end

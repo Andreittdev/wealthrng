@@ -126,6 +126,43 @@ function CosmeticManager.OpenCrate(player, crateType)
 	}
 end
 
+-- Acorda direct un cosmetic specific (nu il ruleaza dintr-o crate) -- pentru
+-- recompense unice, ca cele din Token Shop.
+function CosmeticManager.GrantSpecificCosmetic(player, itemId)
+	CosmeticManager.CreateInventory(player)
+
+	local itemData = ItemsDatabase.Items[itemId]
+	if not itemData then
+		warn("GrantSpecificCosmetic: unknown item id " .. tostring(itemId))
+		return nil
+	end
+
+	local cosmetics = player:FindFirstChild("Cosmetics")
+	if not cosmetics then
+		return nil
+	end
+
+	if cosmetics:FindFirstChild(itemId) then
+		return nil
+	end
+
+	local itemValue = Instance.new("StringValue")
+	itemValue.Name = itemId
+	itemValue.Value = itemId
+	itemValue.Parent = cosmetics
+
+	return {
+		ItemId = itemId,
+		DisplayName = itemData.DisplayName,
+		Type = itemData.Type,
+		Rarity = itemData.Rarity,
+		MoneyBonus = itemData.MoneyBonus or 0,
+		LuckBonus = itemData.LuckBonus or 0,
+		SellBonus = itemData.SellBonus or 0,
+		Image = itemData.Image or ""
+	}
+end
+
 function CosmeticManager.Equip(player, itemId)
 	CosmeticManager.CreateInventory(player)
 
