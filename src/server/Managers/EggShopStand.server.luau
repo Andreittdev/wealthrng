@@ -5,7 +5,7 @@ local EggShopKeeper = require(script.Parent:WaitForChild("EggShopKeeper"))
 -- PetShop e un model asezat manual in Studio (nu e construit procedural aici,
 -- spre deosebire de TokenShopStall) -- doar il relocam si ii adaugam firma,
 -- la fel cum am facut cu standul de Rebirth Token Shop.
-local NEW_POSITION = Vector3.new(-66.05, 3.46, -319.45)
+local NEW_POSITION = Vector3.new(-11.173, 5.8, 261.996)
 
 -- Rotatia standului pe Y (grade). Spune-mi daca nu e unghiul potrivit si
 -- ajustez (0/90/180/270 sau orice alta valoare).
@@ -65,5 +65,46 @@ signLabel.Parent = signBillboard
 -- NPC langa stand, fara text deasupra (doar cel de la Token Shop are badge).
 -- Pozitie fixa, primita direct de la jucator (coordonatele HumanoidRootPart
 -- din Studio).
-local KEEPER_POSITION = Vector3.new(-66.53, 6.77, -317.42)
+local KEEPER_POSITION = Vector3.new(-11.653, 9.11, 264.026)
 EggShopKeeper.Spawn(petShop, KEEPER_POSITION)
+
+-- Aceeasi textura "bloxy" de pe strada/iarba (TownMapBuilder), tentata verde
+-- -- aplicata pe podeaua standului. PetShop nu e sincronizat prin Rojo, deci
+-- nu stim numele exact al partii de podea -- o gasim automat: partea cu cea
+-- mai mare suprafata orizontala (Size.X * Size.Z) e aproape sigur podeaua,
+-- nu un perete/acoperis.
+local GRID_TEXTURE_ID = "rbxassetid://6372755229"
+
+local function findFloorPart(model)
+	local bestPart, bestArea = nil, 0
+
+	for _, descendant in ipairs(model:GetDescendants()) do
+		if descendant:IsA("BasePart") then
+			local area = descendant.Size.X * descendant.Size.Z
+			if area > bestArea then
+				bestArea = area
+				bestPart = descendant
+			end
+		end
+	end
+
+	return bestPart
+end
+
+local floorPart = findFloorPart(petShop)
+
+if floorPart then
+	local existingTexture = floorPart:FindFirstChild("GridTexture")
+	if existingTexture then
+		existingTexture:Destroy()
+	end
+
+	local floorTexture = Instance.new("Texture")
+	floorTexture.Name = "GridTexture"
+	floorTexture.Face = Enum.NormalId.Top
+	floorTexture.Texture = GRID_TEXTURE_ID
+	floorTexture.Color3 = Color3.fromRGB(30, 200, 40)
+	floorTexture.StudsPerTileU = 2
+	floorTexture.StudsPerTileV = 2
+	floorTexture.Parent = floorPart
+end

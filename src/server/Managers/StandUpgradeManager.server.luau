@@ -38,18 +38,21 @@ local function setVisible(part, visible)
 	end
 end
 
+-- Standul nu se mai schimba vizual pe niveluri (banner la nivel 2, rafturi la
+-- nivel 3) -- ramane mereu la fel, doar bonusurile (Sell%, Luck etc, vezi
+-- Economy.StandUpgradeCosts/perks) cresc cu nivelul, nu aspectul fizic.
 local function updateStandVisual(player, level)
 	local generatedStands = workspace:FindFirstChild("GeneratedStands")
 	if not generatedStands then return end
 
 	for _, stand in ipairs(generatedStands:GetChildren()) do
 		if stand:GetAttribute("OwnerUserId") == player.UserId then
-			setVisible(stand:FindFirstChild("Level2Banner", true), level >= 2)
+			setVisible(stand:FindFirstChild("Level2Banner", true), false)
 
 			local upgrades = stand:FindFirstChild("Upgrades", true)
 			if upgrades then
-				setVisible(upgrades:FindFirstChild("Level3ShelfLeft"), level >= 3)
-				setVisible(upgrades:FindFirstChild("Level3ShelfRight"), level >= 3)
+				setVisible(upgrades:FindFirstChild("Level3ShelfLeft"), false)
+				setVisible(upgrades:FindFirstChild("Level3ShelfRight"), false)
 			end
 
 			break
