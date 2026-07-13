@@ -1,5 +1,7 @@
 local Pets = {}
 
+local Economy = require(script.Parent:WaitForChild("EconomyConfig"))
+
 Pets.Eggs = {
 
 	Basic = {
@@ -72,6 +74,7 @@ for _, eggData in pairs(Pets.Eggs) do
 			DisplayName = rawPet.Name,
 			Rarity = rawPet.Rarity,
 			Image = rawPet.Image or "",
+			Source = "Egg",
 
 			Bonuses = {
 				NpcLuck = rawPet.Luck or 0,
@@ -79,6 +82,44 @@ for _, eggData in pairs(Pets.Eggs) do
 				NpcSpeed = rawPet.Speed or 0
 			}
 		}
+	end
+end
+
+-- Pet-urile exclusive (Rebirth, Token Shop, Daily Rewards) nu apar in niciun
+-- ou, deci nu erau inregistrate nicaieri central -- lipseau complet din
+-- Pets.Pets (bug gasit separat, cat timp reparam Equip-ul: nu se afisau in
+-- panoul de Pets al jucatorului daca le detinea). Le adaugam aici, ca sa
+-- existe un singur loc cu TOATE pet-urile din joc.
+local function registerExclusivePet(petData, source)
+	if not petData or not petData.PetId then
+		return
+	end
+
+	Pets.Pets[petData.PetId] = {
+		DisplayName = petData.DisplayName,
+		Rarity = petData.Rarity,
+		Image = petData.Image or "",
+		Source = source,
+
+		Bonuses = {
+			NpcLuck = petData.Bonuses and petData.Bonuses.NpcLuck or 0,
+			SellPrice = petData.Bonuses and petData.Bonuses.SellPrice or 0,
+			NpcSpeed = petData.Bonuses and petData.Bonuses.NpcSpeed or 0
+		}
+	}
+end
+
+registerExclusivePet(Economy.Rebirth.ExclusivePet, "Rebirth Exclusive")
+
+for _, item in ipairs(Economy.TokenShop.Items) do
+	if item.Type == "Pet" then
+		registerExclusivePet(item.Pet, "Token Shop Exclusive")
+	end
+end
+
+for _, day in pairs(Economy.DailyRewards.Days) do
+	if day.Type == "SpecificPet" then
+		registerExclusivePet(day.Pet, "Daily Reward Exclusive")
 	end
 end
 

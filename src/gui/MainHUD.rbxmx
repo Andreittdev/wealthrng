@@ -254,6 +254,14 @@ storeHitbox.Activated:Connect(function()
 end)
 itemsButton.Activated:Connect(function()
 	itemsFrame.Visible = not itemsFrame.Visible
+end)
+
+-- Acelasi flag comun folosit de Starter Pack/Rebirth/Daily Rewards/Token
+-- Shop/Inventory -- cat timp orice panou dintre astea e deschis, grila de
+-- butoane (Inventory/Bank/Market/Stand/Store/Pets) se ascunde, ca sa nu mai
+-- ramana vizibila pe langa cardul deschis.
+player:GetAttributeChangedSignal("ShopModalOpen"):Connect(function()
+	bottomBar.Visible = not player:GetAttribute("ShopModalOpen")
 end)]]></ProtectedString>
 					<bool name="Disabled">false</bool>
 					<Content name="LinkedSource"><null></null></Content>

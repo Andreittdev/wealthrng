@@ -128,6 +128,36 @@ toggleSubtitle.TextXAlignment = Enum.TextXAlignment.Left
 toggleSubtitle.ZIndex = 11
 toggleSubtitle.Parent = toggleButton
 
+-- Pe mobil, butonul e mult mai mic -- titlul+subtitlul (pixeli ficsi,
+-- gandite pentru butonul de PC) s-ar suprapune. Doua etichete mici, fara
+-- emoji: "DAILY REWARDS" sus, timer/READY jos (tot actualizat live, vezi
+-- refreshToggleSubtitle).
+local mobileTitle = Instance.new("TextLabel")
+mobileTitle.Name = "MobileTitle"
+mobileTitle.BackgroundTransparency = 1
+mobileTitle.Position = UDim2.new(0, 6, 0, 3)
+mobileTitle.Size = UDim2.new(1, -12, 0, 18)
+mobileTitle.Text = "DAILY REWARDS"
+mobileTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+mobileTitle.Font = FONT_DISPLAY
+mobileTitle.TextScaled = true
+mobileTitle.Visible = false
+mobileTitle.ZIndex = 11
+mobileTitle.Parent = toggleButton
+
+local mobileStatus = Instance.new("TextLabel")
+mobileStatus.Name = "MobileStatus"
+mobileStatus.BackgroundTransparency = 1
+mobileStatus.Position = UDim2.new(0, 6, 0, 22)
+mobileStatus.Size = UDim2.new(1, -12, 0, 16)
+mobileStatus.Text = "..."
+mobileStatus.TextColor3 = TEXT_DIM
+mobileStatus.Font = FONT_BODY
+mobileStatus.TextScaled = true
+mobileStatus.Visible = false
+mobileStatus.ZIndex = 11
+mobileStatus.Parent = toggleButton
+
 local function addHoverPop(button)
 	button.MouseEnter:Connect(function()
 		TweenService:Create(button, TweenInfo.new(0.12), {Size = button.Size + UDim2.new(0, 6, 0, 4)}):Play()
@@ -138,6 +168,41 @@ local function addHoverPop(button)
 end
 
 addHoverPop(toggleButton)
+
+-- Pe telefon (ecran landscape, scund), stiva Starter Pack/Rebirth/Daily
+-- Rewards din mijlocul ecranului putea iesi de pe ecran/peste joystick --
+-- pe mobil, butonul de Daily Rewards se muta sub cele doua de mai sus,
+-- sus-dreapta, compact.
+local function updateToggleLayout()
+	local isMobile = computeIsMobile()
+
+	if isMobile then
+		-- Sub Rebirth (96 + 36 inaltime + 6 gol) -- pornea prea sus inainte (92).
+		-- Inaltimea a crescut la 44 (de la 36) ca sa incapa doua randuri de
+		-- text (titlu + status), fara sa se suprapuna.
+		toggleButton.AnchorPoint = Vector2.new(1, 0)
+		toggleButton.Position = UDim2.new(1, -8, 0, 138)
+		toggleButton.Size = UDim2.new(0, 102, 0, 44)
+	else
+		toggleButton.AnchorPoint = Vector2.new(1, 0.5)
+		toggleButton.Position = UDim2.new(1, -16, 0.5, 162)
+		toggleButton.Size = UDim2.new(0, 156, 0, 66)
+	end
+
+	toggleTitle.Visible = not isMobile
+	toggleSubtitle.Visible = not isMobile
+	mobileTitle.Visible = isMobile
+	mobileStatus.Visible = isMobile
+end
+
+updateToggleLayout()
+
+do
+	local camera = workspace.CurrentCamera
+	if camera then
+		camera:GetPropertyChangedSignal("ViewportSize"):Connect(updateToggleLayout)
+	end
+end
 
 -- ================= Overlay + Card =================
 
@@ -717,6 +782,19 @@ claimButton.Parent = card
 
 Instance.new("UICorner", claimButton).CornerRadius = UDim.new(0.2, 0)
 
+-- ================= Coordonare cu celelalte shop-uri =================
+-- Un singur flag comun pe player -- cand se deschide ORICE panou (Starter
+-- Pack, Rebirth, Daily Rewards, Token Shop), toate butoanele astea de pe
+-- ecran se ascund, ca sa nu ramana unul peste altul/langa cardul deschis
+-- (asta era exact problema din screenshot).
+local function setShopModalOpen(open)
+	player:SetAttribute("ShopModalOpen", open)
+end
+
+player:GetAttributeChangedSignal("ShopModalOpen"):Connect(function()
+	toggleButton.Visible = not player:GetAttribute("ShopModalOpen")
+end)
+
 -- ================= Behaviour (declarat aici ca sa fie vizibil din applyState) ====
 
 local isOpen = false
@@ -726,6 +804,7 @@ local function setOpen(open)
 		return
 	end
 	isOpen = open
+	setShopModalOpen(open)
 
 	if open then
 		updateDaysGridLayout()
@@ -793,6 +872,9 @@ local function refreshClaimButton()
 end
 
 local function refreshToggleSubtitle()
+	mobileStatus.Text = latestState.CanClaim and "READY!" or formatCountdown(latestState.SecondsRemaining)
+	mobileStatus.TextColor3 = latestState.CanClaim and GREEN_OK or TEXT_DIM
+
 	if latestState.CanClaim then
 		toggleSubtitle.Text = "Day " .. latestState.NextDay .. " ready!"
 	else

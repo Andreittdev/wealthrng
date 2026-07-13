@@ -558,6 +558,14 @@ if tokensValue then
 	tokensValue:GetPropertyChangedSignal("Value"):Connect(refreshBalance)
 end
 
+-- ================= Coordonare cu celelalte shop-uri =================
+-- Token Shop nu are propriul buton pe ecran (se deschide doar de la standul
+-- fizic), dar tot trebuie sa ascunda butoanele Starter Pack/Rebirth/Daily
+-- Rewards cat timp e deschis -- acelasi flag comun ca la celelalte.
+local function setShopModalOpen(open)
+	player:SetAttribute("ShopModalOpen", open)
+end
+
 -- ================= Behaviour =================
 
 local isOpen = false
@@ -567,6 +575,7 @@ local function setOpen(open)
 		return
 	end
 	isOpen = open
+	setShopModalOpen(open)
 
 	if open then
 		refreshBalance()

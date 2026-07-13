@@ -418,6 +418,42 @@ function PetManager.OpenCrate(player, crateType)
 	return results[1]
 end
 
+-- EquippedPets foloseste 2 slot-uri FIXE ("Slot1"/"Slot2"), nu un StringValue
+-- numit dupa petInstanceName -- asta pentru ca DataManager.SaveData/ApplyData
+-- (persistenta) citesc/scriu specific "Slot1"/"Slot2", nu orice nume de copil.
+-- Slot-ul retine si "InstanceName" ca atribut, ca sa stim exact CARE pet din
+-- folderul Pets e echipat (nu doar ce PetId, in caz ca ai doua copii identice).
+local EQUIP_SLOT_NAMES = {"Slot1", "Slot2"}
+
+local function findEquippedSlotFor(equipped, petInstanceName)
+	for _, slotName in ipairs(EQUIP_SLOT_NAMES) do
+		local slot = equipped:FindFirstChild(slotName)
+		if slot and slot:GetAttribute("InstanceName") == petInstanceName then
+			return slot
+		end
+	end
+	return nil
+end
+
+local function findEmptySlot(equipped)
+	for _, slotName in ipairs(EQUIP_SLOT_NAMES) do
+		local slot = equipped:FindFirstChild(slotName)
+		if not slot or slot.Value == "" then
+			return slotName
+		end
+	end
+	return nil
+end
+
+function PetManager.IsEquipped(player, petInstanceName)
+	local equipped = player:FindFirstChild("EquippedPets")
+	if not equipped then
+		return false
+	end
+
+	return findEquippedSlotFor(equipped, petInstanceName) ~= nil
+end
+
 function PetManager.Equip(player, petInstanceName)
 	PetManager.CreateInventory(player)
 
@@ -434,23 +470,28 @@ function PetManager.Equip(player, petInstanceName)
 		return false, "PetMissing"
 	end
 
-	if #equipped:GetChildren() >= MAX_EQUIPPED then
-		return false, "MaxEquipped"
-	end
-
-	if equipped:FindFirstChild(petInstanceName) then
+	if findEquippedSlotFor(equipped, petInstanceName) then
 		return false, "AlreadyEquipped"
 	end
 
-	local equippedPet = Instance.new("StringValue")
-	equippedPet.Name = petInstanceName
-	equippedPet.Value = pet.Value
-
-	for attributeName, attributeValue in pairs(pet:GetAttributes()) do
-		equippedPet:SetAttribute(attributeName, attributeValue)
+	local targetSlotName = findEmptySlot(equipped)
+	if not targetSlotName then
+		return false, "MaxEquipped"
 	end
 
-	equippedPet.Parent = equipped
+	local slot = equipped:FindFirstChild(targetSlotName)
+	if not slot then
+		slot = Instance.new("StringValue")
+		slot.Name = targetSlotName
+		slot.Parent = equipped
+	end
+
+	slot.Value = pet.Value
+	slot:SetAttribute("InstanceName", petInstanceName)
+
+	for attributeName, attributeValue in pairs(pet:GetAttributes()) do
+		slot:SetAttribute(attributeName, attributeValue)
+	end
 
 	return true
 end
@@ -461,12 +502,16 @@ function PetManager.Unequip(player, petInstanceName)
 		return false
 	end
 
-	local pet = equipped:FindFirstChild(petInstanceName)
-	if not pet then
+	local slot = findEquippedSlotFor(equipped, petInstanceName)
+	if not slot then
 		return false
 	end
 
-	pet:Destroy()
+	slot.Value = ""
+	for attributeName, _ in pairs(slot:GetAttributes()) do
+		slot:SetAttribute(attributeName, nil)
+	end
+
 	return true
 end
 

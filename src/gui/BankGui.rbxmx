@@ -59,7 +59,15 @@ local bottomBar = mainHud:WaitForChild("BottomBar")
 local row1 = bottomBar:WaitForChild("Row1")
 local bankButton = row1:WaitForChild("BankButton")
 
-local isMobile = UserInputService.TouchEnabled
+-- TouchEnabled singur nu e de incredere -- verificam si dimensiunea reala a
+-- ecranului (acelasi fix aplicat si la celelalte GUI-uri).
+local function computeIsMobile()
+	local camera = workspace.CurrentCamera
+	local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+	return UserInputService.TouchEnabled or viewport.X < 700 or viewport.Y < 500
+end
+
+local isMobile = computeIsMobile()
 
 local function applyLayout()
 	mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -83,7 +91,7 @@ local function applyLayout()
 
 	if isMobile then
 		mainFrame.Position = UDim2.new(0.53, 0, 0.50, 0)
-		mainFrame.Size = UDim2.new(0.48, 0, 0.56, 0)
+		mainFrame.Size = UDim2.new(0.56, 0, 0.64, 0)
 
 		header.Size = UDim2.new(1, 0, 0.14, 0)
 
@@ -103,7 +111,7 @@ local function applyLayout()
 		withdrawButton.Size = UDim2.new(0.42, 0, 0.11, 0)
 	else
 		mainFrame.Position = UDim2.new(0.50, 0, 0.50, 0)
-		mainFrame.Size = UDim2.new(0.42, 0, 0.58, 0)
+		mainFrame.Size = UDim2.new(0.48, 0, 0.66, 0)
 
 		header.Size = UDim2.new(1, 0, 0.15, 0)
 
@@ -131,12 +139,44 @@ local function formatMoney(amount)
 	return "$" .. tostring(amount):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
 end
 
+-- Retinem ultimele valori cunoscute de Cash/Bank, ca sa putem plafona local
+-- suma introdusa (fara sa mai asteptam un round-trip suplimentar la server).
+local lastCash = 0
+local lastBank = 0
+
 local function refresh()
 	local data = getBankData:InvokeServer()
+
+	lastCash = data.Cash
+	lastBank = data.Bank
 
 	cashLabel.Text = "💵 Cash: " .. formatMoney(data.Cash)
 	bankLabel.Text = "🏦 Bank: " .. formatMoney(data.Bank)
 end
+
+-- Plafonare LIVE, direct in caseta "Enter amount", nu doar la apasarea unui
+-- buton -- daca scrie mai mult decat maximul posibil (cash sau banca,
+-- oricare e mai mare), caseta se corecteaza imediat, cat tasteaza.
+local isClampingText = false
+
+amountBox:GetPropertyChangedSignal("Text"):Connect(function()
+	if isClampingText then
+		return
+	end
+
+	local amount = tonumber(amountBox.Text)
+	if not amount then
+		return
+	end
+
+	local maxPossible = math.max(lastCash, lastBank)
+
+	if amount > maxPossible then
+		isClampingText = true
+		amountBox.Text = tostring(maxPossible)
+		isClampingText = false
+	end
+end)
 
 bankButton.Activated:Connect(function()
 	mainFrame.Visible = not mainFrame.Visible
@@ -151,10 +191,24 @@ closeButton.Activated:Connect(function()
 	mainFrame.Visible = false
 end)
 
+-- Acelasi flag comun folosit de Starter Pack/Rebirth/Daily Rewards/Token
+-- Shop/Inventory/Store/Stand Upgrade/Pets -- cat timp Bank e deschis,
+-- celelalte butoane de pe ecran se ascund.
+mainFrame:GetPropertyChangedSignal("Visible"):Connect(function()
+	player:SetAttribute("ShopModalOpen", mainFrame.Visible)
+end)
+
 depositButton.Activated:Connect(function()
 	local amount = tonumber(amountBox.Text)
 
 	if amount then
+		-- Daca a scris mai mult decat are in Cash, plafonam la maximul
+		-- disponibil (nu doar refuzam sau lasam serverul sa taie tacut).
+		if amount > lastCash then
+			amount = lastCash
+			amountBox.Text = tostring(amount)
+		end
+
 		depositEvent:FireServer(amount)
 		task.wait(0.1)
 		refresh()
@@ -166,6 +220,12 @@ withdrawButton.Activated:Connect(function()
 	local amount = tonumber(amountBox.Text)
 
 	if amount then
+		-- Idem, dar plafonat la ce are in Bank, nu in Cash.
+		if amount > lastBank then
+			amount = lastBank
+			amountBox.Text = tostring(amount)
+		end
+
 		withdrawEvent:FireServer(amount)
 		task.wait(0.1)
 		refresh()
@@ -380,7 +440,7 @@ refresh()]]></ProtectedString>
 						<int name="MaxVisibleGraphemes">-1</int>
 						<string name="OpenTypeFeatures"></string>
 						<bool name="RichText">false</bool>
-						<string name="Text">&#240;&#159;&#143;&#166; Bank</string>
+						<string name="Text">🏦 Bank</string>
 						<Color3 name="TextColor3">
 							<R>1</R>
 							<G>1</G>
@@ -667,7 +727,7 @@ refresh()]]></ProtectedString>
 						<int name="MaxVisibleGraphemes">-1</int>
 						<string name="OpenTypeFeatures"></string>
 						<bool name="RichText">false</bool>
-						<string name="Text">&#240;&#159;&#146;&#181; Cash: $0</string>
+						<string name="Text">💵 Cash: $0</string>
 						<Color3 name="TextColor3">
 							<R>0.313725501</R>
 							<G>1</G>
@@ -853,7 +913,7 @@ refresh()]]></ProtectedString>
 						<int name="MaxVisibleGraphemes">-1</int>
 						<string name="OpenTypeFeatures"></string>
 						<bool name="RichText">false</bool>
-						<string name="Text">&#240;&#159;&#143;&#166; Bank: $0</string>
+						<string name="Text">🏦 Bank: $0</string>
 						<Color3 name="TextColor3">
 							<R>0.313725501</R>
 							<G>1</G>

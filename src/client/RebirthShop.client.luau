@@ -1,6 +1,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -106,6 +107,26 @@ toggleSubtitle.Font = FONT_BODY
 toggleSubtitle.TextScaled = true
 toggleSubtitle.ZIndex = 11
 toggleSubtitle.Parent = toggleButton
+
+-- Pe mobil, butonul e mult mai mic -- titlul+subtitlul (pixeli ficsi,
+-- gandite pentru butonul de PC) s-ar suprapune. O eticheta simpla in loc,
+-- tot actualizata live cu numarul de rebirth-uri.
+local mobileLabel = Instance.new("TextLabel")
+mobileLabel.Name = "MobileLabel"
+mobileLabel.BackgroundTransparency = 1
+mobileLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+mobileLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+mobileLabel.Size = UDim2.new(1, -10, 1, -10)
+mobileLabel.Text = "REBIRTH"
+mobileLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+mobileLabel.TextStrokeColor3 = OUTLINE_DARK
+mobileLabel.TextStrokeTransparency = 0
+mobileLabel.Font = FONT_DISPLAY
+mobileLabel.TextScaled = true
+mobileLabel.TextWrapped = true
+mobileLabel.Visible = false
+mobileLabel.ZIndex = 11
+mobileLabel.Parent = toggleButton
 
 local function addHoverPop(button)
 	button.MouseEnter:Connect(function()
@@ -378,24 +399,49 @@ end
 
 -- ================= Scalare responsive (mobil) =================
 
-local toggleScale = Instance.new("UIScale")
-toggleScale.Parent = toggleButton
-
 local cardScale = Instance.new("UIScale")
 cardScale.Parent = card
 
 local BASE_VIEWPORT_WIDTH = 1200
 local MIN_UI_SCALE = 0.75
 
+-- TouchEnabled singur nu e de incredere -- verificam si dimensiunea reala a
+-- ecranului (acelasi fix aplicat si la EggShopGui/TokenShop/StoreGui).
+local function computeIsMobile()
+	local camera = workspace.CurrentCamera
+	local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+	return UserInputService.TouchEnabled or viewport.X < 700 or viewport.Y < 500
+end
+
+-- Pe telefon (ecran landscape, scund), stiva Starter Pack/Rebirth/Daily
+-- Rewards din mijlocul ecranului putea iesi de pe ecran/peste joystick --
+-- pe mobil, butonul de Rebirth se muta sub cel de Starter Pack, sus-dreapta,
+-- compact, in loc sa creasca in jos de la centrul ecranului.
 local function updateUIScale()
 	local camera = workspace.CurrentCamera
 	if not camera then
 		return
 	end
 
-	local scale = math.clamp(camera.ViewportSize.X / BASE_VIEWPORT_WIDTH, MIN_UI_SCALE, 1)
-	toggleScale.Scale = scale
-	cardScale.Scale = scale
+	local isMobile = computeIsMobile()
+
+	if isMobile then
+		-- Sub Starter Pack (48 + 42 inaltime + 6 gol) -- pornea prea sus
+		-- inainte (52), lipit aproape de primul buton.
+		toggleButton.AnchorPoint = Vector2.new(1, 0)
+		toggleButton.Position = UDim2.new(1, -8, 0, 96)
+		toggleButton.Size = UDim2.new(0, 102, 0, 36)
+		cardScale.Scale = MIN_UI_SCALE
+	else
+		toggleButton.AnchorPoint = Vector2.new(1, 0.5)
+		toggleButton.Position = UDim2.new(1, -16, 0.5, 81)
+		toggleButton.Size = UDim2.new(0, 156, 0, 66)
+		cardScale.Scale = math.clamp(camera.ViewportSize.X / BASE_VIEWPORT_WIDTH, MIN_UI_SCALE, 1)
+	end
+
+	toggleTitle.Visible = not isMobile
+	toggleSubtitle.Visible = not isMobile
+	mobileLabel.Visible = isMobile
 end
 
 local function bindCamera()
@@ -410,6 +456,18 @@ end
 bindCamera()
 workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(bindCamera)
 
+-- ================= Coordonare cu celelalte shop-uri =================
+-- Un singur flag comun pe player -- cand se deschide ORICE panou (Starter
+-- Pack, Rebirth, Daily Rewards, Token Shop), toate butoanele astea de pe
+-- ecran se ascund, ca sa nu ramana unul peste altul/langa cardul deschis.
+local function setShopModalOpen(open)
+	player:SetAttribute("ShopModalOpen", open)
+end
+
+player:GetAttributeChangedSignal("ShopModalOpen"):Connect(function()
+	toggleButton.Visible = not player:GetAttribute("ShopModalOpen")
+end)
+
 -- ================= Behaviour =================
 
 local isOpen = false
@@ -419,6 +477,7 @@ local function setOpen(open)
 		return
 	end
 	isOpen = open
+	setShopModalOpen(open)
 
 	if open then
 		refreshState()

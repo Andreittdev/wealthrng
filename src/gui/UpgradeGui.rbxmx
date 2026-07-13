@@ -42,7 +42,16 @@ local requestStandLevelEvent = remotes:WaitForChild("RequestStandLevel")
 
 local standGui = script.Parent
 local mainFrame = standGui:WaitForChild("MainFrame")
-local isMobile = UserInputService.TouchEnabled
+
+-- TouchEnabled singur nu e de incredere -- verificam si dimensiunea reala a
+-- ecranului (acelasi fix aplicat si la EggShopGui/StoreGui/TradeGui/InventoryV2).
+local function computeIsMobile()
+	local camera = workspace.CurrentCamera
+	local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+	return UserInputService.TouchEnabled or viewport.X < 700 or viewport.Y < 500
+end
+
+local isMobile = computeIsMobile()
 
 local mainHud = playerGui:WaitForChild("MainHUD")
 local bottomBar = mainHud:WaitForChild("BottomBar")
@@ -111,7 +120,9 @@ end
 
 local function applyMobileLayout()
 	mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-	mainFrame.Position = UDim2.new(0.58, 0, 0.50, 0)
+	-- 0.58 impingea cardul spre dreapta, aproape de butoanele Starter
+	-- Pack/Rebirth/Daily Rewards -- 0.48 il centreaza mai spre stanga.
+	mainFrame.Position = UDim2.new(0.48, 0, 0.50, 0)
 	mainFrame.Size = UDim2.new(0.52, 0, 0.62, 0)
 
 	header.Position = UDim2.new(0, 0, 0, 0)
@@ -152,16 +163,18 @@ local function applyMobileLayout()
 		costLabel.ZIndex = 100
 	end
 
+	-- TextSize fix (12) + TextWrapped nu garanteaza ca incap toate liniile --
+	-- la level 5 sunt 5 randuri (titlu + gol + 3 perk-uri, inclusiv NPC
+	-- Speed), care puteau depasi cutia si sa se taie ultimul rand. TextScaled
+	-- micsoreaza automat textul cat sa incapa tot, garantat.
 	if currentPerksLabel then
-		currentPerksLabel.TextScaled = false
+		currentPerksLabel.TextScaled = true
 		currentPerksLabel.TextWrapped = true
-		currentPerksLabel.TextSize = 12
 	end
 
 	if nextPerksLabel then
-		nextPerksLabel.TextScaled = false
+		nextPerksLabel.TextScaled = true
 		nextPerksLabel.TextWrapped = true
-		nextPerksLabel.TextSize = 12
 	end
 
 	if upgradeButton then
@@ -307,6 +320,14 @@ end)
 
 closeButton.Activated:Connect(function()
 	mainFrame.Visible = false
+end)
+
+-- Acelasi flag comun folosit de Starter Pack/Rebirth/Daily Rewards/Token
+-- Shop/Inventory/Store -- cat timp Stand Upgrade e deschis, celelalte
+-- butoane de pe ecran (inclusiv grila Inventory/Bank/Market/Stand/Store/Pets)
+-- se ascund.
+mainFrame:GetPropertyChangedSignal("Visible"):Connect(function()
+	player:SetAttribute("ShopModalOpen", mainFrame.Visible)
 end)
 
 upgradeButton.Activated:Connect(function()
@@ -679,7 +700,7 @@ requestStandLevelEvent:FireServer()]]></ProtectedString>
 						<int name="MaxVisibleGraphemes">-1</int>
 						<string name="OpenTypeFeatures"></string>
 						<bool name="RichText">false</bool>
-						<string name="Text">&#240;&#159;&#143;&#170; Stand Upgrade</string>
+						<string name="Text">🏪 Stand Upgrade</string>
 						<Color3 name="TextColor3">
 							<R>1</R>
 							<G>1</G>
@@ -966,7 +987,7 @@ requestStandLevelEvent:FireServer()]]></ProtectedString>
 						<int name="MaxVisibleGraphemes">-1</int>
 						<string name="OpenTypeFeatures"></string>
 						<bool name="RichText">false</bool>
-						<string name="Text">&#240;&#159;&#146;&#176; Upgrade Cost: $500</string>
+						<string name="Text">💰 Upgrade Cost: $500</string>
 						<Color3 name="TextColor3">
 							<R>0.313725501</R>
 							<G>1</G>

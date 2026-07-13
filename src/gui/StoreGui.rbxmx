@@ -233,6 +233,13 @@ closeButton.Activated:Connect(function()
 	mainFrame.Visible = false
 end)
 
+-- Acelasi flag comun folosit de Starter Pack/Rebirth/Daily Rewards/Token
+-- Shop/Inventory -- cat timp Store e deschis, celelalte butoane de pe ecran
+-- (inclusiv grila Inventory/Bank/Market/Stand/Store/Pets) se ascund.
+mainFrame:GetPropertyChangedSignal("Visible"):Connect(function()
+	player:SetAttribute("ShopModalOpen", mainFrame.Visible)
+end)
+
 -- Daca jucatorul roteste telefonul cat timp e deschis, recalculam.
 do
 	local camera = workspace.CurrentCamera

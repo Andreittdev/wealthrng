@@ -280,7 +280,12 @@ petOpenedEvent.OnClientEvent:Connect(function()
 	refreshFromPlayerPets()
 end)
 
+-- Acelasi flag comun folosit de Starter Pack/Rebirth/Daily Rewards/Token
+-- Shop/Inventory/Store/Stand Upgrade -- cat timp Pets e deschis, celelalte
+-- butoane de pe ecran se ascund.
 mainFrame:GetPropertyChangedSignal("Visible"):Connect(function()
+	player:SetAttribute("ShopModalOpen", mainFrame.Visible)
+
 	if mainFrame.Visible then
 		refreshFromPlayerPets()
 	end
@@ -319,8 +324,28 @@ local player = Players.LocalPlayer
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
 
 local equipEvent = remotes:WaitForChild("EquipPet")
+local equippedPets = player:WaitForChild("EquippedPets", 10)
 
 local PetDatabase = require(ReplicatedStorage.Modules:WaitForChild("PetDatabase"))
+
+-- EquippedPets.Slot1/Slot2 sunt replicate direct pe player (vezi
+-- DataManager/PetManager) -- verificam local daca petInstanceName e in
+-- unul din cele doua sloturi, ca sa stim daca butonul trebuie sa spuna
+-- EQUIP sau UNEQUIP.
+local function isPetEquipped(petInstanceName)
+	if not equippedPets or not petInstanceName then
+		return false
+	end
+
+	for _, slotName in ipairs({"Slot1", "Slot2"}) do
+		local slot = equippedPets:FindFirstChild(slotName)
+		if slot and slot:GetAttribute("InstanceName") == petInstanceName then
+			return true
+		end
+	end
+
+	return false
+end
 
 local gui = script.Parent
 local mainFrame = gui:WaitForChild("MainFrame")
@@ -440,11 +465,15 @@ local function openItemDetails(petId, petInstanceName)
 
 	itemImage.Image = data.Image or ""
 
-	moneyBonus.Text = "🎒 Inventory Slots: +" .. tostring(data.Bonuses.InventorySlots or 0)
-	luckBonus.Text = "🍀 NPC Luck: +" .. tostring(data.Bonuses.NpcLuck or 0)
-	sellBonus.Text = "⭐ XP Bonus: +" .. tostring(data.Bonuses.XP or 0)
+	-- Nu mai avem levele in joc, deci XP Bonus nu insemna nimic -- inlocuit
+	-- cu Sell Price (bonus real, folosit deja de SellManager) si NPC Speed
+	-- (bonus real, folosit deja de NPCManager), langa NPC Luck care era deja
+	-- corect. Astea sunt bonusurile REALE pe care le da orice pet.
+	moneyBonus.Text = "💰 Sell Price: +" .. tostring(data.Bonuses.SellPrice or 0) .. "%"
+	luckBonus.Text = "🍀 NPC Luck: +" .. tostring(data.Bonuses.NpcLuck or 0) .. "%"
+	sellBonus.Text = "⚡ NPC Speed: +" .. tostring(data.Bonuses.NpcSpeed or 0) .. "%"
 
-	equipButton.Text = "EQUIP"
+	equipButton.Text = isPetEquipped(petInstanceName) and "UNEQUIP" or "EQUIP"
 end
 
 setupDetailsLayout()
@@ -459,7 +488,17 @@ equipButton.Activated:Connect(function()
 	if not selectedItem then return end
 
 	equipEvent:FireServer(selectedItem)
-	details.Visible = false
+
+	-- Ramanem pe popup (nu il mai inchidem automat) ca jucatorul sa vada
+	-- imediat daca a devenit UNEQUIP sau EQUIP -- serverul are nevoie de o
+	-- clipa sa actualizeze EquippedPets, de-aia asteptam putin inainte sa
+	-- recitim starea.
+	local currentSelection = selectedItem
+	task.wait(0.3)
+
+	if selectedItem == currentSelection and details.Visible then
+		equipButton.Text = isPetEquipped(currentSelection) and "UNEQUIP" or "EQUIP"
+	end
 end)]]></ProtectedString>
 				<bool name="Disabled">false</bool>
 				<Content name="LinkedSource"><null></null></Content>

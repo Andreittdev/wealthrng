@@ -125,9 +125,19 @@ function DataManager.SaveData(player)
 	if pets then
 		for _, petValue in ipairs(pets:GetChildren()) do
 			if petValue:IsA("StringValue") then
+				-- Salvam si bonusurile (nu doar InstanceName/PetId) -- altfel,
+				-- la reincarcare, petii recreati nu mai aveau NpcLuck/SellPrice/
+				-- NpcSpeed pe ei, iar echiparea unui pet dupa un rejoin dadea
+				-- 0 bonus in tacere (bug real, gasit cat timp reparam equip-ul).
 				table.insert(dataToSave.Pets, {
 					InstanceName = petValue.Name,
-					PetId = petValue.Value
+					PetId = petValue.Value,
+					DisplayName = petValue:GetAttribute("DisplayName"),
+					Rarity = petValue:GetAttribute("Rarity"),
+					Image = petValue:GetAttribute("Image"),
+					NpcLuck = petValue:GetAttribute("NpcLuck"),
+					SellPrice = petValue:GetAttribute("SellPrice"),
+					NpcSpeed = petValue:GetAttribute("NpcSpeed")
 				})
 			end
 		end
@@ -293,11 +303,30 @@ function DataManager.ApplyData(player, data)
 
 	pets:ClearAllChildren()
 
+	-- Prima instanta gasita pentru fiecare PetId -- folosita mai jos ca sa
+	-- reconstruim slot-urile echipate (salvate doar ca PetId, nu InstanceName).
+	local firstInstanceForPetId = {}
+
 	for _, savedPet in ipairs(data.Pets or {}) do
 		local value = Instance.new("StringValue")
 		value.Name = savedPet.InstanceName
 		value.Value = savedPet.PetId
+
+		-- Bonusurile trebuie restaurate ca atribute (nu doar Value=PetId) --
+		-- altfel un pet echipat dupa un rejoin dadea 0 bonus in tacere,
+		-- fiindca PetManager.GetBonuses citeste atributele, nu PetId-ul.
+		value:SetAttribute("DisplayName", savedPet.DisplayName)
+		value:SetAttribute("Rarity", savedPet.Rarity)
+		value:SetAttribute("Image", savedPet.Image or "")
+		value:SetAttribute("NpcLuck", savedPet.NpcLuck or 0)
+		value:SetAttribute("SellPrice", savedPet.SellPrice or 0)
+		value:SetAttribute("NpcSpeed", savedPet.NpcSpeed or 0)
+
 		value.Parent = pets
+
+		if not firstInstanceForPetId[savedPet.PetId] then
+			firstInstanceForPetId[savedPet.PetId] = value
+		end
 	end
 
 	local equippedPets = player:FindFirstChild("EquippedPets")
@@ -309,15 +338,25 @@ function DataManager.ApplyData(player, data)
 
 	equippedPets:ClearAllChildren()
 
-	local slot1 = Instance.new("StringValue")
-	slot1.Name = "Slot1"
-	slot1.Value = data.EquippedPets and data.EquippedPets[1] or ""
-	slot1.Parent = equippedPets
+	local function buildEquippedSlot(slotName, savedPetId)
+		local slot = Instance.new("StringValue")
+		slot.Name = slotName
+		slot.Value = savedPetId or ""
+		slot.Parent = equippedPets
 
-	local slot2 = Instance.new("StringValue")
-	slot2.Name = "Slot2"
-	slot2.Value = data.EquippedPets and data.EquippedPets[2] or ""
-	slot2.Parent = equippedPets
+		local matchingPet = savedPetId and savedPetId ~= "" and firstInstanceForPetId[savedPetId]
+		if matchingPet then
+			slot:SetAttribute("InstanceName", matchingPet.Name)
+			for attributeName, attributeValue in pairs(matchingPet:GetAttributes()) do
+				slot:SetAttribute(attributeName, attributeValue)
+			end
+		end
+
+		return slot
+	end
+
+	buildEquippedSlot("Slot1", data.EquippedPets and data.EquippedPets[1])
+	buildEquippedSlot("Slot2", data.EquippedPets and data.EquippedPets[2])
 end
 
 Players.PlayerRemoving:Connect(function(player)

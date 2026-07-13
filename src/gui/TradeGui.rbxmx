@@ -40,7 +40,16 @@ local buyItem = remotes:WaitForChild("BuyItem")
 local skipItem = remotes:WaitForChild("SkipTrade")
 local showTrade = remotes:WaitForChild("ShowTrade")
 
-local isMobile = UserInputService.TouchEnabled
+-- TouchEnabled singur nu e de incredere (poate fi false pe telefon in
+-- anumite ferestre/Studio) -- verificam si dimensiunea reala a ecranului,
+-- acelasi fix aplicat si la EggShopGui/StoreGui.
+local function computeIsMobile()
+	local camera = workspace.CurrentCamera
+	local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+	return UserInputService.TouchEnabled or viewport.X < 700 or viewport.Y < 500
+end
+
+local isMobile = computeIsMobile()
 local currentItem = nil
 
 local rarityColors = {
@@ -84,8 +93,10 @@ tradeFrame.BorderSizePixel = 0
 tradeFrame.Visible = false
 tradeFrame.ZIndex = 50
 
+-- 0.72 din latimea ecranului iesea foarte lat pe telefon (landscape) --
+-- 0.48 ramane usor de citit fara sa domine tot ecranul.
 if isMobile then
-	tradeFrame.Size = UDim2.new(0.72, 0, 0.58, 0)
+	tradeFrame.Size = UDim2.new(0.48, 0, 0.58, 0)
 else
 	tradeFrame.Size = UDim2.new(0.38, 0, 0.56, 0)
 end
@@ -108,7 +119,7 @@ title.ZIndex = 60
 local subtitle = Instance.new("TextLabel")
 subtitle.Name = "Subtitle"
 subtitle.Parent = tradeFrame
-subtitle.Text = "Dealer wants to sell you:"
+subtitle.Text = "Dealer wants to sell you:" -- placeholder, suprascris cu numele NPC-ului la fiecare oferta (vezi showTrade.OnClientEvent)
 subtitle.BackgroundTransparency = 1
 subtitle.TextColor3 = Color3.fromRGB(200, 210, 230)
 subtitle.TextScaled = true
@@ -192,6 +203,10 @@ showTrade.OnClientEvent:Connect(function(data)
 
 	local rarity = safe(data.Rarity, "Common")
 	local color = rarityColors[rarity] or Color3.fromRGB(255, 255, 255)
+
+	-- Numele real al NPC-ului (deja trimis de server ca data.NPCType, vezi
+	-- TradeManager.CreateOffer) in loc de cuvantul generic "Dealer".
+	subtitle.Text = safe(data.NPCType, "Dealer") .. " wants to sell you:"
 
 	itemName.Text = safe(data.ItemName, "Unknown Item")
 	rarityLabel.Text = rarity

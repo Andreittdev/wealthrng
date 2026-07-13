@@ -2,6 +2,7 @@ local Players = game:GetService("Players")
 local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -110,6 +111,27 @@ togglePrice.Font = FONT_DISPLAY
 togglePrice.TextScaled = true
 togglePrice.ZIndex = 11
 togglePrice.Parent = toggleButton
+
+-- Pe mobil, butonul e mult mai mic -- textele de mai sus (pozitionate in
+-- pixeli ficsi, gandite pentru butonul de PC) s-ar suprapune daca doar am
+-- micsora containerul. Pe mobil le ascundem si aratam o eticheta simpla,
+-- centrata, care umple tot butonul compact.
+local mobileLabel = Instance.new("TextLabel")
+mobileLabel.Name = "MobileLabel"
+mobileLabel.BackgroundTransparency = 1
+mobileLabel.Size = UDim2.new(1, -10, 1, -10)
+mobileLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+mobileLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+mobileLabel.Text = "STARTER PACK"
+mobileLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+mobileLabel.TextStrokeColor3 = BRONZE_OUTLINE
+mobileLabel.TextStrokeTransparency = 0
+mobileLabel.Font = FONT_DISPLAY
+mobileLabel.TextScaled = true
+mobileLabel.TextWrapped = true
+mobileLabel.Visible = false
+mobileLabel.ZIndex = 11
+mobileLabel.Parent = toggleButton
 
 local function addHoverPop(button)
 	button.MouseEnter:Connect(function()
@@ -359,11 +381,8 @@ addHoverPop(buyButton)
 addHoverPop(toggleButton)
 
 -- ================= Scalare responsive (mobil) =================
--- Pe ecrane mici (telefon), micsoram proportional butonul si cardul,
--- ca sa nu ocupe prea mult ecran si sa ramana usor de citit/apasat.
-
-local toggleScale = Instance.new("UIScale")
-toggleScale.Parent = toggleButton
+-- Pe ecrane mici (telefon), micsoram proportional cardul, ca sa nu ocupe
+-- prea mult ecran si sa ramana usor de citit/apasat.
 
 local cardScale = Instance.new("UIScale")
 cardScale.Parent = card
@@ -371,28 +390,85 @@ cardScale.Parent = card
 local BASE_VIEWPORT_WIDTH = 1200
 local MIN_UI_SCALE = 0.75 -- nu coboram mai mult, ca butoanele sa ramana usor de apasat pe telefon
 
-local function updateUIScale()
+-- TouchEnabled singur nu e de incredere -- verificam si dimensiunea reala a
+-- ecranului (acelasi fix aplicat si la EggShopGui/TokenShop/StoreGui).
+local function computeIsMobile()
+	local camera = workspace.CurrentCamera
+	local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+	return UserInputService.TouchEnabled or viewport.X < 700 or viewport.Y < 500
+end
+
+-- Pe PC, Starter Pack/Rebirth/Daily Rewards se stivuiesc din mijlocul
+-- ecranului in jos. Pe telefon (ecran landscape, scund), stiva asta putea
+-- iesi de pe ecran sau ajunge peste joystick (vezi Daily Rewards, taiat jos
+-- de tot in screenshot) -- pe mobil le mutam intr-un colt compact, sus-
+-- dreapta, cu butoane mai mici, in loc sa creasca in jos de la centru.
+local function updateResponsiveLayout()
 	local camera = workspace.CurrentCamera
 	if not camera then
 		return
 	end
 
-	local scale = math.clamp(camera.ViewportSize.X / BASE_VIEWPORT_WIDTH, MIN_UI_SCALE, 1)
-	toggleScale.Scale = scale
-	cardScale.Scale = scale
+	local isMobile = computeIsMobile()
+
+	if isMobile then
+		-- Y=8 nu era destul -- se suprapunea cu topbar-ul Roblox (iconitele
+		-- de meniu/chat din stanga-sus), taind textul. Y=48 lasa loc clar dedesubt.
+		toggleButton.AnchorPoint = Vector2.new(1, 0)
+		toggleButton.Position = UDim2.new(1, -8, 0, 48)
+		toggleButton.Size = UDim2.new(0, 112, 0, 42)
+		cardScale.Scale = MIN_UI_SCALE
+
+		-- Banda "LIMITED" ramane vizibila si pe mobil (jucatorul trebuie sa
+		-- inteleaga ca e o oferta limitata si acolo), doar mai mica, ca sa
+		-- incapa in coltul din dreapta al butonului compact.
+		toggleRibbon.Size = UDim2.new(0, 52, 0, 10)
+		toggleRibbon.Position = UDim2.new(1, -2, 0, 8)
+		toggleRibbon.Text = "LIMITED"
+	else
+		toggleButton.AnchorPoint = Vector2.new(1, 0.5)
+		toggleButton.Position = UDim2.new(1, -16, 0.5, 0)
+		toggleButton.Size = UDim2.new(0, 168, 0, 72)
+		cardScale.Scale = math.clamp(camera.ViewportSize.X / BASE_VIEWPORT_WIDTH, MIN_UI_SCALE, 1)
+
+		toggleRibbon.Size = UDim2.new(0, 78, 0, 13)
+		toggleRibbon.Position = UDim2.new(1, -6, 0, 12)
+		toggleRibbon.Text = "LIMITED EDITION"
+	end
+
+	-- Continutul de PC (titlu + pret, in pixeli ficsi) nu incape pe butonul
+	-- compact de mobil -- afisam o eticheta simpla in loc. Banda ramane
+	-- vizibila in ambele cazuri (doar redimensionata mai sus).
+	toggleTitle.Visible = not isMobile
+	togglePrice.Visible = not isMobile
+	mobileLabel.Visible = isMobile
 end
 
 local function bindCamera()
-	updateUIScale()
+	updateResponsiveLayout()
 
 	local camera = workspace.CurrentCamera
 	if camera then
-		camera:GetPropertyChangedSignal("ViewportSize"):Connect(updateUIScale)
+		camera:GetPropertyChangedSignal("ViewportSize"):Connect(updateResponsiveLayout)
 	end
 end
 
 bindCamera()
 workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(bindCamera)
+
+-- ================= Coordonare cu celelalte shop-uri =================
+-- Un singur flag comun pe player -- cand se deschide ORICE panou (Starter
+-- Pack, Rebirth, Daily Rewards, Token Shop), toate butoanele astea de pe
+-- ecran se ascund, ca sa nu ramana unul peste altul/langa cardul deschis
+-- (asta era problema din screenshot -- "REBIRTH x1" si "...AILY" ramaneau
+-- vizibile in spatele cardului de Daily Rewards).
+local function setShopModalOpen(open)
+	player:SetAttribute("ShopModalOpen", open)
+end
+
+player:GetAttributeChangedSignal("ShopModalOpen"):Connect(function()
+	toggleButton.Visible = not player:GetAttribute("ShopModalOpen")
+end)
 
 -- ================= Behaviour =================
 
@@ -403,6 +479,7 @@ local function setOpen(open)
 		return
 	end
 	isOpen = open
+	setShopModalOpen(open)
 
 	if open then
 		overlay.Visible = true
