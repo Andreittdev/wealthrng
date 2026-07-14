@@ -51,6 +51,23 @@ Economy.VIP = {
 }
 
 -- ============================
+-- SPEED PASS (gamepass)
+-- ============================
+Economy.SpeedPass = {
+	GamePassId = 1912334284,
+	Price = 149, -- Robux
+	Speed = 15
+}
+
+-- ============================
+-- AUTO-SELL PASS (gamepass)
+-- ============================
+Economy.AutoSellPass = {
+	GamePassId = 1906256722,
+	Price = 149 -- Robux
+}
+
+-- ============================
 -- STARTER PACK (gamepass)
 -- ============================
 Economy.StarterPack = {
@@ -72,21 +89,24 @@ Economy.EquippedPetSlots = 2
 Economy.Rebirth = {
 	RequiredStandLevel = 5,
 
-	-- Pragul de bani cerut pentru al N-lea rebirth -- calibrat cu media
-	-- geometrica intre ce ar avea nevoie un jucator FARA VIP si unul CU VIP,
-	-- ca ambele profiluri sa ajunga cat mai aproape de 40/50/60/70/80 minute
-	-- la rebirth-urile 1-5 (perks-urile mixte Sell/Luck/Speed facand jucatorii
-	-- sa castige mai repede decat un model bazat doar pe Sell).
+	-- Pragul de bani cerut pentru al N-lea rebirth -- calibrat prin simulare
+	-- Monte Carlo pe preturile reale din ItemDatabase/Clothing/Electronics/etc,
+	-- ca rebirth 1 sa iasa la ~1h30 fara VIP si ~1h cu VIP (MoneyMultiplier 1.5
+	-- + Luck 15 din VIP fac raportul de viteza ~1.5x, exact raportul 90/60
+	-- cerut). Pragurile 2-5 sunt scalate proportional (x1.9318) fata de
+	-- valorile vechi (calibrate pt. 40/50/60/70/80 min), ca ritmul relativ
+	-- dintre rebirth-uri sa ramana acelasi, doar cu punctul de start mutat.
 	RequiredMoneyByRebirth = {
-		[1] = 220000,
-		[2] = 360000,
-		[3] = 530000,
-		[4] = 710000,
-		[5] = 910000
+		[1] = 425000,
+		[2] = 695000,
+		[3] = 1025000,
+		[4] = 1370000,
+		[5] = 1760000
 	},
 
-	-- Pentru rebirth 6+ (neclibrat inca), crestem pragul cu un pas fix.
-	RequiredMoneyStepAfter5 = 180000,
+	-- Pentru rebirth 6+ (neclibrat inca), crestem pragul cu un pas fix (scalat
+	-- proportional cu restul curbei).
+	RequiredMoneyStepAfter5 = 350000,
 
 	-- Perks-urile PROPRII fiecarui rebirth (nu identice) -- amestec de
 	-- Sell/Luck/Speed, nu doar Sell, ca sa nu se plafoneze la jucatorii VIP
@@ -328,7 +348,11 @@ Economy.DailyRewards = {
 Economy.Caps = {
 	Luck = 100,
 	Sell = 300, -- ridicat fata de 80, ca sa lase loc de progresie prin Rebirth
-	Speed = 50,
+	-- Ridicat de la 50 la 65 cand a fost adaugat Speed Pass (+15% gamepass) --
+	-- fara jocul asta, un jucator endgame (Stand 5 + Rebirth 5 + Pets) atinge
+	-- deja ~48-49 Speed, deci Speed Pass-ul ar fi fost inutil la endgame daca
+	-- ramanea cap-ul vechi.
+	Speed = 65,
 
 	-- Multiplicatorul final de bani (VIP x Friend Boost x Cosmetice), aplicat
 	-- DUPA clamp-ul de MaxSell -- singurul bonus fara plafon pana acum. Cu

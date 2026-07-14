@@ -44,6 +44,8 @@ function InventoryManager.AddItem(player, offer)
 	createInt(item, "PurchaseTime", offer.PurchaseTime or os.time())
 
 	print(player.Name .. " received " .. tostring(offer.ItemName))
+
+	return item
 end
 
 return InventoryManager

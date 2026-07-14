@@ -37,6 +37,7 @@ local player = Players.LocalPlayer
 local INVENTORY_PASS_ID = 1899734044
 local DEFAULT_MAX_INVENTORY = 50
 local PASS_MAX_INVENTORY = 150
+local VIP_EXTRA_SLOTS = 25
 
 local ownsInventoryPass = false
 local lastInventoryCount = 0
@@ -267,7 +268,13 @@ local rarityColors = {
 }
 
 local function getMaxInventory()
-	return ownsInventoryPass and PASS_MAX_INVENTORY or DEFAULT_MAX_INVENTORY
+	local maxInventory = ownsInventoryPass and PASS_MAX_INVENTORY or DEFAULT_MAX_INVENTORY
+
+	if player:GetAttribute("IsVIP") then
+		maxInventory += VIP_EXTRA_SLOTS
+	end
+
+	return maxInventory
 end
 
 local function updateInventoryCount(count)
@@ -486,6 +493,10 @@ MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(purchasePlaye
 		upgradePopup.Visible = false
 		updateInventoryCount(lastInventoryCount)
 	end
+end)
+
+player:GetAttributeChangedSignal("IsVIP"):Connect(function()
+	updateInventoryCount(lastInventoryCount)
 end)
 
 checkInventoryPass()]]></ProtectedString>

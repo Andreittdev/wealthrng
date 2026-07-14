@@ -1,6 +1,5 @@
 local Players = game:GetService("Players")
 local ServerStorage = game:GetService("ServerStorage")
-local PathfindingService = game:GetService("PathfindingService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local MarketplaceService = game:GetService("MarketplaceService")
 
@@ -38,6 +37,37 @@ local npcFolder = ServerStorage:WaitForChild("NPCs")
 local npcTemplate = npcFolder:WaitForChild("TestNPC")
 
 local activeTrades = {}
+
+-- NPC-urile pornesc din portalul cel mai APROAPE de standul jucatorului (Nord
+-- sau Sud), nu mereu din acelasi -- altfel jucatorii cu stand langa Sud ar
+-- astepta mult mai mult decat cei langa Nord, nedrept intre cei 6 jucatori.
+-- Cautate o singura data la pornire; daca un portal nu exista (harta veche,
+-- fara TownMap), cadem pe o pozitie aproximativa, ca sa nu crape.
+local function findPortalPosition(name, fallback)
+	local townMap = workspace:FindFirstChild("TownMap")
+	local portalPanel = townMap and townMap:FindFirstChild(name)
+
+	if portalPanel then
+		return portalPanel.Position
+	end
+
+	warn("NPCManager: Workspace.TownMap." .. name .. " nu a fost gasit -- folosesc o pozitie aproximativa.")
+	return fallback
+end
+
+local portalNorthPosition = findPortalPosition("PortalNorth", Vector3.new(0, 5, 600))
+local portalSouthPosition = findPortalPosition("PortalSouth", Vector3.new(0, 5, 200))
+
+local function getClosestPortalPosition(targetPosition)
+	local distanceToNorth = (targetPosition - portalNorthPosition).Magnitude
+	local distanceToSouth = (targetPosition - portalSouthPosition).Magnitude
+
+	if distanceToSouth < distanceToNorth then
+		return portalSouthPosition
+	end
+
+	return portalNorthPosition
+end
 
 local function getStandLevel(player)
 	local standLevel = player:FindFirstChild("StandLevel")
@@ -79,7 +109,9 @@ local function getSpawnDelay(player)
 	local petBonuses = PetManager.GetBonuses(player)
 	local rebirthBonuses = getRebirthBonuses(player)
 
-	local totalSpeed = bonuses.Speed + (cosmeticBonuses.NpcSpeed or 0) + (petBonuses.NpcSpeed or 0) + rebirthBonuses.Speed
+	local speedPassBonus = player:GetAttribute("HasSpeedPass") and Economy.SpeedPass.Speed or 0
+
+	local totalSpeed = bonuses.Speed + (cosmeticBonuses.NpcSpeed or 0) + (petBonuses.NpcSpeed or 0) + rebirthBonuses.Speed + speedPassBonus
 	totalSpeed = math.clamp(totalSpeed, 0, Economy.Caps.Speed)
 
 	local reduction = 1 - (totalSpeed / 100)
@@ -119,6 +151,12 @@ local function getMaxInventory(player)
 
 	if success and ownsPass then
 		maxInventory = PASS_MAX_INVENTORY
+	end
+
+	-- VIP promite +25 sloturi (Economy.VIP.ExtraInventorySlots) -- se aduna
+	-- aditiv peste orice ai deja (default sau Inventory Pass), nu il inlocuieste.
+	if player:GetAttribute("IsVIP") then
+		maxInventory += Economy.VIP.ExtraInventorySlots
 	end
 
 	return maxInventory
@@ -172,6 +210,11 @@ local function getPlayerStand(player)
 	return nil
 end
 
+-- NPCSpot sta chiar PE platforma standului -- NPC-ul ajungea sa mearga pe
+-- stand, nu in fata lui. Mutam tinta spre strada (spre X=0) cu un offset
+-- fix, ca sa se opreasca inainte de platforma, cu fata la jucator.
+local FRONT_OF_STAND_OFFSET = 14
+
 local function getNPCSpotPosition(stand)
 	local base = stand:FindFirstChild("Base")
 	if not base then
@@ -183,25 +226,46 @@ local function getNPCSpotPosition(stand)
 		return nil
 	end
 
-	return npcSpot.Position
+	local spotPosition = npcSpot.Position
+	local towardStreetSign = spotPosition.X < 0 and 1 or -1
+
+	return Vector3.new(
+		spotPosition.X + towardStreetSign * FRONT_OF_STAND_OFFSET,
+		spotPosition.Y,
+		spotPosition.Z
+	)
 end
 
+-- X-ul mijlocului strazii, citit direct din piesa "Street" a TownMapBuilder
+-- (nu hardcodat) -- daca strada se muta vreodata, ramane corect.
+local function getStreetCenterX()
+	local townMap = workspace:FindFirstChild("TownMap")
+	local street = townMap and townMap:FindFirstChild("Street")
+
+	if street then
+		return street.Position.X
+	end
+
+	return 0
+end
+
+local streetCenterX = getStreetCenterX()
+
+-- PathfindingService genera multe waypoint-uri apropiate, iar NPC-ul se
+-- oprea/reorienta la fiecare -- de-aia mersul parea sacadat ("merge si se
+-- opreste"). Inlocuit cu un traseu simplu, in 2 pasi, GARANTAT pe strada:
+-- 1) merge pe mijlocul strazii (X strazii) pana ajunge la Z-ul standului,
+-- 2) abia apoi vireaza spre stand. Doar o singura cotitura, mers neted.
 local function moveNPCTo(npc, destination)
 	local humanoid = npc:WaitForChild("Humanoid")
-	local rootPart = npc:WaitForChild("HumanoidRootPart")
 
-	local path = PathfindingService:CreatePath()
-	path:ComputeAsync(rootPart.Position, destination)
+	local streetWaypoint = Vector3.new(streetCenterX, destination.Y, destination.Z)
 
-	if path.Status ~= Enum.PathStatus.Success then
-		warn("NPC path failed")
-		return
-	end
+	humanoid:MoveTo(streetWaypoint)
+	humanoid.MoveToFinished:Wait()
 
-	for _, waypoint in ipairs(path:GetWaypoints()) do
-		humanoid:MoveTo(waypoint.Position)
-		humanoid.MoveToFinished:Wait()
-	end
+	humanoid:MoveTo(destination)
+	humanoid.MoveToFinished:Wait()
 end
 
 local function removeNPC(player)
@@ -214,7 +278,7 @@ local function removeNPC(player)
 	activeTrades[player] = nil
 end
 
-local function spawnNPCForPlayer(player)
+local function spawnNPCForPlayer(player, pendingDelay)
 	if activeTrades[player] then
 		return
 	end
@@ -248,17 +312,57 @@ local function spawnNPCForPlayer(player)
 
 	local bonuses = getStandBonuses(player)
 	local cosmeticBonuses = CosmeticManager.GetBonuses(player)
+	local petBonuses = PetManager.GetBonuses(player)
+	local rebirthBonuses = getRebirthBonuses(player)
 
-	local speedMultiplier = 1 + (bonuses.Speed / 100)
-	local baseWalkSpeed = npcData.WalkSpeed or 12
-	humanoid.WalkSpeed = baseWalkSpeed * speedMultiplier
+	-- Viteza reala a NPC-ului -- toate sursele de Speed (stand, cosmetice,
+	-- peturi, rebirth), nu doar stand-ul, la fel ca la getSpawnDelay mai sus
+	-- (inainte doar stand-ul conta aici, desi upgrade-urile/peturile de Speed
+	-- promiteau ca NPC-urile vin mai repede).
+	local speedPassBonus = player:GetAttribute("HasSpeedPass") and Economy.SpeedPass.Speed or 0
 
-	rootPart.CFrame = CFrame.new(npcSpotPosition + Vector3.new(0, 0, -35))
+	local totalSpeedBonus = bonuses.Speed
+		+ (cosmeticBonuses.NpcSpeed or 0)
+		+ (petBonuses.NpcSpeed or 0)
+		+ rebirthBonuses.Speed
+		+ speedPassBonus
+	totalSpeedBonus = math.clamp(totalSpeedBonus, 0, Economy.Caps.Speed)
 
-	task.wait(1)
+	local speedMultiplier = 1 + (totalSpeedBonus / 100)
+
+	-- Porneste din portal, nu langa stand -- jucatorul trebuie sa vada NPC-ul
+	-- venind de-acolo, oricat de departe ar fi standul lui.
+	local closestPortalPosition = getClosestPortalPosition(npcSpotPosition)
+	rootPart.CFrame = CFrame.new(closestPortalPosition + Vector3.new(0, 3, 0))
+
+	-- IMPORTANT pentru corectitudine intre cei 6 jucatori: WalkSpeed NU e fix
+	-- -- se calculeaza din distanta reala pana la stand, ca fiecare jucator sa
+	-- astepte acelasi timp de BAZA (BASE_TRAVEL_TIME), indiferent cat de
+	-- aproape/departe e standul lui de un portal. Bonusul de Speed% reduce
+	-- acel timp (upgrade-urile inca conteaza), dar POZITIA pe harta nu mai da
+	-- avantaj/dezavantaj gratuit.
+	local BASE_TRAVEL_TIME = 6
+
+	local legOne = math.abs(npcSpotPosition.Z - closestPortalPosition.Z)
+	local legTwo = math.abs(npcSpotPosition.X - streetCenterX)
+	local totalTravelDistance = math.max(legOne + legTwo, 1)
+
+	local travelTime = BASE_TRAVEL_TIME / speedMultiplier
+	humanoid.WalkSpeed = totalTravelDistance / travelTime
+
+	-- Mersul dureaza acum travelTime secunde -- nu mai asteptam SEPARAT
+	-- intregul getSpawnDelay() inainte de asta, altfel timpul total per ciclu
+	-- (asteptare + mers) ar depasi ce era calibrat inainte (doar spawnDelay,
+	-- fara mers vizibil). Scadem mersul din asteptare, ca timpul total sa
+	-- ramana acelasi ca inainte -- doar impartit acum in "asteptare" +
+	-- "mers vizibil", nu doar asteptare goala.
+	local remainingWait = math.max(0, (pendingDelay or 0) - travelTime)
+	if remainingWait > 0 then
+		task.wait(remainingWait)
+	end
+
 	moveNPCTo(npc, npcSpotPosition)
 
-	local petBonuses = PetManager.GetBonuses(player)
 	local vipLuck = player:GetAttribute("IsVIP") and Economy.VIP.Luck or 0
 	local starterPackLuck = player:GetAttribute("HasStarterPack") and Economy.StarterPack.LuckBonus or 0
 	local rebirthLuck = getRebirthBonuses(player).Luck
@@ -311,9 +415,43 @@ local function handleBuy(player, clientOffer)
 
 	local maxInventory = getMaxInventory(player)
 
-	if #inventory:GetChildren() >= getMaxInventory(player) then
-		showNotificationEvent:FireClient(player, "?? Inventory Full! Press + to upgrade.")
-		return
+	if #inventory:GetChildren() >= maxInventory then
+		-- Auto-Sell Pass: nu blocheaza cumpararea, vinde automat cel mai
+		-- vechi item ca sa faca loc -- e o plasa de siguranta ("nu mai
+		-- raman blocat"), NU un auto-sell instant la fiecare cumparare (asta
+		-- ar fi facut Inventory Pass-ul complet inutil pentru cine are si
+		-- Auto-Sell -- inventarul n-ar mai avea nevoie de sloturi deloc).
+		local autoSold = false
+
+		if player:GetAttribute("HasAutoSellPass") then
+			local oldestItem = nil
+			local oldestTime = math.huge
+
+			for _, child in ipairs(inventory:GetChildren()) do
+				local purchaseTime = child:FindFirstChild("PurchaseTime")
+				local timeValue = purchaseTime and purchaseTime.Value or 0
+
+				if timeValue < oldestTime then
+					oldestTime = timeValue
+					oldestItem = child
+				end
+			end
+
+			if oldestItem then
+				local oldestName = oldestItem:FindFirstChild("ItemName")
+				local oldestNameText = oldestName and oldestName.Value or "item"
+
+				if SellManager.SellItem(player, oldestItem) then
+					autoSold = true
+					showNotificationEvent:FireClient(player, "?? Auto-Sold " .. oldestNameText .. " to make room")
+				end
+			end
+		end
+
+		if not autoSold then
+			showNotificationEvent:FireClient(player, "?? Inventory Full! Press + to upgrade.")
+			return
+		end
 	end
 
 	local leaderstats = player:FindFirstChild("leaderstats")
@@ -339,15 +477,14 @@ local function handleBuy(player, clientOffer)
 
 	removeNPC(player)
 
-	task.wait(getSpawnDelay(player))
-	spawnNPCForPlayer(player)
+	spawnNPCForPlayer(player, getSpawnDelay(player))
 end
 
 local function handleSkip(player)
 	removeNPC(player)
 
-	task.wait(getSpawnDelay(player) + 2) -- skip ram�ne pu?in mai lent dec�t buy, ca penalizare naturala
-	spawnNPCForPlayer(player)
+	-- Skip ramane putin mai lent decat buy, ca penalizare naturala.
+	spawnNPCForPlayer(player, getSpawnDelay(player) + 2)
 end
 
 local function handleSellFirstItem(player)
@@ -405,6 +542,37 @@ end
 local function onPlayerRemoving(player)
 	removeNPC(player)
 	DataManager.SaveData(player)
+end
+
+-- Standurile nu se mai asigneaza automat (StandManager: jucatorul trebuie sa
+-- dea Claim manual) -- deci spawnNPCForPlayer de la join (dupa 7s) de multe
+-- ori nu gaseste niciun stand inca si nu face nimic, iar apoi NIMIC nu-l mai
+-- declanseaza vreodata pentru jucatorul ala. Ascultam direct atributul
+-- "Occupied" de pe fiecare stand -- cand devine true (Claim reusit), pornim
+-- primul NPC pe loc, din portal.
+local function watchStandForClaim(stand)
+	stand:GetAttributeChangedSignal("Occupied"):Connect(function()
+		if not stand:GetAttribute("Occupied") then
+			return
+		end
+
+		local ownerUserId = stand:GetAttribute("OwnerUserId")
+		local player = Players:GetPlayerByUserId(ownerUserId)
+
+		if player and not activeTrades[player] then
+			spawnNPCForPlayer(player)
+		end
+	end)
+end
+
+do
+	local standsFolder = workspace:WaitForChild("GeneratedStands")
+
+	for _, stand in ipairs(standsFolder:GetChildren()) do
+		watchStandForClaim(stand)
+	end
+
+	standsFolder.ChildAdded:Connect(watchStandForClaim)
 end
 
 buyItemEvent.OnServerEvent:Connect(handleBuy)
