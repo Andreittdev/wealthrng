@@ -13,6 +13,7 @@ local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local requestPurchaseEvent = remotes:WaitForChild("RequestTokenPurchase")
 local purchaseResultEvent = remotes:WaitForChild("TokenPurchaseResult")
 local openTokenShopEvent = remotes:WaitForChild("OpenTokenShop")
+local equipTitleEvent = remotes:WaitForChild("EquipTitle")
 
 local FONT_DISPLAY = Enum.Font.Bangers
 local FONT_BODY = Enum.Font.FredokaOne
@@ -297,6 +298,133 @@ local function buildBriefcaseIcon(container, color)
 	clasp.BackgroundTransparency = 0.25
 end
 
+-- 💲 Millionaire -> o moneda cu semnul dolarului.
+local function buildDollarIcon(container, color)
+	local coin = iconShape(container, 42, 42, 0, 0, color, 23, 0.5)
+	iconOutline(coin, Color3.fromRGB(255, 255, 255), 2, 0.25)
+
+	-- Font drept (nu FONT_DISPLAY/Bangers, care e inclinat/comic) -- Bangers
+	-- facea semnul "$" sa para deplasat intr-o parte, desi caseta lui e
+	-- perfect centrata matematic.
+	local sign = Instance.new("TextLabel")
+	sign.AnchorPoint = Vector2.new(0.5, 0.5)
+	sign.Position = UDim2.fromScale(0.5, 0.5)
+	sign.Size = UDim2.fromScale(0.7, 0.7)
+	sign.BackgroundTransparency = 1
+	sign.Text = "$"
+	sign.TextColor3 = Color3.fromRGB(255, 255, 255)
+	sign.Font = Enum.Font.GothamBlack
+	sign.TextScaled = true
+	sign.ZIndex = 24
+	sign.Parent = coin
+end
+
+-- 💎 Diamant clasic (ca in poza de referinta): lat si plat sus (crown),
+-- ingustandu-se DOAR in jos, pana la un varf ascutit (pavilion) -- nu un
+-- patrat rotit simplu (ala se ingusteaza si sus si jos, iese ca o bomboana).
+--
+-- Trucul: un patrat rotit 45° (pavilion) centrat EXACT pe linia unde se
+-- opreste crown-ul (girdle) -- jumatatea lui de SUS (care s-ar ingusta spre
+-- un varf, nedorit) e acoperita complet de crown (ZIndex mai mare), deci
+-- ramane vizibila doar jumatatea de JOS, care se ingusteaza natural spre
+-- punctul ascutit.
+-- Fallback pe baza de Frame-uri (folosit doar daca EditableImage nu merge pe
+-- acest Roblox -- vezi buildDiamondIcon mai jos). Aproximare imperfecta, dar
+-- functionala, ca sa nu ramana iconita complet goala daca API-ul nou pica.
+local function buildDiamondIconFallback(container, color)
+	local highlight = color:Lerp(Color3.fromRGB(255, 255, 255), 0.35)
+	local girdleY = -6
+
+	local pavilion = iconShape(container, 26, 26, 0, girdleY, color, 22, 0.04)
+	pavilion.Rotation = 45
+	iconOutline(pavilion, Color3.fromRGB(255, 255, 255), 1.5, 0.3)
+
+	local crown = iconShape(container, 40, 16, 0, girdleY - 8, highlight, 23, 0.15)
+	iconOutline(crown, Color3.fromRGB(255, 255, 255), 1.5, 0.3)
+
+	for _, angle in ipairs({32, -32}) do
+		local facetLine = iconShape(container, 2, 18, angle > 0 and 5 or -5, girdleY + 9, Color3.fromRGB(255, 255, 255), 24, 0.5)
+		facetLine.Rotation = angle
+		facetLine.BackgroundTransparency = 0.35
+	end
+end
+
+-- 💎 Diamant clasic (ca in poza de referinta), desenat pixel-cu-pixel intr-un
+-- EditableImage -- un Frame+UICorner rotit nu poate face o forma de
+-- pentagon (plat sus, ascutit jos), doar dreptunghiuri/patrate. Desenam
+-- silueta exacta prin test "punct in poligon", cu 5 varfuri (2 sus, 2 in
+-- lateral la latimea maxima -- girdle, 1 jos, ascutit -- varf).
+--
+-- Invelit in pcall: EditableImage e o functie mai noua din Roblox -- daca nu
+-- e suportata pe versiunea curenta, cadem sigur pe varianta cu Frame-uri, in
+-- loc sa crape tot magazinul de tokens (exact ce a patit fontul Cinzel).
+local function buildDiamondIcon(container, color)
+	local ok = pcall(function()
+		local SIZE = 48
+
+		local vertices = {
+			Vector2.new(15, 6),
+			Vector2.new(33, 6),
+			Vector2.new(44, 18),
+			Vector2.new(24, 44),
+			Vector2.new(4, 18)
+		}
+
+		local function pointInPolygon(px, py)
+			local inside = false
+			local j = #vertices
+			for i = 1, #vertices do
+				local xi, yi = vertices[i].X, vertices[i].Y
+				local xj, yj = vertices[j].X, vertices[j].Y
+				if (yi > py) ~= (yj > py) and px < (xj - xi) * (py - yi) / (yj - yi) + xi then
+					inside = not inside
+				end
+				j = i
+			end
+			return inside
+		end
+
+		local editable = Instance.new("EditableImage")
+		editable.Size = Vector2.new(SIZE, SIZE)
+
+		local pixels = table.create(SIZE * SIZE * 4, 0)
+
+		for y = 0, SIZE - 1 do
+			for x = 0, SIZE - 1 do
+				local index = (y * SIZE + x) * 4
+				if pointInPolygon(x + 0.5, y + 0.5) then
+					-- Reflexie simpla: mai deschis spre stanga-sus, mai
+					-- inchis spre dreapta-jos -- da un aspect de "fatetat",
+					-- nu o culoare plata, uniforma.
+					local shade = 1 - math.clamp((x + y) / (SIZE * 2), 0, 1) * 0.4
+					pixels[index + 1] = math.clamp(color.R * shade + 0.15, 0, 1)
+					pixels[index + 2] = math.clamp(color.G * shade + 0.15, 0, 1)
+					pixels[index + 3] = math.clamp(color.B * shade + 0.15, 0, 1)
+					pixels[index + 4] = 1
+				else
+					pixels[index + 4] = 0
+				end
+			end
+		end
+
+		editable:WritePixels(Vector2.new(0, 0), Vector2.new(SIZE, SIZE), pixels)
+
+		local imageLabel = Instance.new("ImageLabel")
+		imageLabel.Name = "DiamondShape"
+		imageLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+		imageLabel.Position = UDim2.fromScale(0.5, 0.5)
+		imageLabel.Size = UDim2.fromOffset(44, 44)
+		imageLabel.BackgroundTransparency = 1
+		imageLabel.ImageContent = Content.fromObject(editable)
+		imageLabel.ZIndex = 23
+		imageLabel.Parent = container
+	end)
+
+	if not ok then
+		buildDiamondIconFallback(container, color)
+	end
+end
+
 -- 👑 Tycoon Title -> o coroana cu trei varfuri si o gema in centru.
 local function buildCrownIcon(container, color)
 	local band = iconShape(container, 34, 12, 0, 10, color, 23, 0.3)
@@ -310,35 +438,6 @@ local function buildCrownIcon(container, color)
 	iconShape(band, 8, 8, 0, 0, Color3.fromRGB(255, 255, 255), 24, 0.5)
 end
 
--- 🦊 Rebirth Sprite -> fata de vulpe, urechi ascutite.
-local function buildFoxIcon(container, color)
-	local earColor = color:Lerp(Color3.fromRGB(255, 255, 255), 0.2)
-	for _, earOffset in ipairs({-12, 12}) do
-		local ear = iconShape(container, 14, 16, earOffset, -14, earColor, 22, 0.15)
-		ear.Rotation = earOffset < 0 and -18 or 18
-	end
-
-	local head = iconShape(container, 40, 34, 0, 4, color, 23, 0.4)
-	iconOutline(head, Color3.fromRGB(255, 255, 255), 1.5, 0.4)
-
-	local snout = iconShape(head, 14, 10, 0, 10, Color3.fromRGB(255, 255, 255), 24, 0.4)
-	iconShape(snout, 5, 5, 0, 2, Color3.fromRGB(40, 30, 25), 25, 0.5)
-end
-
--- 🐺 Rebirth Guardian -> cap mai masiv, urechi rotunjite, insigna de scut pe piept.
-local function buildWolfIcon(container, color)
-	local earColor = color:Lerp(Color3.fromRGB(10, 8, 6), 0.15)
-	for _, earOffset in ipairs({-13, 13}) do
-		iconShape(container, 16, 16, earOffset, -13, earColor, 22, 0.3)
-	end
-
-	local head = iconShape(container, 42, 36, 0, 4, color, 23, 0.3)
-	iconOutline(head, Color3.fromRGB(255, 255, 255), 1.5, 0.4)
-
-	local shield = iconShape(head, 14, 16, 0, 8, Color3.fromRGB(255, 255, 255), 24, 0.25)
-	iconOutline(shield, color, 1.5, 0.2)
-end
-
 -- Fallback generic (diamond pentru Title, cerc pentru Pet), folosit doar
 -- daca se adauga un item nou in Economy.TokenShop.Items fara iconita dedicata.
 local function buildGenericIcon(container, color, item)
@@ -350,10 +449,8 @@ end
 
 local ICON_BUILDERS = {
 	TraderTitle = buildTagIcon,
-	MerchantTitle = buildBriefcaseIcon,
-	TycoonTitle = buildCrownIcon,
-	RebirthSpritePet = buildFoxIcon,
-	RebirthGuardianPet = buildWolfIcon
+	MillionaireTitle = buildDollarIcon,
+	BillionaireTitle = buildDiamondIcon
 }
 
 local function createPremiumIcon(parent, item)
@@ -379,6 +476,28 @@ local function createPremiumIcon(parent, item)
 	glow.ZIndex = 22
 	glow.Parent = container
 	Instance.new("UICorner", glow).CornerRadius = UDim.new(0.5, 0)
+
+	-- Pet-urile arata poza reala a pet-ului (avem deja ID-urile), nu o
+	-- iconita vectoriala abstracta -- mult mai clar ce primesti.
+	if item.Type == "Pet" and item.Pet and item.Pet.Image and item.Pet.Image ~= "" then
+		-- Continutul din asset-ul Rebirth Guardian nu e centrat in canvas-ul
+		-- lui propriu (modelul in sine sta deplasat spre dreapta) -- nu putem
+		-- edita imaginea deja urcata, doar compensam vizual cu un offset.
+		local imageOffsetX = (item.Pet.PetId == "RebirthGuardian") and 2 or 0
+
+		local petImage = Instance.new("ImageLabel")
+		petImage.Name = "PetImage"
+		petImage.BackgroundTransparency = 1
+		petImage.AnchorPoint = Vector2.new(0.5, 0.5)
+		petImage.Position = UDim2.new(0.5, imageOffsetX, 0.5, 0)
+		petImage.Size = UDim2.fromOffset(52, 52)
+		petImage.Image = item.Pet.Image
+		petImage.ScaleType = Enum.ScaleType.Fit
+		petImage.ZIndex = 23
+		petImage.Parent = container
+
+		return container
+	end
 
 	local builder = ICON_BUILDERS[item.Id]
 	if builder then
@@ -490,10 +609,28 @@ local function createItemCard(item, order)
 
 	Instance.new("UICorner", buyButton).CornerRadius = UDim.new(0, 8)
 
+	local isTitleItem = item.Type == "Title"
+
 	local function refreshButton()
 		local owned = item.OneTime and player:GetAttribute("TokenShopBought_" .. item.Id) == true
 
-		if owned then
+		if owned and isTitleItem then
+			-- Titlurile cumparate raman active (nu inerte ca "✔ OWNED") --
+			-- butonul devine EQUIP/UNEQUIP, ca sa poti alege care sa fie cel
+			-- afisat in chat (poti purta un singur titlu deodata).
+			local equipped = player:GetAttribute("EquippedTitle") == item.Id
+
+			if equipped then
+				buyButton.BackgroundColor3 = GOLD_ACCENT
+				buyButton.Text = "✔ EQUIPPED"
+			else
+				buyButton.BackgroundColor3 = GREEN_OK
+				buyButton.Text = "EQUIP"
+			end
+
+			buyButton.Active = true
+			cardStroke.Transparency = 0
+		elseif owned then
 			buyButton.BackgroundColor3 = BG_DARK
 			buyButton.Text = "✔ OWNED"
 			buyButton.Active = false
@@ -514,9 +651,18 @@ local function createItemCard(item, order)
 	refreshButton()
 
 	buyButton.Activated:Connect(function()
-		if getTokens() < item.Cost then
+		local owned = item.OneTime and player:GetAttribute("TokenShopBought_" .. item.Id) == true
+
+		if owned and isTitleItem then
+			local equipped = player:GetAttribute("EquippedTitle") == item.Id
+			equipTitleEvent:FireServer(equipped and "" or item.Id)
 			return
 		end
+
+		if owned or getTokens() < item.Cost then
+			return
+		end
+
 		requestPurchaseEvent:FireServer(item.Id)
 	end)
 
@@ -524,6 +670,10 @@ local function createItemCard(item, order)
 		tokensValue:GetPropertyChangedSignal("Value"):Connect(refreshButton)
 	end
 	player:GetAttributeChangedSignal("TokenShopBought_" .. item.Id):Connect(refreshButton)
+
+	if isTitleItem then
+		player:GetAttributeChangedSignal("EquippedTitle"):Connect(refreshButton)
+	end
 
 	return card
 end

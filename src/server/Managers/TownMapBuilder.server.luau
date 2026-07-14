@@ -71,7 +71,7 @@ local function createPart(name, size, cframe, color)
 	return part
 end
 
-local MAP_SIZE = 315
+local MAP_SIZE = 400
 
 -- Iarba, o zona mare in jurul strazii.
 createPart(

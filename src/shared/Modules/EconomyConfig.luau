@@ -112,7 +112,7 @@ Economy.Rebirth = {
 		PetId = "RebirthPhoenix",
 		DisplayName = "Rebirth Phoenix",
 		Rarity = "Legendary",
-		Image = "",
+		Image = "rbxassetid://90287359233643",
 		Bonuses = {
 			NpcLuck = 10,
 			SellPrice = 8,
@@ -175,13 +175,14 @@ Economy.TokenShop = {
 	Items = {
 		{
 			Id = "TraderTitle",
-			Name = "Trader Title",
+			Name = "Trader",
 			Icon = "🏷️",
 			Cost = 1,
 			OneTime = true, -- e un titlu permanent, nu are sens sa-l cumperi de 2 ori
 			Type = "Title",
 			Category = "Titles",
 			Description = "+3% Luck, forever",
+			ChatColor = Color3.fromRGB(170, 170, 170), -- gri
 			-- Luck, nu multiplier de bani -- multiplier-ul se plafoneaza rapid
 			-- la jucatorii avansati (VIP + rebirth-uri) din cauza MaxSell per item,
 			-- Luck-ul nu se plafoneaza in acelasi fel (iti creste sansa la iteme
@@ -189,35 +190,37 @@ Economy.TokenShop = {
 			LuckBonus = 3
 		},
 		{
-			Id = "MerchantTitle",
-			Name = "Merchant Title",
+			Id = "MillionaireTitle",
+			Name = "Millionaire",
 			Icon = "💼",
 			Cost = 3,
 			OneTime = true,
 			Type = "Title",
 			Category = "Titles",
 			Description = "+7% Luck, forever",
+			ChatColor = Color3.fromRGB(120, 230, 120), -- verde deschis
 			LuckBonus = 7
 		},
 		{
-			Id = "RebirthSpritePet",
-			Name = "Rebirth Sprite",
-			Icon = "🦊",
+			Id = "RebirthPhoenixPet",
+			Name = "Rebirth Phoenix",
+			Icon = "🔥",
 			Cost = 5,
 			OneTime = true,
 			Type = "Pet",
 			Category = "Pets",
-			Description = "Legendary pet: +8% Luck, +6% Sell, +4% Speed",
-			-- Pet exclusiv, mai slab decat Rebirth Guardian (mai ieftin).
+			Description = "EXCLUSIVE Pet!",
+			-- Acelasi pet ca cel gratuit din Rebirth (Economy.Rebirth.ExclusivePet)
+			-- -- jucatorul ii poate cere pe langa cel gratuit, cumparandu-l aici.
 			Pet = {
-				PetId = "RebirthSprite",
-				DisplayName = "Rebirth Sprite",
+				PetId = "RebirthPhoenix",
+				DisplayName = "Rebirth Phoenix",
 				Rarity = "Legendary",
-				Image = "",
+				Image = "rbxassetid://90287359233643",
 				Bonuses = {
-					NpcLuck = 8,
-					SellPrice = 6,
-					NpcSpeed = 4
+					NpcLuck = 10,
+					SellPrice = 8,
+					NpcSpeed = 5
 				}
 			}
 		},
@@ -229,14 +232,14 @@ Economy.TokenShop = {
 			OneTime = true,
 			Type = "Pet",
 			Category = "Pets",
-			Description = "Legendary pet: +12% Luck, +10% Sell, +6% Speed",
+			Description = "EXCLUSIVE Pet!",
 			-- Al doilea pet exclusiv de Rebirth (diferit de cel gratuit la 5 tokens),
 			-- mai puternic decat Rebirth Sprite pentru ca directa costa mai mult.
 			Pet = {
 				PetId = "RebirthGuardian",
 				DisplayName = "Rebirth Guardian",
 				Rarity = "Legendary",
-				Image = "",
+				Image = "rbxassetid://73604540890894",
 				Bonuses = {
 					NpcLuck = 12,
 					SellPrice = 10,
@@ -245,14 +248,15 @@ Economy.TokenShop = {
 			}
 		},
 		{
-			Id = "TycoonTitle",
-			Name = "Tycoon Title",
+			Id = "BillionaireTitle",
+			Name = "Billionaire",
 			Icon = "👑",
 			Cost = 12,
 			OneTime = true,
 			Type = "Title",
 			Category = "Titles",
 			Description = "+20% Luck, forever",
+			ChatColor = Color3.fromRGB(20, 110, 40), -- verde inchis
 			LuckBonus = 20
 		}
 	}
@@ -311,7 +315,7 @@ Economy.DailyRewards = {
 				PetId = "StreakChampion",
 				DisplayName = "Streak Champion",
 				Rarity = "Epic",
-				Image = "",
+				Image = "rbxassetid://109426827753803",
 				Bonuses = {NpcLuck = 8, SellPrice = 7, NpcSpeed = 3}
 			}
 		}
@@ -324,7 +328,13 @@ Economy.DailyRewards = {
 Economy.Caps = {
 	Luck = 100,
 	Sell = 300, -- ridicat fata de 80, ca sa lase loc de progresie prin Rebirth
-	Speed = 50
+	Speed = 50,
+
+	-- Multiplicatorul final de bani (VIP x Friend Boost x Cosmetice), aplicat
+	-- DUPA clamp-ul de MaxSell -- singurul bonus fara plafon pana acum. Cu
+	-- VIP(1.5) x Friend Boost(1.3) x 5 cosmetice Legendary (~2.27), un jucator
+	-- complet maxat ajungea la ~4.4x fara nicio limita. Plafonat la 4x.
+	MoneyMultiplier = 4
 }
 
 -- ============================

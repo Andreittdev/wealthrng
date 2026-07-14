@@ -16,6 +16,16 @@ local Collectibles = require(modulesFolder:WaitForChild("Collectibles"))
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local openIndexEvent = remotes:WaitForChild("OpenIndex")
 
+-- Folder replicat automat de PetManager -- un copil per PetId prin care a
+-- trecut vreodata jucatorul (chiar daca a fost duplicat/vandut). Cautam LIVE
+-- (FindFirstChild), fara sa cache-uim referinta o singura data la pornire --
+-- WaitForChild cu timeout risca sa ramana nil pentru tot restul sesiunii daca
+-- folderul nu exista inca in primele secunde (incarcare lenta a datelor).
+local function isPetDiscovered(petId)
+	local folder = player:FindFirstChild("DiscoveredPets")
+	return folder ~= nil and folder:FindFirstChild(petId) ~= nil
+end
+
 local FONT_DISPLAY = Enum.Font.Bangers
 local FONT_BODY = Enum.Font.FredokaOne
 
@@ -68,8 +78,14 @@ end
 
 local function buildPetList()
 	local list = {}
-	for _, petData in pairs(PetDatabase.Pets) do
-		table.insert(list, petData)
+	for petId, petData in pairs(PetDatabase.Pets) do
+		-- Clonam (nu mutam direct petData) ca sa nu atingem tabelul
+		-- PetDatabase.Pets partajat cu alte scripturi client -- avem nevoie
+		-- de PetId aici (cheia din PetDatabase.Pets), ca sa stim ce e
+		-- descoperit sau nu, dar entry-urile originale nu au campul asta.
+		local entry = table.clone(petData)
+		entry.PetId = petId
+		table.insert(list, entry)
 	end
 	table.sort(list, function(a, b)
 		return a.DisplayName < b.DisplayName
@@ -324,6 +340,82 @@ local function createEntryCard(parent, order, name, rarity, subtitleText, column
 	return entry
 end
 
+-- ---- Card special pentru pet-uri: poza (umbra neagra daca nu a fost
+-- descoperit niciodata), nume, si bonusurile ascunse pana dai click (si
+-- doar daca a fost descoperit -- altfel nu are ce sa arate). ----
+
+local function createPetEntryCard(parent, order, petData, rarity)
+	local color = RARITY_COLORS[rarity] or Color3.fromRGB(255, 255, 255)
+	local discovered = isPetDiscovered(petData.PetId)
+
+	local entry = Instance.new("TextButton")
+	entry.Name = petData.DisplayName
+	entry.LayoutOrder = order
+	entry.BackgroundColor3 = CARD_BG
+	entry.AutoButtonColor = false
+	entry.Text = ""
+	entry.ZIndex = 23
+	entry.Parent = parent
+
+	Instance.new("UICorner", entry).CornerRadius = UDim.new(0, 10)
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = discovered and color or Color3.fromRGB(70, 70, 78)
+	stroke.Thickness = 2
+	stroke.Parent = entry
+
+	local image = Instance.new("ImageLabel")
+	image.BackgroundTransparency = 1
+	image.Position = UDim2.new(0, 4, 0, 4)
+	image.Size = UDim2.new(1, -8, 0, 96)
+	image.Image = petData.Image or ""
+	image.ImageColor3 = discovered and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(0, 0, 0)
+	image.ScaleType = Enum.ScaleType.Fit
+	image.ZIndex = 24
+	image.Parent = entry
+
+	local nameLabel = Instance.new("TextLabel")
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.Position = UDim2.new(0, 6, 0, 102)
+	nameLabel.Size = UDim2.new(1, -12, 0, 22)
+	nameLabel.Text = petData.DisplayName
+	nameLabel.TextColor3 = TEXT_LIGHT
+	nameLabel.TextWrapped = true
+	nameLabel.Font = FONT_BODY
+	nameLabel.TextScaled = true
+	nameLabel.ZIndex = 24
+	nameLabel.Parent = entry
+
+	local stats = "🍀+" .. (petData.Bonuses.NpcLuck or 0)
+		.. "%  💰+" .. (petData.Bonuses.SellPrice or 0)
+		.. "%  ⚡+" .. (petData.Bonuses.NpcSpeed or 0) .. "%"
+
+	if petData.Source then
+		stats = stats .. "\n" .. petData.Source
+	end
+
+	local statsLabel = Instance.new("TextLabel")
+	statsLabel.BackgroundTransparency = 1
+	statsLabel.Position = UDim2.new(0, 6, 0, 124)
+	statsLabel.Size = UDim2.new(1, -12, 0, 34)
+	statsLabel.Text = stats
+	statsLabel.TextColor3 = color
+	statsLabel.TextWrapped = true
+	statsLabel.Font = FONT_BODY
+	statsLabel.TextScaled = true
+	statsLabel.Visible = false
+	statsLabel.ZIndex = 24
+	statsLabel.Parent = entry
+
+	if discovered then
+		entry.Activated:Connect(function()
+			statsLabel.Visible = not statsLabel.Visible
+		end)
+	end
+
+	return entry
+end
+
 local function createRaritySection(parent, rarity, order)
 	local color = RARITY_COLORS[rarity] or Color3.fromRGB(255, 255, 255)
 
@@ -383,21 +475,22 @@ end
 local petGrids = {}
 local itemGrids = {}
 
+-- Pastram holder-ul + rarity-ul fiecarei sectiuni de pet-uri, ca sa putem
+-- reconstrui cardurile (culoare/umbra) de fiecare data cand se deschide
+-- Index-ul -- altfel un pet proaspat descoperit (deschis dintr-un ou dupa ce
+-- Index-ul a fost deja construit o data) ramanea umbra pentru tot restul
+-- sesiunii, fiindca starea "discovered" era citita o singura data, la
+-- pornire.
+local petGridHolders = {}
+
 for order, rarity in ipairs(RARITY_ORDER) do
 	if petsByRarity[rarity] then
 		local gridHolder, grid = createRaritySection(petsScroll, rarity, order)
 		table.insert(petGrids, grid)
+		table.insert(petGridHolders, {Holder = gridHolder, Rarity = rarity})
 
 		for petOrder, petData in ipairs(petsByRarity[rarity]) do
-			local stats = "🍀+" .. (petData.Bonuses.NpcLuck or 0)
-				.. "%  💰+" .. (petData.Bonuses.SellPrice or 0)
-				.. "%  ⚡+" .. (petData.Bonuses.NpcSpeed or 0) .. "%"
-
-			if petData.Source then
-				stats = stats .. "\n" .. petData.Source
-			end
-
-			createEntryCard(gridHolder, petOrder, petData.DisplayName, rarity, stats)
+			createPetEntryCard(gridHolder, petOrder, petData, rarity)
 		end
 	end
 
@@ -412,21 +505,51 @@ for order, rarity in ipairs(RARITY_ORDER) do
 	end
 end
 
+local function refreshPetCards()
+	for _, entry in ipairs(petGridHolders) do
+		for _, child in ipairs(entry.Holder:GetChildren()) do
+			if child:IsA("GuiObject") then
+				child:Destroy()
+			end
+		end
+
+		for petOrder, petData in ipairs(petsByRarity[entry.Rarity]) do
+			createPetEntryCard(entry.Holder, petOrder, petData, entry.Rarity)
+		end
+	end
+end
+
 local function updateAllGrids()
 	local isMobile = computeIsMobile()
 	local columns = isMobile and 2 or 4
-	local cellHeight = 78
 
+	-- Cardurile de pet-uri sunt mai inalte acum (poza mare) -- au nevoie de
+	-- o celula mai mare decat cea de la iteme (care nu au imagine).
 	for _, grid in ipairs(petGrids) do
-		updateGridColumns(grid, columns, cellHeight)
+		updateGridColumns(grid, columns, 168)
 	end
 
 	for _, grid in ipairs(itemGrids) do
-		updateGridColumns(grid, columns, cellHeight)
+		updateGridColumns(grid, columns, 78)
 	end
 end
 
 updateAllGrids()
+
+-- ================= Footer =================
+
+local footerLabel = Instance.new("TextLabel")
+footerLabel.Name = "FooterLabel"
+footerLabel.BackgroundTransparency = 1
+footerLabel.AnchorPoint = Vector2.new(0.5, 1)
+footerLabel.Position = UDim2.new(0.5, 0, 1, -8)
+footerLabel.Size = UDim2.new(1, -40, 0, 20)
+footerLabel.Text = "🎁 INDEX REWARDS SOON!"
+footerLabel.TextColor3 = ACCENT
+footerLabel.Font = FONT_DISPLAY
+footerLabel.TextScaled = true
+footerLabel.ZIndex = 25
+footerLabel.Parent = card
 
 -- ================= Comportament taburi =================
 
@@ -476,6 +599,7 @@ local function setOpen(open)
 
 	if open then
 		card.Size = getMainFrameSize()
+		refreshPetCards()
 		updateAllGrids()
 	end
 

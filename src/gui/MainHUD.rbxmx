@@ -35,7 +35,30 @@ local mainHud = script.Parent
 local cashFrame = mainHud:WaitForChild("CashFrame")
 local moneyLabel = cashFrame:WaitForChild("MoneyLabel")
 
+-- Peste 1 milion, scriem prescurtat (1.1M, 1.9B, 1.7T) -- altfel cifrele
+-- complete nu mai incap in cadrul de Cash si se suprapun peste iconita.
+local ABBREVIATIONS = {
+	{1e12, "T"},
+	{1e9, "B"},
+	{1e6, "M"}
+}
+
 local function formatMoney(amount)
+	amount = math.floor(amount)
+
+	for _, entry in ipairs(ABBREVIATIONS) do
+		local threshold, suffix = entry[1], entry[2]
+
+		if amount >= threshold then
+			local rounded = math.floor((amount / threshold) * 10) / 10
+			local text = (rounded == math.floor(rounded))
+				and tostring(math.floor(rounded))
+				or string.format("%.1f", rounded)
+
+			return "$" .. text .. suffix
+		end
+	end
+
 	return "$" .. tostring(amount):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
 end
 
@@ -176,6 +199,91 @@ else
 end
 
 cashFrame.Visible = true
+
+-- ================= Friend Boost =================
+-- Sub cadrul de Cash -- arata bonusul curent (0-30%, calculat pe server de
+-- FriendBoostManager dupa cati prieteni Roblox ai in acelasi server) si un
+-- buton verde "+" care deschide invitatia nativa de Roblox catre prieteni.
+local SocialService = game:GetService("SocialService")
+
+local friendBoostFrame = mainHud:FindFirstChild("FriendBoostFrame")
+if not friendBoostFrame then
+	-- Fara fundal/contur/colturi -- doar textul si butonul, plutind liber,
+	-- nu intr-un chenar ca la Cash.
+	friendBoostFrame = Instance.new("Frame")
+	friendBoostFrame.Name = "FriendBoostFrame"
+	friendBoostFrame.BackgroundTransparency = 1
+	friendBoostFrame.ZIndex = 1
+	friendBoostFrame.Parent = mainHud
+
+	-- UIListLayout in loc de pozitii fixe -- butonul "+" se lipeste imediat
+	-- dupa text, oricat de lung ar fi (in loc sa stea ancorat departe, la
+	-- marginea din dreapta a intregului frame).
+	local layout = Instance.new("UIListLayout")
+	layout.FillDirection = Enum.FillDirection.Horizontal
+	layout.VerticalAlignment = Enum.VerticalAlignment.Center
+	layout.Padding = UDim.new(0, 8)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = friendBoostFrame
+
+	local boostLabel = Instance.new("TextLabel")
+	boostLabel.Name = "BoostLabel"
+	boostLabel.LayoutOrder = 1
+	boostLabel.BackgroundTransparency = 1
+	boostLabel.AutomaticSize = Enum.AutomaticSize.X
+	boostLabel.Size = UDim2.new(0, 0, 1, 0)
+	boostLabel.Text = "🤝 Friend Boost: +0% Cash"
+	boostLabel.TextColor3 = Color3.fromRGB(0, 0, 0)
+	boostLabel.Font = Enum.Font.LuckiestGuy
+	boostLabel.TextSize = 20
+	boostLabel.TextWrapped = false
+	boostLabel.TextXAlignment = Enum.TextXAlignment.Left
+	boostLabel.ZIndex = 2
+	boostLabel.Parent = friendBoostFrame
+
+	local inviteButton = Instance.new("TextButton")
+	inviteButton.Name = "InviteButton"
+	inviteButton.LayoutOrder = 2
+	inviteButton.Size = UDim2.new(0, 30, 0, 30)
+	inviteButton.BackgroundColor3 = Color3.fromRGB(70, 200, 95)
+	inviteButton.Text = "+"
+	inviteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	inviteButton.Font = Enum.Font.FredokaOne
+	inviteButton.TextScaled = true
+	inviteButton.ZIndex = 2
+	inviteButton.Parent = friendBoostFrame
+
+	Instance.new("UICorner", inviteButton).CornerRadius = UDim.new(0.3, 0)
+
+	inviteButton.Activated:Connect(function()
+		local ok = pcall(function()
+			SocialService:PromptGameInvite(player)
+		end)
+
+		if not ok then
+			warn("FriendBoost: nu s-a putut deschide invitatia de prieteni (SocialService indisponibil)")
+		end
+	end)
+
+	local function refreshBoostLabel()
+		local percent = player:GetAttribute("FriendBoostPercent") or 0
+		boostLabel.Text = "🤝 Friend Boost: +" .. tostring(percent) .. "% Cash"
+	end
+
+	refreshBoostLabel()
+	player:GetAttributeChangedSignal("FriendBoostPercent"):Connect(refreshBoostLabel)
+end
+
+-- Gap mai mare fata de Cash (nu mai lipit direct de el).
+if isMobile then
+	friendBoostFrame.Position = UDim2.new(0, 12, 0, 288)
+	friendBoostFrame.Size = UDim2.new(0, 210, 0, 26)
+else
+	friendBoostFrame.Position = UDim2.new(0, 22, 0.34, 381)
+	friendBoostFrame.Size = UDim2.new(0, 260, 0, 28)
+end
+
+friendBoostFrame.Visible = true
 
 for _, row in ipairs({row1, row2, row3}) do
 	row.BackgroundTransparency = 1

@@ -93,6 +93,9 @@ function SellManager.CalculateSellPrice(player, itemFolder)
 		moneyMultiplier *= Economy.VIP.MoneyMultiplier
 	end
 
+	local friendBoostPercent = player:GetAttribute("FriendBoostPercent") or 0
+	moneyMultiplier *= (1 + friendBoostPercent / 100)
+
 	local rebirthSellBonus = getRebirthSellBonus(player)
 
 	local totalSellBonus = standSellBonus + cosmeticSellBonus + petSellBonus + rebirthSellBonus
@@ -112,6 +115,11 @@ function SellManager.CalculateSellPrice(player, itemFolder)
 	-- loc de +50% promis de VIP, iar la jucatori cu Sell% deja mare, VIP nu
 	-- mai adauga nimic). Aplicat aici, VIP livreaza mereu bonusul integral,
 	-- indiferent cat de saturate sunt celelalte bonusuri de Sell%.
+	--
+	-- Singurul bonus fara plafon pana acum -- VIP x Friend Boost x cosmetice
+	-- se aduna liber (5 cosmetice Legendary + VIP + Friend Boost ~4.4x, fara
+	-- limita). Plafonat la Economy.Caps.MoneyMultiplier.
+	moneyMultiplier = math.min(moneyMultiplier, Economy.Caps.MoneyMultiplier)
 	finalPrice = math.floor(finalPrice * moneyMultiplier)
 
 	return finalPrice

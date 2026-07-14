@@ -21,6 +21,9 @@ local function getDefaultData()
 		},
         Pets = {},
         EquippedPets = {"",""},
+        DiscoveredPets = {},
+        EquippedTitle = "",
+        BoughtTokenItems = {},
         StarterPackRedeemed = false,
         RebirthCount = 0,
         RebirthTokens = 0,
@@ -53,6 +56,9 @@ function DataManager.LoadData(player)
 	data.EquippedCosmetics = data.EquippedCosmetics or getDefaultData().EquippedCosmetics
     data.Pets = data.Pets or {}
 	data.EquippedPets = data.EquippedPets or {"",""}
+	data.DiscoveredPets = data.DiscoveredPets or {}
+	data.EquippedTitle = data.EquippedTitle or ""
+	data.BoughtTokenItems = data.BoughtTokenItems or {}
 	data.StarterPackRedeemed = data.StarterPackRedeemed or false
 	data.RebirthCount = data.RebirthCount or 0
 	data.RebirthTokens = data.RebirthTokens or 0
@@ -71,6 +77,7 @@ function DataManager.SaveData(player)
 	local cosmetics = player:FindFirstChild("Cosmetics")
     local pets = player:FindFirstChild("Pets")
     local equippedPets = player:FindFirstChild("EquippedPets")
+	local discoveredPets = player:FindFirstChild("DiscoveredPets")
 	local equippedCosmetics = player:FindFirstChild("EquippedCosmetics")
 
 	if not leaderstats or not inventory then
@@ -91,6 +98,9 @@ function DataManager.SaveData(player)
 		EquippedCosmetics = {},
         Pets = {},
         EquippedPets = {"",""},
+        DiscoveredPets = {},
+        EquippedTitle = player:GetAttribute("EquippedTitle") or "",
+        BoughtTokenItems = {},
         StarterPackRedeemed = player:GetAttribute("StarterPackRedeemed") == true,
         RebirthCount = leaderstats:FindFirstChild("Rebirths") and leaderstats.Rebirths.Value or 0,
         RebirthTokens = player:FindFirstChild("RebirthTokens") and player.RebirthTokens.Value or 0,
@@ -150,6 +160,24 @@ function DataManager.SaveData(player)
 		dataToSave.EquippedPets[2] = slot2 and slot2.Value or ""
 	end
 
+	-- DiscoveredPets tine minte FIECARE PetId prin care a trecut vreodata
+	-- jucatorul (chiar daca a fost duplicat/vandut automat) -- folosit de
+	-- Index ca sa arate peturile nedescoperite ca o umbra neagra.
+	if discoveredPets then
+		for _, petIdValue in ipairs(discoveredPets:GetChildren()) do
+			table.insert(dataToSave.DiscoveredPets, petIdValue.Name)
+		end
+	end
+
+	-- Titlurile/cosmeticele cumparate din Token Shop erau marcate doar ca
+	-- atribute (TokenShopBought_<Id>), niciodata salvate -- disparea la
+	-- rejoin. Le salvam generic, dupa numele atributului.
+	for attributeName, attributeValue in pairs(player:GetAttributes()) do
+		if attributeName:sub(1, 16) == "TokenShopBought_" and attributeValue == true then
+			table.insert(dataToSave.BoughtTokenItems, attributeName)
+		end
+	end
+
 	local success, err = pcall(function()
 		playerDataStore:SetAsync(player.UserId, dataToSave)
 	end)
@@ -179,6 +207,11 @@ function DataManager.ApplyData(player, data)
 	end
 
 	player:SetAttribute("StarterPackRedeemed", data.StarterPackRedeemed == true)
+	player:SetAttribute("EquippedTitle", data.EquippedTitle or "")
+
+	for _, attributeName in ipairs(data.BoughtTokenItems or {}) do
+		player:SetAttribute(attributeName, true)
+	end
 
 	local rebirths = leaderstats:FindFirstChild("Rebirths")
 	if not rebirths then
@@ -357,6 +390,22 @@ function DataManager.ApplyData(player, data)
 
 	buildEquippedSlot("Slot1", data.EquippedPets and data.EquippedPets[1])
 	buildEquippedSlot("Slot2", data.EquippedPets and data.EquippedPets[2])
+
+	local discoveredPets = player:FindFirstChild("DiscoveredPets")
+	if not discoveredPets then
+		discoveredPets = Instance.new("Folder")
+		discoveredPets.Name = "DiscoveredPets"
+		discoveredPets.Parent = player
+	end
+
+	discoveredPets:ClearAllChildren()
+
+	for _, petId in ipairs(data.DiscoveredPets or {}) do
+		local marker = Instance.new("BoolValue")
+		marker.Name = petId
+		marker.Value = true
+		marker.Parent = discoveredPets
+	end
 end
 
 Players.PlayerRemoving:Connect(function(player)

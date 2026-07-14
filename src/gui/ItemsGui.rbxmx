@@ -108,8 +108,16 @@ local function setupLayout()
 	closeButton.Font = Enum.Font.GothamBlack
 	closeButton.ZIndex = 30
 
-	itemsList.Position = UDim2.new(0.05, 0, 0.16, 0)
-	itemsList.Size = UDim2.new(0.90, 0, 0.78, 0)
+	-- Pe PC lasam loc in dreapta pentru cardul mare de detalii (mereu vizibil,
+	-- nu suprapus peste grid) -- pe mobil ramane cum era, grid pe toata
+	-- latimea, detaliile apar ca popup peste el.
+	if isMobile then
+		itemsList.Position = UDim2.new(0.05, 0, 0.16, 0)
+		itemsList.Size = UDim2.new(0.90, 0, 0.78, 0)
+	else
+		itemsList.Position = UDim2.new(0.03, 0, 0.16, 0)
+		itemsList.Size = UDim2.new(0.55, 0, 0.80, 0)
+	end
 	itemsList.BackgroundColor3 = Color3.fromRGB(15, 22, 38)
 	itemsList.BorderSizePixel = 0
 	itemsList.ScrollBarThickness = 6
@@ -170,6 +178,14 @@ local function createPetCard(petInfo)
 	addCorner(card, UDim.new(0.08, 0))
 	addStroke(card, color, 2)
 
+	local icon = Instance.new("ImageLabel")
+	icon.Parent = card
+	icon.BackgroundTransparency = 1
+	icon.Image = data.Image or ""
+	icon.Position = UDim2.new(0.28, 0, 0.05, 0)
+	icon.Size = UDim2.new(0.44, 0, 0.32, 0)
+	icon.ZIndex = 16
+
 	local name = Instance.new("TextLabel")
 	name.Parent = card
 	name.BackgroundTransparency = 1
@@ -178,8 +194,8 @@ local function createPetCard(petInfo)
 	name.TextScaled = true
 	name.TextWrapped = true
 	name.Font = Enum.Font.GothamBlack
-	name.Position = UDim2.new(0.08, 0, 0.08, 0)
-	name.Size = UDim2.new(0.84, 0, 0.30, 0)
+	name.Position = UDim2.new(0.06, 0, 0.40, 0)
+	name.Size = UDim2.new(0.88, 0, 0.20, 0)
 	name.ZIndex = 16
 
 	local rarity = Instance.new("TextLabel")
@@ -189,8 +205,8 @@ local function createPetCard(petInfo)
 	rarity.TextColor3 = color
 	rarity.TextScaled = true
 	rarity.Font = Enum.Font.GothamBold
-	rarity.Position = UDim2.new(0.10, 0, 0.48, 0)
-	rarity.Size = UDim2.new(0.80, 0, 0.18, 0)
+	rarity.Position = UDim2.new(0.10, 0, 0.62, 0)
+	rarity.Size = UDim2.new(0.80, 0, 0.16, 0)
 	rarity.ZIndex = 16
 
 	local tap = Instance.new("TextLabel")
@@ -200,7 +216,7 @@ local function createPetCard(petInfo)
 	tap.TextColor3 = Color3.fromRGB(190, 200, 220)
 	tap.TextScaled = true
 	tap.Font = Enum.Font.GothamBold
-	tap.Position = UDim2.new(0.10, 0, 0.74, 0)
+	tap.Position = UDim2.new(0.10, 0, 0.80, 0)
 	tap.Size = UDim2.new(0.80, 0, 0.14, 0)
 	tap.ZIndex = 16
 
@@ -320,8 +336,12 @@ end)]]></ProtectedString>
 				<ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local UserInputService = game:GetService("UserInputService")
+
 local player = Players.LocalPlayer
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
+
+local isMobile = UserInputService.TouchEnabled
 
 local equipEvent = remotes:WaitForChild("EquipPet")
 local equippedPets = player:WaitForChild("EquippedPets", 10)
@@ -367,9 +387,19 @@ local selectedItem = nil
 details.Visible = false
 
 local function setupDetailsLayout()
-	details.AnchorPoint = Vector2.new(0.5, 0.5)
-	details.Position = UDim2.new(0.5, 0, 0.5, 0)
-	details.Size = UDim2.new(0.48, 0, 0.78, 0)
+	-- Pe mobil ramane popup centrat, peste grid (ca inainte). Pe PC devine un
+	-- card fix, andocat in dreapta, vizibil tot timpul (nu doar la click) --
+	-- itemsList a fost deja ingustat pe PC (vezi primul script) ca sa nu se
+	-- suprapuna cu el.
+	if isMobile then
+		details.AnchorPoint = Vector2.new(0.5, 0.5)
+		details.Position = UDim2.new(0.5, 0, 0.5, 0)
+		details.Size = UDim2.new(0.48, 0, 0.78, 0)
+	else
+		details.AnchorPoint = Vector2.new(1, 0.5)
+		details.Position = UDim2.new(0.985, 0, 0.58, 0)
+		details.Size = UDim2.new(0.38, 0, 0.82, 0)
+	end
 	details.BackgroundColor3 = Color3.fromRGB(12, 18, 32)
 	details.ZIndex = 100
 
@@ -386,48 +416,52 @@ local function setupDetailsLayout()
 	itemName.TextScaled = true
 	itemName.Font = Enum.Font.GothamBlack
 	itemName.TextColor3 = Color3.fromRGB(255, 255, 255)
-	itemName.Position = UDim2.new(0.08, 0, 0.05, 0)
-	itemName.Size = UDim2.new(0.70, 0, 0.10, 0)
+	itemName.Position = UDim2.new(0.08, 0, 0.04, 0)
+	itemName.Size = UDim2.new(0.70, 0, 0.07, 0)
 	itemName.ZIndex = 101
 
 	itemRarity.BackgroundTransparency = 1
 	itemRarity.TextScaled = true
 	itemRarity.Font = Enum.Font.GothamBold
-	itemRarity.Position = UDim2.new(0.08, 0, 0.16, 0)
-	itemRarity.Size = UDim2.new(0.45, 0, 0.08, 0)
+	itemRarity.Position = UDim2.new(0.08, 0, 0.115, 0)
+	itemRarity.Size = UDim2.new(0.45, 0, 0.05, 0)
 	itemRarity.ZIndex = 101
 
+	-- Petul marit mult (era 0.60x0.28) -- ocupa acum aproape tot latul
+	-- cardului, mai "premium", nu o poza mica pierduta in card.
 	itemImage.BackgroundTransparency = 1
-	itemImage.Position = UDim2.new(0.20, 0, 0.26, 0)
-	itemImage.Size = UDim2.new(0.60, 0, 0.28, 0)
+	itemImage.Position = UDim2.new(0.06, 0, 0.18, 0)
+	itemImage.Size = UDim2.new(0.88, 0, 0.42, 0)
 	itemImage.ScaleType = Enum.ScaleType.Fit
 	itemImage.ZIndex = 101
 
+	-- Scrisul de la bonusuri micsorat (cutii mai mici -> TextScaled umple mai
+	-- putin spatiu), ca sa se citeasca clar, nu sa domine cardul.
 	moneyBonus.BackgroundTransparency = 1
 	moneyBonus.TextScaled = true
 	moneyBonus.Font = Enum.Font.GothamBold
 	moneyBonus.TextColor3 = Color3.fromRGB(255, 255, 255)
-	moneyBonus.Position = UDim2.new(0.12, 0, 0.58, 0)
-	moneyBonus.Size = UDim2.new(0.76, 0, 0.08, 0)
+	moneyBonus.Position = UDim2.new(0.12, 0, 0.64, 0)
+	moneyBonus.Size = UDim2.new(0.76, 0, 0.06, 0)
 	moneyBonus.ZIndex = 101
 
 	luckBonus.BackgroundTransparency = 1
 	luckBonus.TextScaled = true
 	luckBonus.Font = Enum.Font.GothamBold
 	luckBonus.TextColor3 = Color3.fromRGB(255, 255, 255)
-	luckBonus.Position = UDim2.new(0.12, 0, 0.67, 0)
-	luckBonus.Size = UDim2.new(0.76, 0, 0.08, 0)
+	luckBonus.Position = UDim2.new(0.12, 0, 0.715, 0)
+	luckBonus.Size = UDim2.new(0.76, 0, 0.06, 0)
 	luckBonus.ZIndex = 101
 
 	sellBonus.BackgroundTransparency = 1
 	sellBonus.TextScaled = true
 	sellBonus.Font = Enum.Font.GothamBold
 	sellBonus.TextColor3 = Color3.fromRGB(255, 255, 255)
-	sellBonus.Position = UDim2.new(0.12, 0, 0.76, 0)
-	sellBonus.Size = UDim2.new(0.76, 0, 0.08, 0)
+	sellBonus.Position = UDim2.new(0.12, 0, 0.79, 0)
+	sellBonus.Size = UDim2.new(0.76, 0, 0.06, 0)
 	sellBonus.ZIndex = 101
 
-	equipButton.Position = UDim2.new(0.18, 0, 0.88, 0)
+	equipButton.Position = UDim2.new(0.18, 0, 0.90, 0)
 	equipButton.Size = UDim2.new(0.42, 0, 0.09, 0)
 	equipButton.BackgroundColor3 = Color3.fromRGB(70, 140, 255)
 	equipButton.TextColor3 = Color3.fromRGB(255, 255, 255)

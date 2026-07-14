@@ -4,15 +4,32 @@ local ServerStorage = game:GetService("ServerStorage")
 local templatesFolder = ServerStorage:WaitForChild("Templates")
 local standTemplate = templatesFolder:WaitForChild("StandTemplate")
 
--- 4 standuri pe iarba din stanga strazii, 4 in dreapta. TownMapBuilder:
--- strada la X in [-16,16], trotuare pana la X=+-24 -- SIDE_OFFSET_X=35 tine
--- standurile clar pe iarba, dincolo de trotuar. Z=480 le tine departe de
--- Token Shop/Egg Shop (~Z 240-264) si Index (~Z 369). ROW_SPACING marit din
--- nou (34->50), spatiu clar vizibil intre standuri, nu unul langa altul.
-local ROW_SPACING = 70
-local SIDE_OFFSET_X = 35
-local CENTER_Z = 480
+-- Pozitii date manual de jucator (coordonate exacte, cate 2 pe fiecare
+-- "rand" -- unul dat direct, celalalt in oglinda pe partea opusa a strazii,
+-- la acelasi Z). Rotatia se calculeaza automat dupa semnul lui X (stanga
+-- strazii = fata spre +X, dreapta = fata spre -X).
 local STAND_Y = 5
+
+-- Strada e la X in [-16,16], trotuarele pana la X=+-24 (vezi TownMapBuilder)
+-- -- 30 le tine clar pe iarba (6 studs dupa trotuar), dar aproape de strada,
+-- nu departate. FARA shift de grup -- simetric fata de mijlocul strazii
+-- (X=0), altfel un rand ajunge sa cada peste asfalt (exact ce s-a intamplat
+-- cu shift-ul de dinainte).
+local SIDE_DISTANCE = 45
+
+local Z_START = 331.155
+local Z_STEP = 90
+
+local ROW_Z = {Z_START, Z_START + Z_STEP, Z_START + Z_STEP * 2}
+
+local STAND_POSITIONS = {
+	{x = SIDE_DISTANCE, z = ROW_Z[1]},
+	{x = -SIDE_DISTANCE, z = ROW_Z[1]},
+	{x = -SIDE_DISTANCE, z = ROW_Z[2]},
+	{x = SIDE_DISTANCE, z = ROW_Z[2]},
+	{x = -SIDE_DISTANCE, z = ROW_Z[3]},
+	{x = SIDE_DISTANCE, z = ROW_Z[3]}
+}
 
 -- Aceeasi textura "bloxy" de pe strada/iarba (TownMapBuilder), dar tentata
 -- albastru (nu verde ca iarba) -- aplicata pe Base-ul fiecarui stand.
@@ -180,14 +197,10 @@ end
 local function createStands()
 	local positions = {}
 
-	for row = 1, 4 do
-		local z = CENTER_Z + (row - 2.5) * ROW_SPACING
-
-		-- Stand din stanga (fata standului spre strada, deci spre +X).
-		table.insert(positions, {x = -SIDE_OFFSET_X, z = z, rotY = math.rad(-90)})
-
-		-- Stand din dreapta (fata standului spre strada, deci spre -X).
-		table.insert(positions, {x = SIDE_OFFSET_X, z = z, rotY = math.rad(90)})
+	for _, entry in ipairs(STAND_POSITIONS) do
+		-- Stanga strazii (X<0) = fata spre +X; dreapta (X>0) = fata spre -X.
+		local rotY = entry.x < 0 and math.rad(-90) or math.rad(90)
+		table.insert(positions, {x = entry.x, z = entry.z, rotY = rotY})
 	end
 
 	for i, pos in ipairs(positions) do
@@ -198,6 +211,15 @@ local function createStands()
 		stand:SetAttribute("OwnerUserId", 0)
 		stand:SetAttribute("Occupied", false)
 		stand:SetAttribute("StandLevel", 1)
+
+		-- Fara PrimaryPart explicit, PivotTo foloseste pivotul automat calculat
+		-- de Roblox (bounding box), care poate sa nu fie axat drept -- de-aia
+		-- standurile ieseau usor "intr-o parte" dupa rotatie, nu drepte.
+		-- Fixam pivotul pe Base (partea de jos, cunoscuta), inainte de rotatie.
+		local baseForPivot = stand:FindFirstChild("Base")
+		if baseForPivot then
+			stand.PrimaryPart = baseForPivot
+		end
 
 		stand:PivotTo(
 			CFrame.new(pos.x, STAND_Y, pos.z) * CFrame.Angles(0, pos.rotY, 0)

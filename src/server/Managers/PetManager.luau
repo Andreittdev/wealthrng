@@ -73,6 +73,36 @@ function PetManager.CreateInventory(player)
 		equipped.Name = "EquippedPets"
 		equipped.Parent = player
 	end
+
+	local discovered = player:FindFirstChild("DiscoveredPets")
+	if not discovered then
+		discovered = Instance.new("Folder")
+		discovered.Name = "DiscoveredPets"
+		discovered.Parent = player
+	end
+end
+
+-- Marcheaza un PetId ca "descoperit vreodata" -- ramane asa chiar daca
+-- exemplarul respectiv e ulterior vandut/duplicat, folosit de Index ca sa
+-- stie ce peturi sa arate normal vs. ca o umbra neagra (nedescoperit).
+local function markDiscovered(player, petId)
+	if not petId then
+		return
+	end
+
+	local discovered = player:FindFirstChild("DiscoveredPets")
+	if not discovered then
+		return
+	end
+
+	if discovered:FindFirstChild(petId) then
+		return
+	end
+
+	local marker = Instance.new("BoolValue")
+	marker.Name = petId
+	marker.Value = true
+	marker.Parent = discovered
 end
 
 local function normalizePetData(rawPet)
@@ -197,6 +227,8 @@ local function savePet(player, petData)
 	petValue:SetAttribute("Image", petData.Image or "")
 
 	petValue.Parent = pets
+
+	markDiscovered(player, petData.PetId)
 
 	return petValue
 end

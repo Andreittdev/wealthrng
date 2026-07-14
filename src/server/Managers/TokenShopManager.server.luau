@@ -24,6 +24,13 @@ if not purchaseResultEvent then
 	purchaseResultEvent.Parent = remotes
 end
 
+local equipTitleEvent = remotes:FindFirstChild("EquipTitle")
+if not equipTitleEvent then
+	equipTitleEvent = Instance.new("RemoteEvent")
+	equipTitleEvent.Name = "EquipTitle"
+	equipTitleEvent.Parent = remotes
+end
+
 local function getTokensValue(player)
 	return player:FindFirstChild("RebirthTokens")
 end
@@ -140,3 +147,29 @@ local function doPurchase(player, itemId)
 end
 
 requestPurchaseEvent.OnServerEvent:Connect(doPurchase)
+
+-- Poti purta un singur titlu deodata (desi bonusurile de Luck ale TUTUROR
+-- titlurilor cumparate se aduna oricum -- echiparea e doar cosmetica/pentru
+-- afisarea din chat). titleId = "" inseamna "niciun titlu".
+local function equipTitle(player, titleId)
+	if titleId == "" then
+		player:SetAttribute("EquippedTitle", "")
+		DataManager.SaveData(player)
+		return
+	end
+
+	local item = findItem(titleId)
+
+	if not item or item.Type ~= "Title" then
+		return
+	end
+
+	if player:GetAttribute("TokenShopBought_" .. item.Id) ~= true then
+		return
+	end
+
+	player:SetAttribute("EquippedTitle", titleId)
+	DataManager.SaveData(player)
+end
+
+equipTitleEvent.OnServerEvent:Connect(equipTitle)

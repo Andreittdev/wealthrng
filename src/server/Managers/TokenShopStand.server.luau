@@ -15,7 +15,7 @@ end
 -- Pozitia standului fizic in lume (coordonate primite de la jucator, ajustate
 -- pe Y ca baza standului sa stea pe sol, nu la inaltimea HumanoidRootPart-ului
 -- unui personaj in picioare).
-local STALL_POSITION = Vector3.new(9.051, 5.8, 263.481)
+local STALL_POSITION = Vector3.new(10.035, 5.8, 219.254)
 
 -- Marimea textului de pe firma (BillboardGui). Offset-ul se comporta ca o
 -- dimensiune in lume (creste cand esti aproape) -- 260x70 a iesit gigantic

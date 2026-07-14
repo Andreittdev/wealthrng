@@ -5,7 +5,7 @@ local EggShopKeeper = require(script.Parent:WaitForChild("EggShopKeeper"))
 -- PetShop e un model asezat manual in Studio (nu e construit procedural aici,
 -- spre deosebire de TokenShopStall) -- doar il relocam si ii adaugam firma,
 -- la fel cum am facut cu standul de Rebirth Token Shop.
-local NEW_POSITION = Vector3.new(-11.173, 5.8, 261.996)
+local NEW_POSITION = Vector3.new(-10.746, 5.8, 218.653)
 
 -- Rotatia standului pe Y (grade). Spune-mi daca nu e unghiul potrivit si
 -- ajustez (0/90/180/270 sau orice alta valoare).
@@ -65,7 +65,7 @@ signLabel.Parent = signBillboard
 -- NPC langa stand, fara text deasupra (doar cel de la Token Shop are badge).
 -- Pozitie fixa, primita direct de la jucator (coordonatele HumanoidRootPart
 -- din Studio).
-local KEEPER_POSITION = Vector3.new(-11.653, 9.11, 264.026)
+local KEEPER_POSITION = Vector3.new(-11.226, 9.11, 220.683)
 EggShopKeeper.Spawn(petShop, KEEPER_POSITION)
 
 -- Aceeasi textura "bloxy" de pe strada/iarba (TownMapBuilder), tentata verde
