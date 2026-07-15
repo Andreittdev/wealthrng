@@ -52,6 +52,7 @@ local REMOTE_EVENTS = {
 	"EquipPet",
 	"EquipTitle",
 	"MarketUpdate",
+	"OpenBank",
 	"OpenEggShop",
 	"OpenIndex",
 	"OpenPetCrate",

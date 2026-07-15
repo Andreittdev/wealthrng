@@ -52,7 +52,7 @@ local rarityColors = {
 	Rare = Color3.fromRGB(60, 150, 255),
 	Epic = Color3.fromRGB(170, 90, 255),
 	Legendary = Color3.fromRGB(255, 180, 40),
-	Mythic = Color3.fromRGB(255, 80, 255)
+	Mythic = Color3.fromRGB(255, 70, 180)
 }
 
 local function addCorner(obj, radius)
@@ -416,52 +416,175 @@ local function setupDetailsLayout()
 	itemName.TextScaled = true
 	itemName.Font = Enum.Font.GothamBlack
 	itemName.TextColor3 = Color3.fromRGB(255, 255, 255)
-	itemName.Position = UDim2.new(0.08, 0, 0.04, 0)
-	itemName.Size = UDim2.new(0.70, 0, 0.07, 0)
+	itemName.TextXAlignment = Enum.TextXAlignment.Center
+	itemName.Position = UDim2.new(0.18, 0, 0.04, 0)
+	itemName.Size = UDim2.new(0.64, 0, 0.07, 0)
 	itemName.ZIndex = 101
 
+	-- Raritatea foloseste ACELASI dreptunghi (Position/Size) ca numele, cu
+	-- aliniere pe centru la fel ca numele -- inainte avea o cutie mai ingusta
+	-- (0.45 in loc de 0.70) si aliniere la dreapta, deci centrul ei cadea in
+	-- alta parte decat centrul numelui (de-aia parea "sub stanga", nu sub
+	-- mijloc).
 	itemRarity.BackgroundTransparency = 1
 	itemRarity.TextScaled = true
 	itemRarity.Font = Enum.Font.GothamBold
-	itemRarity.Position = UDim2.new(0.08, 0, 0.115, 0)
-	itemRarity.Size = UDim2.new(0.45, 0, 0.05, 0)
+	itemRarity.TextXAlignment = Enum.TextXAlignment.Center
+	itemRarity.Position = UDim2.new(0.18, 0, 0.115, 0)
+	itemRarity.Size = UDim2.new(0.64, 0, 0.05, 0)
 	itemRarity.ZIndex = 101
 
 	-- Petul marit mult (era 0.60x0.28) -- ocupa acum aproape tot latul
 	-- cardului, mai "premium", nu o poza mica pierduta in card.
 	itemImage.BackgroundTransparency = 1
 	itemImage.Position = UDim2.new(0.06, 0, 0.18, 0)
-	itemImage.Size = UDim2.new(0.88, 0, 0.42, 0)
+	itemImage.Size = UDim2.new(0.88, 0, 0.36, 0)
 	itemImage.ScaleType = Enum.ScaleType.Fit
 	itemImage.ZIndex = 101
 
-	-- Scrisul de la bonusuri micsorat (cutii mai mici -> TextScaled umple mai
-	-- putin spatiu), ca sa se citeasca clar, nu sa domine cardul.
-	moneyBonus.BackgroundTransparency = 1
-	moneyBonus.TextScaled = true
-	moneyBonus.Font = Enum.Font.GothamBold
-	moneyBonus.TextColor3 = Color3.fromRGB(255, 255, 255)
-	moneyBonus.Position = UDim2.new(0.12, 0, 0.64, 0)
-	moneyBonus.Size = UDim2.new(0.76, 0, 0.06, 0)
-	moneyBonus.ZIndex = 101
+	-- Insigne colorate (icon + valoare mare + eticheta mica), gen DMG/SPA/RNG
+	-- din jocuri similare -- inainte erau 3 randuri de text stivuite ("💰 Sell
+	-- Price: +X%"), acum e un rand de 3 cutii, mai usor de citit dintr-o privire.
+	-- Rand mutat mai sus (0.64 -> 0.58) ca sa faca loc etichetei (COIN/LUCK/
+	-- SPEED), care acum sta SUB card, nu inauntrul lui.
+	local statRow = details:FindFirstChild("StatBadgeRow")
+	if not statRow then
+		statRow = Instance.new("Frame")
+		statRow.Name = "StatBadgeRow"
+		statRow.BackgroundTransparency = 1
+		statRow.Parent = details
+	end
+	statRow.Position = UDim2.new(0.06, 0, 0.61, 0)
+	statRow.Size = UDim2.new(0.88, 0, 0.21, 0)
+	statRow.ZIndex = 101
 
-	luckBonus.BackgroundTransparency = 1
-	luckBonus.TextScaled = true
-	luckBonus.Font = Enum.Font.GothamBold
-	luckBonus.TextColor3 = Color3.fromRGB(255, 255, 255)
-	luckBonus.Position = UDim2.new(0.12, 0, 0.715, 0)
-	luckBonus.Size = UDim2.new(0.76, 0, 0.06, 0)
-	luckBonus.ZIndex = 101
+	-- 🪙 (moneda) nu se randa deloc la unii jucatori (glif lipsa din fontul
+	-- Roblox implicit) -- inlocuit cu o iconita construita din forme (cerc auriu
+	-- + "$"), aceeasi tehnica folosita si la Daily Rewards, garantat vizibila.
+	local function buildCoinIcon(container, accentColor)
+		local coin = Instance.new("Frame")
+		coin.Name = "CoinShape"
+		coin.AnchorPoint = Vector2.new(0.5, 0.5)
+		coin.Position = UDim2.new(0.5, 0, 0.5, 0)
+		coin.Size = UDim2.new(1, 0, 1, 0)
+		coin.BackgroundColor3 = accentColor
+		coin.BorderSizePixel = 0
+		coin.ZIndex = 103
+		coin.Parent = container
+		Instance.new("UICorner", coin).CornerRadius = UDim.new(0.5, 0)
 
-	sellBonus.BackgroundTransparency = 1
-	sellBonus.TextScaled = true
-	sellBonus.Font = Enum.Font.GothamBold
-	sellBonus.TextColor3 = Color3.fromRGB(255, 255, 255)
-	sellBonus.Position = UDim2.new(0.12, 0, 0.79, 0)
-	sellBonus.Size = UDim2.new(0.76, 0, 0.06, 0)
-	sellBonus.ZIndex = 101
+		local coinStroke = Instance.new("UIStroke")
+		coinStroke.Color = Color3.fromRGB(120, 85, 10)
+		coinStroke.Thickness = 2
+		coinStroke.Parent = coin
 
-	equipButton.Position = UDim2.new(0.18, 0, 0.90, 0)
+		local sign = Instance.new("TextLabel")
+		sign.Name = "Sign"
+		sign.BackgroundTransparency = 1
+		sign.Size = UDim2.new(1, 0, 1, 0)
+		sign.Text = "$"
+		sign.TextColor3 = Color3.fromRGB(120, 85, 10)
+		sign.Font = Enum.Font.GothamBlack
+		sign.TextScaled = true
+		sign.ZIndex = 104
+		sign.Parent = coin
+	end
+
+	local function createStatBadge(order, valueLabel, iconKind, captionText, accentColor)
+		local badge = statRow:FindFirstChild("StatBadge" .. order)
+		if not badge then
+			badge = Instance.new("Frame")
+			badge.Name = "StatBadge" .. order
+			badge.Parent = statRow
+		end
+
+		badge.BackgroundColor3 = accentColor
+		badge.BackgroundTransparency = 0.55
+		badge.Position = UDim2.new((order - 1) * 0.345, 0, 0, 0)
+		badge.Size = UDim2.new(0.31, 0, 0.76, 0)
+		badge.ZIndex = 101
+
+		if not badge:FindFirstChildOfClass("UICorner") then
+			Instance.new("UICorner", badge).CornerRadius = UDim.new(0.22, 0)
+		end
+
+		local stroke = badge:FindFirstChildOfClass("UIStroke")
+		if not stroke then
+			stroke = Instance.new("UIStroke")
+			stroke.Parent = badge
+		end
+		stroke.Color = accentColor
+		stroke.Thickness = 2
+		stroke.Transparency = 0.1
+
+		-- Icon SUS, centrat, mai mare -- valoarea DEDESUBT, tot centrata. Stivuite
+		-- pe verticala (nu una langa alta), ca ambele sa fie clar vizibile, nu
+		-- inghesuite lateral pe o cutie ingusta.
+		local iconContainer = badge:FindFirstChild("IconContainer")
+		if not iconContainer then
+			iconContainer = Instance.new("Frame")
+			iconContainer.Name = "IconContainer"
+			iconContainer.BackgroundTransparency = 1
+			iconContainer.Parent = badge
+		end
+		iconContainer.Position = UDim2.new(0.30, 0, 0.10, 0)
+		iconContainer.Size = UDim2.new(0.40, 0, 0.42, 0)
+		iconContainer.ZIndex = 102
+
+		if iconKind == "coin" then
+			if not iconContainer:FindFirstChild("CoinShape") then
+				buildCoinIcon(iconContainer, accentColor)
+			end
+		else
+			local icon = iconContainer:FindFirstChild("Icon")
+			if not icon then
+				icon = Instance.new("TextLabel")
+				icon.Name = "Icon"
+				icon.Parent = iconContainer
+			end
+			icon.BackgroundTransparency = 1
+			icon.Text = iconKind
+			icon.TextScaled = true
+			icon.Size = UDim2.new(1, 0, 1, 0)
+			icon.ZIndex = 102
+		end
+
+		valueLabel.Parent = badge
+		valueLabel.BackgroundTransparency = 1
+		valueLabel.Font = Enum.Font.LuckiestGuy
+		valueLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+		valueLabel.TextScaled = true
+		valueLabel.TextXAlignment = Enum.TextXAlignment.Center
+		valueLabel.Position = UDim2.new(0.05, 0, 0.56, 0)
+		valueLabel.Size = UDim2.new(0.9, 0, 0.36, 0)
+		valueLabel.ZIndex = 102
+
+		-- Eticheta acum e SUB card (in statRow, nu in badge), colorata cu
+		-- aceeasi nuanta ca cardul.
+		local caption = statRow:FindFirstChild("Caption" .. order)
+		if not caption then
+			caption = Instance.new("TextLabel")
+			caption.Name = "Caption" .. order
+			caption.Parent = statRow
+		end
+		caption.BackgroundTransparency = 1
+		caption.Text = captionText
+		caption.Font = Enum.Font.LuckiestGuy
+		caption.TextColor3 = accentColor
+		caption.TextScaled = true
+		caption.TextXAlignment = Enum.TextXAlignment.Center
+		caption.Position = UDim2.new((order - 1) * 0.345, 0, 0.82, 0)
+		caption.Size = UDim2.new(0.31, 0, 0.18, 0)
+		caption.ZIndex = 101
+	end
+
+	-- Culori distincte per stat, ca sa se recunoasca dintr-o privire:
+	-- auriu = bani, verde = noroc (trifoi), albastru-cyan = viteza (fulger).
+	createStatBadge(1, moneyBonus, "coin", "CASH", Color3.fromRGB(255, 195, 60))
+	createStatBadge(2, luckBonus, "🍀", "LUCK", Color3.fromRGB(90, 220, 110))
+	createStatBadge(3, sellBonus, "⚡", "SPEED", Color3.fromRGB(80, 190, 255))
+
+	equipButton.Position = UDim2.new(0.29, 0, 0.90, 0)
 	equipButton.Size = UDim2.new(0.42, 0, 0.09, 0)
 	equipButton.BackgroundColor3 = Color3.fromRGB(70, 140, 255)
 	equipButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -483,7 +606,8 @@ local rarityColors = {
 	Common = Color3.fromRGB(150, 150, 150),
 	Rare = Color3.fromRGB(60, 150, 255),
 	Epic = Color3.fromRGB(170, 90, 255),
-	Legendary = Color3.fromRGB(255, 180, 40)
+	Legendary = Color3.fromRGB(255, 180, 40),
+	Mythic = Color3.fromRGB(255, 70, 180)
 }
 
 local function openItemDetails(petId, petInstanceName)
@@ -503,9 +627,9 @@ local function openItemDetails(petId, petInstanceName)
 	-- cu Sell Price (bonus real, folosit deja de SellManager) si NPC Speed
 	-- (bonus real, folosit deja de NPCManager), langa NPC Luck care era deja
 	-- corect. Astea sunt bonusurile REALE pe care le da orice pet.
-	moneyBonus.Text = "💰 Sell Price: +" .. tostring(data.Bonuses.SellPrice or 0) .. "%"
-	luckBonus.Text = "🍀 NPC Luck: +" .. tostring(data.Bonuses.NpcLuck or 0) .. "%"
-	sellBonus.Text = "⚡ NPC Speed: +" .. tostring(data.Bonuses.NpcSpeed or 0) .. "%"
+	moneyBonus.Text = "+" .. tostring(data.Bonuses.SellPrice or 0) .. "%"
+	luckBonus.Text = "+" .. tostring(data.Bonuses.NpcLuck or 0) .. "%"
+	sellBonus.Text = "+" .. tostring(data.Bonuses.NpcSpeed or 0) .. "%"
 
 	equipButton.Text = isPetEquipped(petInstanceName) and "UNEQUIP" or "EQUIP"
 end

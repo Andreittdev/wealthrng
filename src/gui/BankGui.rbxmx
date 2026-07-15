@@ -38,6 +38,7 @@ local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local depositEvent = remotes:WaitForChild("DepositMoney")
 local withdrawEvent = remotes:WaitForChild("WithdrawMoney")
 local getBankData = remotes:WaitForChild("GetBankData")
+local openBankEvent = remotes:WaitForChild("OpenBank")
 
 local bankGui = script.Parent
 local mainFrame = bankGui:WaitForChild("MainFrame")
@@ -54,10 +55,8 @@ local withdrawButton = mainFrame:WaitForChild("WithdrawButton")
 local cashLabel = cashBox:WaitForChild("CashLabel")
 local bankLabel = bankBox:WaitForChild("BankLabel")
 
-local mainHud = playerGui:WaitForChild("MainHUD")
-local bottomBar = mainHud:WaitForChild("BottomBar")
-local row1 = bottomBar:WaitForChild("Row1")
-local bankButton = row1:WaitForChild("BankButton")
+-- Butonul "BANK" din HUD a fost scos -- banca se deschide doar prin
+-- ProximityPrompt-ul de la cladirea fizica (vezi BankBuilding.server.luau).
 
 -- TouchEnabled singur nu e de incredere -- verificam si dimensiunea reala a
 -- ecranului (acelasi fix aplicat si la celelalte GUI-uri).
@@ -178,13 +177,12 @@ amountBox:GetPropertyChangedSignal("Text"):Connect(function()
 	end
 end)
 
-bankButton.Activated:Connect(function()
-	mainFrame.Visible = not mainFrame.Visible
-
-	if mainFrame.Visible then
-		applyLayout()
-		refresh()
-	end
+-- Deschis exclusiv de la cladirea fizica a bancii (ProximityPrompt, vezi
+-- BankBuilding.server.luau) -- butonul din HUD a fost eliminat.
+openBankEvent.OnClientEvent:Connect(function()
+	mainFrame.Visible = true
+	applyLayout()
+	refresh()
 end)
 
 closeButton.Activated:Connect(function()

@@ -30,6 +30,8 @@
 				<ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
 local Economy = require(ReplicatedStorage.Modules:WaitForChild("EconomyConfig"))
 
 local player = Players.LocalPlayer
@@ -53,10 +55,9 @@ end
 
 local isMobile = computeIsMobile()
 
-local mainHud = playerGui:WaitForChild("MainHUD")
-local bottomBar = mainHud:WaitForChild("BottomBar")
-local row2 = bottomBar:WaitForChild("Row2")
-local standButton = row2:WaitForChild("StandButton")
+-- Butonul "STAND" din HUD a fost scos -- panoul se deschide/inchide singur
+-- cand jucatorul calca pe podeaua standului lui (vezi bucla de mai jos,
+-- "Zona galbena de la stand", si ClaimZone-ul creat in StandManager.server.luau).
 
 local header = mainFrame:WaitForChild("Header")
 local closeButton = header:WaitForChild("CloseButton")
@@ -309,17 +310,62 @@ end
 mainFrame.Visible = false
 applyLayout()
 
-standButton.Activated:Connect(function()
-	mainFrame.Visible = not mainFrame.Visible
-
-	if mainFrame.Visible then
-		applyLayout()
-		requestStandLevelEvent:FireServer()
-	end
-end)
-
 closeButton.Activated:Connect(function()
 	mainFrame.Visible = false
+end)
+
+-- ================= Zona galbena de la stand =================
+-- Cercul galben e desenat pe server (StandManager.server.luau, "ClaimZone",
+-- copil al Base-ului standului tau) -- aici doar verificam periodic distanta
+-- pana la el si aratam/ascundem panoul automat. Deschide DOAR la intrare (nu
+-- forteaza redeschiderea daca inchizi manual cat timp esti tot inauntru) si
+-- inchide mereu la iesire.
+local ZONE_CHECK_INTERVAL = 0.3
+local zoneCheckTimer = 0
+local wasInOwnZone = false
+
+local function findOwnClaimZone()
+	local standsFolder = Workspace:FindFirstChild("GeneratedStands")
+	if not standsFolder then
+		return nil
+	end
+
+	for _, stand in ipairs(standsFolder:GetChildren()) do
+		if stand:GetAttribute("OwnerUserId") == player.UserId then
+			local base = stand:FindFirstChild("Base")
+			return base and base:FindFirstChild("ClaimZone")
+		end
+	end
+
+	return nil
+end
+
+RunService.Heartbeat:Connect(function(dt)
+	zoneCheckTimer += dt
+	if zoneCheckTimer < ZONE_CHECK_INTERVAL then
+		return
+	end
+	zoneCheckTimer = 0
+
+	local character = player.Character
+	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+	local zone = rootPart and findOwnClaimZone()
+
+	local inZone = false
+	if zone then
+		local flatOffset = Vector2.new(rootPart.Position.X - zone.Position.X, rootPart.Position.Z - zone.Position.Z)
+		inZone = flatOffset.Magnitude <= (zone.Size.Y / 2)
+	end
+
+	if inZone and not wasInOwnZone then
+		mainFrame.Visible = true
+		applyLayout()
+		requestStandLevelEvent:FireServer()
+	elseif not inZone and wasInOwnZone then
+		mainFrame.Visible = false
+	end
+
+	wasInOwnZone = inZone
 end)
 
 -- Acelasi flag comun folosit de Starter Pack/Rebirth/Daily Rewards/Token
