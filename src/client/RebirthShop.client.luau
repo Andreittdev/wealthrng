@@ -15,7 +15,7 @@ local rebirthResultEvent = remotes:WaitForChild("RebirthResult")
 
 local REQUIRED_LEVEL = Economy.Rebirth.RequiredStandLevel
 
-local FONT_DISPLAY = Enum.Font.Bangers
+local FONT_DISPLAY = Enum.Font.LuckiestGuy
 local FONT_BODY = Enum.Font.FredokaOne
 
 local PURPLE_LIGHT = Color3.fromRGB(196, 140, 255)
@@ -86,8 +86,8 @@ toggleStroke.Parent = toggleButton
 
 local toggleTitle = Instance.new("TextLabel")
 toggleTitle.BackgroundTransparency = 1
-toggleTitle.Position = UDim2.new(0, 10, 0, 8)
-toggleTitle.Size = UDim2.new(1, -20, 0, 32)
+toggleTitle.Position = UDim2.new(0, 10, 0, 10)
+toggleTitle.Size = UDim2.new(1, -20, 0, 26)
 toggleTitle.Text = "REBIRTH"
 toggleTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleTitle.TextStrokeColor3 = OUTLINE_DARK
@@ -100,10 +100,10 @@ toggleTitle.Parent = toggleButton
 local toggleSubtitle = Instance.new("TextLabel")
 toggleSubtitle.BackgroundTransparency = 1
 toggleSubtitle.Position = UDim2.new(0, 10, 0, 40)
-toggleSubtitle.Size = UDim2.new(1, -20, 0, 20)
+toggleSubtitle.Size = UDim2.new(1, -20, 0, 16)
 toggleSubtitle.Text = "Rebirths: 0"
 toggleSubtitle.TextColor3 = TEXT_LIGHT
-toggleSubtitle.Font = FONT_BODY
+toggleSubtitle.Font = FONT_DISPLAY
 toggleSubtitle.TextScaled = true
 toggleSubtitle.ZIndex = 11
 toggleSubtitle.Parent = toggleButton
@@ -343,9 +343,26 @@ rebirthButtonStroke.Color = OUTLINE_DARK
 rebirthButtonStroke.Thickness = 3
 rebirthButtonStroke.Parent = rebirthButton
 
+-- Fara padding, TextScaled calculeaza fontul dupa latimea INTREAGA a
+-- butonului -- textul "REBIRTH NOW" ajungea sa atinga/depaseasca vizual
+-- coltul rotunjit (UICorner). Padding-ul lasa margine reala, deci fontul
+-- calculat de TextScaled iese automat mai mic si incape sigur in buton.
+local rebirthButtonPadding = Instance.new("UIPadding")
+rebirthButtonPadding.PaddingLeft = UDim.new(0, 20)
+rebirthButtonPadding.PaddingRight = UDim.new(0, 20)
+rebirthButtonPadding.PaddingTop = UDim.new(0, 10)
+rebirthButtonPadding.PaddingBottom = UDim.new(0, 2)
+rebirthButtonPadding.Parent = rebirthButton
+
 -- ================= Actualizare live a starii =================
 
 local isEligible = false
+
+-- Retinute la nivel de modul (nu doar locale in refreshState) -- butonul are
+-- nevoie de ele cand jucatorul apasa desi nu e eligibil, ca sa stie EXACT ce
+-- ii lipseste (Stand Level sau bani), nu doar ca "nu poate".
+local missingLevel = false
+local missingMoney = false
 
 local function refreshState()
 	local level = getStandLevel()
@@ -357,6 +374,9 @@ local function refreshState()
 
 	local hasLevel = level >= REQUIRED_LEVEL
 	local hasMoney = money >= requiredMoney
+
+	missingLevel = not hasLevel
+	missingMoney = not hasMoney
 
 	levelCheck.Text = hasLevel and "✅" or "❌"
 	levelLabel.Text = "Stand Level " .. level .. " / " .. REQUIRED_LEVEL
@@ -503,8 +523,26 @@ end)
 
 addHoverPop(toggleButton)
 
+-- Cand jucatorul apasa desi butonul e "LOCKED", nu se intampla nimic vizibil
+-- inainte -- acum arata explicit ce lipseste (Stand Level, apoi bani, in
+-- aceeasi ordine ca verificarea serverului) direct pe buton, cateva secunde,
+-- inainte sa revina la "LOCKED". showMissingReasonUntil evita sa se suprapuna
+-- doua mesaje daca jucatorul apasa repetat.
+local showMissingReasonUntil = 0
+
 rebirthButton.Activated:Connect(function()
 	if not isEligible then
+		rebirthButton.Text = missingLevel and "Not enough Stand Level" or "Not enough Money"
+
+		local myClickTime = os.clock()
+		showMissingReasonUntil = myClickTime
+
+		task.delay(1.5, function()
+			if showMissingReasonUntil == myClickTime and not isEligible then
+				rebirthButton.Text = "LOCKED"
+			end
+		end)
+
 		return
 	end
 

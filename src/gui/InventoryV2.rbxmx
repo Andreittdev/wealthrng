@@ -77,12 +77,51 @@ if not selectedIcon then
 end
 
 local selectedName = detailsArea:WaitForChild("SelectedName")
+local selectedCategory = detailsArea:WaitForChild("SelectedCategory")
 local selectedRarity = detailsArea:WaitForChild("SelectedRarity")
 local selectedPrice = detailsArea:WaitForChild("SelectedPrice")
 local sellButton = detailsArea:WaitForChild("SellButton")
+
+-- Fortam proprietatile astea direct din script, la runtime -- editarile
+-- facute doar in fisierul .rbxmx (Text/Font/TextScaled/Alignment) nu se vedeau
+-- corect in joc de mai multe ori la rand, semn ca instanta asta ramasese cu
+-- valori vechi undeva (sincronizare/cache Rojo). Setandu-le aici, in script,
+-- sunt garantat corecte de fiecare data cand jucatorul deschide Inventory,
+-- indiferent de orice a mai ramas cache-uit pe obiectul din XML.
+sellButton.Text = "SELL"
+sellButton.Font = Enum.Font.LuckiestGuy
+-- TextScaled parea sa calculeze un font mult mai mic decat ar trebui pentru
+-- cutia asta (motiv neclar -- posibil o particularitate a fontului Luckiest
+-- Guy la un raport lat/scund) -- trecut pe TextSize fix, mare, garantat
+-- vizibil, in loc sa mai depindem de auto-scale.
+sellButton.TextScaled = false
+sellButton.TextSize = 28
+sellButton.TextWrapped = false
+sellButton.TextXAlignment = Enum.TextXAlignment.Center
+sellButton.TextYAlignment = Enum.TextYAlignment.Center
+sellButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+-- Colturi rotunjite, la fel ca la cardul principal (MainFrame), nu drepte.
+local sellButtonCorner = sellButton:FindFirstChildOfClass("UICorner")
+if not sellButtonCorner then
+	sellButtonCorner = Instance.new("UICorner")
+	sellButtonCorner.Parent = sellButton
+end
+sellButtonCorner.CornerRadius = UDim.new(0, 14)
+
+local sellButtonPadding = sellButton:FindFirstChildOfClass("UIPadding")
+if not sellButtonPadding then
+	sellButtonPadding = Instance.new("UIPadding")
+	sellButtonPadding.Parent = sellButton
+end
+sellButtonPadding.PaddingLeft = UDim.new(0, 4)
+sellButtonPadding.PaddingRight = UDim.new(0, 4)
+sellButtonPadding.PaddingTop = UDim.new(0, 5)
+sellButtonPadding.PaddingBottom = UDim.new(0, 1)
 local mobileDetailsFrame = nil
 local mobileIcon = nil
 local mobileName = nil
+local mobileCategory = nil
 local mobileRarity = nil
 local mobilePrice = nil
 local mobileSellButton = nil
@@ -121,16 +160,16 @@ if isMobile then
 	mobileIcon = Instance.new("ImageLabel")
 	mobileIcon.Parent = mobileDetailsFrame
 	mobileIcon.BackgroundTransparency = 1
-	mobileIcon.Size = UDim2.new(0.48, 0, 0.38, 0)
-	mobileIcon.Position = UDim2.new(0.26, 0, 0.16, 0)
+	mobileIcon.Size = UDim2.new(0.48, 0, 0.34, 0)
+	mobileIcon.Position = UDim2.new(0.26, 0, 0.14, 0)
 	mobileIcon.ScaleType = Enum.ScaleType.Fit
 	mobileIcon.ZIndex = 301
 
 	mobileName = Instance.new("TextLabel")
 	mobileName.Parent = mobileDetailsFrame
 	mobileName.BackgroundTransparency = 1
-	mobileName.Size = UDim2.new(0.90, 0, 0.12, 0)
-	mobileName.Position = UDim2.new(0.05, 0, 0.55, 0)
+	mobileName.Size = UDim2.new(0.90, 0, 0.09, 0)
+	mobileName.Position = UDim2.new(0.05, 0, 0.49, 0)
 	mobileName.TextColor3 = Color3.fromRGB(255, 255, 255)
 	mobileName.TextScaled = true
 	mobileName.Font = Enum.Font.GothamBlack
@@ -139,17 +178,27 @@ if isMobile then
 	mobileRarity = Instance.new("TextLabel")
 	mobileRarity.Parent = mobileDetailsFrame
 	mobileRarity.BackgroundTransparency = 1
-	mobileRarity.Size = UDim2.new(0.90, 0, 0.09, 0)
-	mobileRarity.Position = UDim2.new(0.05, 0, 0.68, 0)
+	mobileRarity.Size = UDim2.new(0.90, 0, 0.08, 0)
+	mobileRarity.Position = UDim2.new(0.05, 0, 0.59, 0)
 	mobileRarity.TextScaled = true
 	mobileRarity.Font = Enum.Font.GothamBold
 	mobileRarity.ZIndex = 301
 
+	mobileCategory = Instance.new("TextLabel")
+	mobileCategory.Parent = mobileDetailsFrame
+	mobileCategory.BackgroundTransparency = 1
+	mobileCategory.Size = UDim2.new(0.90, 0, 0.07, 0)
+	mobileCategory.Position = UDim2.new(0.05, 0, 0.67, 0)
+	mobileCategory.TextColor3 = Color3.fromRGB(140, 165, 200)
+	mobileCategory.TextScaled = true
+	mobileCategory.Font = Enum.Font.GothamBold
+	mobileCategory.ZIndex = 301
+
 	mobilePrice = Instance.new("TextLabel")
 	mobilePrice.Parent = mobileDetailsFrame
 	mobilePrice.BackgroundTransparency = 1
-	mobilePrice.Size = UDim2.new(0.90, 0, 0.09, 0)
-	mobilePrice.Position = UDim2.new(0.05, 0, 0.77, 0)
+	mobilePrice.Size = UDim2.new(0.90, 0, 0.08, 0)
+	mobilePrice.Position = UDim2.new(0.05, 0, 0.76, 0)
 	mobilePrice.TextColor3 = Color3.fromRGB(255, 255, 255)
 	mobilePrice.TextScaled = true
 	mobilePrice.Font = Enum.Font.GothamBold
@@ -158,13 +207,20 @@ if isMobile then
 	mobileSellButton = Instance.new("TextButton")
 	mobileSellButton.Parent = mobileDetailsFrame
 	mobileSellButton.Text = "SELL"
-	mobileSellButton.Size = UDim2.new(0.70, 0, 0.11, 0)
+	mobileSellButton.Size = UDim2.new(0.70, 0, 0.10, 0)
 	mobileSellButton.Position = UDim2.new(0.15, 0, 0.87, 0)
 	mobileSellButton.BackgroundColor3 = Color3.fromRGB(45, 210, 95)
 	mobileSellButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 	mobileSellButton.TextScaled = true
-	mobileSellButton.Font = Enum.Font.GothamBlack
+	mobileSellButton.TextWrapped = false
+	mobileSellButton.TextXAlignment = Enum.TextXAlignment.Center
+	mobileSellButton.TextYAlignment = Enum.TextYAlignment.Center
+	mobileSellButton.Font = Enum.Font.LuckiestGuy
 	mobileSellButton.ZIndex = 301
+
+	local mobileSellCorner = Instance.new("UICorner")
+	mobileSellCorner.CornerRadius = UDim.new(0, 14)
+	mobileSellCorner.Parent = mobileSellButton
 end
 
 local inventoryCountLabel = mainFrame:FindFirstChild("InventoryCountLabel", true)
@@ -307,9 +363,10 @@ local function clearDetails()
 
 	selectedIcon.Image = ""
 	selectedName.Text = "SELECT AN ITEM"
+	selectedCategory.Text = "CATEGORY: -"
 	selectedRarity.Text = "RARITY: -"
 	selectedRarity.TextColor3 = Color3.fromRGB(180, 180, 180)
-	selectedPrice.Text = "BUY: $0"
+	selectedPrice.Text = "BOUGHT: $0"
 
 	if isMobile and mobileDetailsFrame then
 		mobileDetailsFrame.Visible = false
@@ -349,15 +406,17 @@ local function selectSlot(slot, item)
 
 	selectedIcon.Image = item.Image or ""
 	selectedName.Text = string.upper(item.ItemName or "Unknown Item")
+	selectedCategory.Text = "CATEGORY: " .. (item.Category or "Misc")
 	selectedRarity.Text = "RARITY: " .. rarity
 	selectedRarity.TextColor3 = rarityColor
-	selectedPrice.Text = "BUY: $" .. tostring(item.BuyPrice or 0)
+	selectedPrice.Text = "BOUGHT: $" .. tostring(item.BuyPrice or 0)
 	if isMobile and mobileDetailsFrame then
 		mobileIcon.Image = item.Image or ""
 		mobileName.Text = string.upper(item.ItemName or "Unknown Item")
+		mobileCategory.Text = "CATEGORY: " .. (item.Category or "Misc")
 		mobileRarity.Text = "RARITY: " .. rarity
 		mobileRarity.TextColor3 = rarityColor
-		mobilePrice.Text = "BUY: $" .. tostring(item.BuyPrice or 0)
+		mobilePrice.Text = "BOUGHT: $" .. tostring(item.BuyPrice or 0)
 	end
 
 end
@@ -1648,7 +1707,7 @@ end)]]></ProtectedString>
 							<XS>0</XS>
 							<XO>10</XO>
 							<YS>0</YS>
-							<YO>170</YO>
+							<YO>166</YO>
 						</UDim2>
 						<float name="Rotation">0</float>
 						<bool name="Selectable">false</bool>
@@ -1658,7 +1717,7 @@ end)]]></ProtectedString>
 							<XS>1</XS>
 							<XO>-20</XO>
 							<YS>0</YS>
-							<YO>32</YO>
+							<YO>30</YO>
 						</UDim2>
 						<token name="SizeConstraint">0</token>
 						<bool name="Visible">true</bool>
@@ -1674,6 +1733,101 @@ end)]]></ProtectedString>
 						<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
 						<bool name="DefinesCapabilities">false</bool>
 						<string name="Name">SelectedName</string>
+						<int64 name="SourceAssetId">-1</int64>
+						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+					</Properties>
+				</Item>
+				<Item class="TextLabel" referent="RBXCAT01SELECTEDCATEGORY000001">
+					<Properties>
+						<Font name="FontFace">
+							<Family><url>rbxasset://fonts/families/LuckiestGuy.json</url></Family>
+							<Weight>400</Weight>
+							<Style>Normal</Style>
+						</Font>
+						<float name="LineHeight">1</float>
+						<string name="LocalizationMatchIdentifier"></string>
+						<string name="LocalizationMatchedSourceText"></string>
+						<int name="MaxVisibleGraphemes">-1</int>
+						<string name="OpenTypeFeatures"></string>
+						<bool name="RichText">false</bool>
+						<string name="Text">Clothing</string>
+						<Color3 name="TextColor3">
+							<R>0.55</R>
+							<G>0.65</G>
+							<B>0.78</B>
+						</Color3>
+						<token name="TextDirection">0</token>
+						<bool name="TextScaled">true</bool>
+						<float name="TextSize">14</float>
+						<Color3 name="TextStrokeColor3">
+							<R>0</R>
+							<G>0</G>
+							<B>0</B>
+						</Color3>
+						<float name="TextStrokeTransparency">1</float>
+						<float name="TextTransparency">0</float>
+						<token name="TextTruncate">0</token>
+						<bool name="TextWrapped">true</bool>
+						<token name="TextXAlignment">2</token>
+						<token name="TextYAlignment">1</token>
+						<bool name="Active">false</bool>
+						<Vector2 name="AnchorPoint">
+							<X>0</X>
+							<Y>0</Y>
+						</Vector2>
+						<token name="AutomaticSize">0</token>
+						<Color3 name="BackgroundColor3">
+							<R>1</R>
+							<G>1</G>
+							<B>1</B>
+						</Color3>
+						<float name="BackgroundTransparency">1</float>
+						<Color3 name="BorderColor3">
+							<R>0</R>
+							<G>0</G>
+							<B>0</B>
+						</Color3>
+						<token name="BorderMode">0</token>
+						<int name="BorderSizePixel">0</int>
+						<bool name="ClipsDescendants">false</bool>
+						<bool name="Draggable">false</bool>
+						<token name="InputSink">0</token>
+						<bool name="Interactable">true</bool>
+						<int name="LayoutOrder">0</int>
+						<Ref name="NextSelectionDown">null</Ref>
+						<Ref name="NextSelectionLeft">null</Ref>
+						<Ref name="NextSelectionRight">null</Ref>
+						<Ref name="NextSelectionUp">null</Ref>
+						<UDim2 name="Position">
+							<XS>0</XS>
+							<XO>10</XO>
+							<YS>0</YS>
+							<YO>224</YO>
+						</UDim2>
+						<float name="Rotation">0</float>
+						<bool name="Selectable">false</bool>
+						<Ref name="SelectionImageObject">null</Ref>
+						<int name="SelectionOrder">0</int>
+						<UDim2 name="Size">
+							<XS>1</XS>
+							<XO>-20</XO>
+							<YS>0</YS>
+							<YO>22</YO>
+						</UDim2>
+						<token name="SizeConstraint">0</token>
+						<bool name="Visible">true</bool>
+						<int name="ZIndex">1</int>
+						<bool name="AutoLocalize">true</bool>
+						<Ref name="RootLocalizationTable">null</Ref>
+						<token name="SelectionBehaviorDown">0</token>
+						<token name="SelectionBehaviorLeft">0</token>
+						<token name="SelectionBehaviorRight">0</token>
+						<token name="SelectionBehaviorUp">0</token>
+						<bool name="SelectionGroup">false</bool>
+						<BinaryString name="AttributesSerialize"></BinaryString>
+						<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+						<bool name="DefinesCapabilities">false</bool>
+						<string name="Name">SelectedCategory</string>
 						<int64 name="SourceAssetId">-1</int64>
 						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
 					</Properties>
@@ -1743,7 +1897,7 @@ end)]]></ProtectedString>
 							<XS>0</XS>
 							<XO>10</XO>
 							<YS>0</YS>
-							<YO>205</YO>
+							<YO>200</YO>
 						</UDim2>
 						<float name="Rotation">0</float>
 						<bool name="Selectable">false</bool>
@@ -1753,7 +1907,7 @@ end)]]></ProtectedString>
 							<XS>1</XS>
 							<XO>-20</XO>
 							<YS>0</YS>
-							<YO>26</YO>
+							<YO>22</YO>
 						</UDim2>
 						<token name="SizeConstraint">0</token>
 						<bool name="Visible">true</bool>
@@ -1838,7 +1992,7 @@ end)]]></ProtectedString>
 							<XS>0</XS>
 							<XO>10</XO>
 							<YS>0</YS>
-							<YO>235</YO>
+							<YO>248</YO>
 						</UDim2>
 						<float name="Rotation">0</float>
 						<bool name="Selectable">false</bool>
@@ -1848,7 +2002,7 @@ end)]]></ProtectedString>
 							<XS>1</XS>
 							<XO>-20</XO>
 							<YS>0</YS>
-							<YO>28</YO>
+							<YO>24</YO>
 						</UDim2>
 						<token name="SizeConstraint">0</token>
 						<bool name="Visible">true</bool>
@@ -1871,10 +2025,9 @@ end)]]></ProtectedString>
 				<Item class="TextButton" referent="RBX1C889AF7D90244C8A0C20F01CC80A40E">
 					<Properties>
 						<Font name="FontFace">
-							<Family><url>rbxasset://fonts/families/SourceSansPro.json</url></Family>
+							<Family><url>rbxasset://fonts/families/LuckiestGuy.json</url></Family>
 							<Weight>400</Weight>
 							<Style>Normal</Style>
-							<CachedFaceId><url>rbxasset://fonts/SourceSansPro-Regular.ttf</url></CachedFaceId>
 						</Font>
 						<float name="LineHeight">1</float>
 						<string name="LocalizationMatchIdentifier"></string>
@@ -1899,8 +2052,8 @@ end)]]></ProtectedString>
 						<float name="TextStrokeTransparency">1</float>
 						<float name="TextTransparency">0</float>
 						<token name="TextTruncate">0</token>
-						<bool name="TextWrapped">true</bool>
-						<token name="TextXAlignment">2</token>
+						<bool name="TextWrapped">false</bool>
+						<token name="TextXAlignment">1</token>
 						<token name="TextYAlignment">1</token>
 						<bool name="AutoButtonColor">true</bool>
 						<Ref name="HoverHapticEffect">null</Ref>
@@ -1937,20 +2090,20 @@ end)]]></ProtectedString>
 						<Ref name="NextSelectionRight">null</Ref>
 						<Ref name="NextSelectionUp">null</Ref>
 						<UDim2 name="Position">
-							<XS>0.100000001</XS>
+							<XS>0.175000012</XS>
 							<XO>0</XO>
 							<YS>1</YS>
-							<YO>-60</YO>
+							<YO>-55</YO>
 						</UDim2>
 						<float name="Rotation">0</float>
 						<bool name="Selectable">true</bool>
 						<Ref name="SelectionImageObject">null</Ref>
 						<int name="SelectionOrder">0</int>
 						<UDim2 name="Size">
-							<XS>0.800000012</XS>
+							<XS>0.649999976</XS>
 							<XO>0</XO>
 							<YS>0</YS>
-							<YO>50</YO>
+							<YO>46</YO>
 						</UDim2>
 						<token name="SizeConstraint">0</token>
 						<bool name="Visible">true</bool>

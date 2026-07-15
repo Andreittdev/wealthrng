@@ -394,7 +394,7 @@ local function handleOpenPetCrate(player)
 
 	showNotificationEvent:FireClient(
 		player,
-		"?? You received " .. pet.DisplayName .. " (" .. pet.Rarity .. ")"
+		"🐾 You received " .. pet.DisplayName .. " (" .. pet.Rarity .. ")"
 	)
 end
 
@@ -443,13 +443,13 @@ local function handleBuy(player, clientOffer)
 
 				if SellManager.SellItem(player, oldestItem) then
 					autoSold = true
-					showNotificationEvent:FireClient(player, "?? Auto-Sold " .. oldestNameText .. " to make room")
+					showNotificationEvent:FireClient(player, "🔄 Auto-Sold " .. oldestNameText .. " to make room")
 				end
 			end
 		end
 
 		if not autoSold then
-			showNotificationEvent:FireClient(player, "?? Inventory Full! Press + to upgrade.")
+			showNotificationEvent:FireClient(player, "🎒 Inventory Full! Press + to upgrade.")
 			return
 		end
 	end
@@ -463,7 +463,7 @@ local function handleBuy(player, clientOffer)
 	local buyPrice = tonumber(offer.BuyPrice) or 0
 
 	if money.Value < buyPrice then
-		showNotificationEvent:FireClient(player, "? Not enough money")
+		showNotificationEvent:FireClient(player, "❌ Not enough money")
 		return
 	end
 
@@ -473,7 +473,7 @@ local function handleBuy(player, clientOffer)
 	StandDisplayManager.UpdateStand(player)
 	sendInventory(player)
 
-	showNotificationEvent:FireClient(player, "? Bought " .. tostring(offer.ItemName) .. " for $" .. tostring(buyPrice))
+	showNotificationEvent:FireClient(player, "✅ Bought " .. tostring(offer.ItemName) .. " for $" .. tostring(buyPrice))
 
 	removeNPC(player)
 
@@ -494,14 +494,14 @@ local function handleSellFirstItem(player)
 	local firstItem = inventory:FindFirstChild("1")
 
 	if not firstItem then
-		showNotificationEvent:FireClient(player, "?? Inventory is empty")
+		showNotificationEvent:FireClient(player, "🎒 Inventory is empty")
 		return
 	end
 
 	local success = SellManager.SellItem(player, firstItem)
 
 	if success then
-		showNotificationEvent:FireClient(player, "?? Sold item successfully")
+		showNotificationEvent:FireClient(player, "💰 Sold item successfully")
 		sendInventory(player)
 		StandDisplayManager.UpdateStand(player)
 	end
@@ -514,14 +514,14 @@ local function handleSellSelectedItem(player, itemId)
 	local item = inventory:FindFirstChild(tostring(itemId))
 
 	if not item then
-		showNotificationEvent:FireClient(player, "? Item not found")
+		showNotificationEvent:FireClient(player, "❌ Item not found")
 		return
 	end
 
 	local success = SellManager.SellItem(player, item)
 
 	if success then
-		showNotificationEvent:FireClient(player, "?? Sold selected item")
+		showNotificationEvent:FireClient(player, "💰 Sold selected item")
 		sendInventory(player)
 		StandDisplayManager.UpdateStand(player)
 	end

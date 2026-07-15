@@ -147,8 +147,22 @@ itemName.TextScaled = true
 itemName.TextWrapped = true
 itemName.Font = Enum.Font.GothamBlack
 itemName.Position = UDim2.new(0.08, 0, 0.47, 0)
-itemName.Size = UDim2.new(0.84, 0, 0.12, 0)
+itemName.Size = UDim2.new(0.84, 0, 0.10, 0)
 itemName.ZIndex = 60
+
+-- Categoria (Clothing/Shoes/Electronics/etc) -- deja trimisa de server in
+-- oferta (TradeManager.CreateOffer seteaza data.Category), doar nu era
+-- afisata nicaieri in GUI inainte.
+local categoryLabel = Instance.new("TextLabel")
+categoryLabel.Name = "Category"
+categoryLabel.Parent = tradeFrame
+categoryLabel.BackgroundTransparency = 1
+categoryLabel.TextColor3 = Color3.fromRGB(160, 175, 195)
+categoryLabel.TextScaled = true
+categoryLabel.Font = Enum.Font.GothamBold
+categoryLabel.Position = UDim2.new(0.20, 0, 0.58, 0)
+categoryLabel.Size = UDim2.new(0.60, 0, 0.06, 0)
+categoryLabel.ZIndex = 60
 
 local rarityLabel = Instance.new("TextLabel")
 rarityLabel.Name = "Rarity"
@@ -156,8 +170,8 @@ rarityLabel.Parent = tradeFrame
 rarityLabel.BackgroundTransparency = 1
 rarityLabel.TextScaled = true
 rarityLabel.Font = Enum.Font.GothamBold
-rarityLabel.Position = UDim2.new(0.20, 0, 0.59, 0)
-rarityLabel.Size = UDim2.new(0.60, 0, 0.08, 0)
+rarityLabel.Position = UDim2.new(0.20, 0, 0.65, 0)
+rarityLabel.Size = UDim2.new(0.60, 0, 0.07, 0)
 rarityLabel.ZIndex = 60
 
 local priceLabel = Instance.new("TextLabel")
@@ -167,8 +181,8 @@ priceLabel.BackgroundTransparency = 1
 priceLabel.TextColor3 = Color3.fromRGB(80, 255, 120)
 priceLabel.TextScaled = true
 priceLabel.Font = Enum.Font.GothamBlack
-priceLabel.Position = UDim2.new(0.15, 0, 0.68, 0)
-priceLabel.Size = UDim2.new(0.70, 0, 0.09, 0)
+priceLabel.Position = UDim2.new(0.15, 0, 0.73, 0)
+priceLabel.Size = UDim2.new(0.70, 0, 0.08, 0)
 priceLabel.ZIndex = 60
 
 local buyButton = Instance.new("TextButton")
@@ -209,6 +223,7 @@ showTrade.OnClientEvent:Connect(function(data)
 	subtitle.Text = safe(data.NPCType, "Dealer") .. " wants to sell you:"
 
 	itemName.Text = safe(data.ItemName, "Unknown Item")
+	categoryLabel.Text = safe(data.Category, "Misc")
 	rarityLabel.Text = rarity
 	rarityLabel.TextColor3 = color
 	priceLabel.Text = "$" .. safe(data.BuyPrice, 0)

@@ -149,9 +149,9 @@ function MarketManager.GetNews()
 	local event = MarketManager.SpecialEvent
 
 	if event.Type == "GoldenHour" then
-		return "?? Golden Hour: " .. (event.Category or "") .. " is booming!"
+		return "✨ Golden Hour: " .. (event.Category or "") .. " is booming!"
 	elseif event.Type == "MarketCrash" then
-		return "?? Market Crash: " .. (event.Category or "") .. " is crashing!"
+		return "📉 Market Crash: " .. (event.Category or "") .. " is crashing!"
 	end
 
 	return ""

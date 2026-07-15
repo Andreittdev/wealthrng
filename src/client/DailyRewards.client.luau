@@ -16,7 +16,7 @@ local statusResultEvent = remotes:WaitForChild("DailyStatusResult")
 local requestClaimEvent = remotes:WaitForChild("RequestDailyClaim")
 local claimResultEvent = remotes:WaitForChild("DailyClaimResult")
 
-local FONT_DISPLAY = Enum.Font.Bangers
+local FONT_DISPLAY = Enum.Font.LuckiestGuy
 local FONT_BODY = Enum.Font.FredokaOne
 
 -- Tema "calendar/albastru", diferita de auriul Starter Pack, movul Rebirth
@@ -49,21 +49,18 @@ local function getMainFrameSize(scaleFactor)
 	local isMobile = computeIsMobile()
 
 	if not isMobile then
-		-- Pe PC cele 7 zile incap intotdeauna pe un singur rand. Latimea (760)
-		-- lasa loc de rezerva sigur pentru cele 7 carduri, vezi setUniformGrid.
-		-- Inaltimea a crescut fata de 300 -- butonul de revendicare s-a
-		-- micsorat, iar spatiul eliberat s-a dus la carduri (mai mari).
-		return UDim2.fromOffset(760 * scaleFactor, 270 * scaleFactor)
+		-- Layout nou: zilele 1-6 intr-un grid 3x2 in stanga, Day 7 mare separat
+		-- in dreapta -- mai patrat decat vechiul rand unic de 7 carduri late.
+		return UDim2.fromOffset(700 * scaleFactor, 480 * scaleFactor)
 	end
 
 	local camera = workspace.CurrentCamera
 	local viewport = camera and camera.ViewportSize or Vector2.new(400, 700)
 
-	-- Pe mobil, cele 7 zile se resfira pe mai multe randuri -- lasam loc
-	-- rezonabil, nu aproape tot ecranul; daca tot nu incape, ScrollingFrame-ul
-	-- de mai jos preia diferenta in loc sa taie/suprapuna continutul.
-	local width = math.min(viewport.X * 0.85, viewport.X - 24) * scaleFactor
-	local height = math.min(viewport.Y * 0.75, viewport.Y - 24) * scaleFactor
+	-- Pe mobil, grid-ul 2x3 + Day 7 dedesubt au nevoie de mai multa inaltime
+	-- decat vechiul layout (0.75 -> 0.85 din viewport).
+	local width = math.min(viewport.X * 0.9, viewport.X - 24) * scaleFactor
+	local height = math.min(viewport.Y * 0.85, viewport.Y - 24) * scaleFactor
 
 	return UDim2.fromOffset(width, height)
 end
@@ -82,7 +79,7 @@ local toggleButton = Instance.new("TextButton")
 toggleButton.Name = "DailyRewardsButton"
 toggleButton.AnchorPoint = Vector2.new(1, 0.5)
 toggleButton.Position = UDim2.new(1, -16, 0.5, 162)
-toggleButton.Size = UDim2.new(0, 156, 0, 66)
+toggleButton.Size = UDim2.new(0, 168, 0, 66)
 toggleButton.BackgroundColor3 = BG_MID
 toggleButton.AutoButtonColor = false
 toggleButton.Text = ""
@@ -106,8 +103,8 @@ toggleStroke.Parent = toggleButton
 
 local toggleTitle = Instance.new("TextLabel")
 toggleTitle.BackgroundTransparency = 1
-toggleTitle.Position = UDim2.new(0, 10, 0, 8)
-toggleTitle.Size = UDim2.new(1, -20, 0, 28)
+toggleTitle.Position = UDim2.new(0, 8, 0, 8)
+toggleTitle.Size = UDim2.new(1, -12, 0, 30)
 toggleTitle.Text = "🎁 DAILY REWARDS"
 toggleTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleTitle.Font = FONT_DISPLAY
@@ -118,8 +115,8 @@ toggleTitle.Parent = toggleButton
 
 local toggleSubtitle = Instance.new("TextLabel")
 toggleSubtitle.BackgroundTransparency = 1
-toggleSubtitle.Position = UDim2.new(0, 10, 0, 38)
-toggleSubtitle.Size = UDim2.new(1, -20, 0, 20)
+toggleSubtitle.Position = UDim2.new(0, 8, 0, 38)
+toggleSubtitle.Size = UDim2.new(1, -12, 0, 22)
 toggleSubtitle.Text = "..."
 toggleSubtitle.TextColor3 = TEXT_DIM
 toggleSubtitle.Font = FONT_BODY
@@ -186,7 +183,7 @@ local function updateToggleLayout()
 	else
 		toggleButton.AnchorPoint = Vector2.new(1, 0.5)
 		toggleButton.Position = UDim2.new(1, -16, 0.5, 162)
-		toggleButton.Size = UDim2.new(0, 156, 0, 66)
+		toggleButton.Size = UDim2.new(0, 168, 0, 66)
 	end
 
 	toggleTitle.Visible = not isMobile
@@ -273,7 +270,7 @@ local subtitleLabel = Instance.new("TextLabel")
 subtitleLabel.BackgroundTransparency = 1
 subtitleLabel.Position = UDim2.new(0, 20, 0, 54)
 subtitleLabel.Size = UDim2.new(1, -80, 0, 20)
-subtitleLabel.Text = "Log in every day for a streak of rewards"
+subtitleLabel.Text = "Log in everyday for rewards!"
 subtitleLabel.TextColor3 = TEXT_DIM
 subtitleLabel.Font = FONT_BODY
 subtitleLabel.TextSize = 14
@@ -549,18 +546,28 @@ local ICON_BUILDERS = {
 	SpecificPet = buildExclusivePetIcon
 }
 
-local function createDayIcon(parent, dayConfig)
-	-- UIScale aici a fost o greseala -- scaleaza containerul din coltul lui
-	-- stanga-sus (nu din centru), asa ca iconita se muta vizibil spre dreapta
-	-- fata de textul de sub ea (nescalat, ramane centrat normal). Eliminat --
-	-- iconitele raman la marimea lor naturala, aliniate corect cu textul.
+local function createDayIcon(parent, dayConfig, iconScale, centerY)
+	-- Containerul e acum ancorat/pozitionat din centrul lui (0.5,0.5), nu din
+	-- coltul stanga-sus -- asta face ca un UIScale aplicat pe el sa creasca
+	-- simetric in jurul centrului (fara sa "sara" spre dreapta, cum se
+	-- intampla cand AnchorPoint ramane (0,0)). centerY e configurabil (nu mai
+	-- fix la 42) -- cu iconScale mai mare, iconita creste in jos SI in sus
+	-- din centrul ei, deci centrul trebuie mutat mai jos ca sa nu se suprapuna
+	-- peste eticheta "DAY X" de sus.
 	local container = Instance.new("Frame")
 	container.Name = "IconPreview"
 	container.BackgroundTransparency = 1
-	container.Position = UDim2.new(0, 0, 0, 18)
-	container.Size = UDim2.new(1, 0, 0, 48)
+	container.AnchorPoint = Vector2.new(0.5, 0.5)
+	container.Position = UDim2.new(0.5, 0, 0, centerY or 42)
+	container.Size = UDim2.new(0, 48, 0, 48)
 	container.ZIndex = 23
 	container.Parent = parent
+
+	if iconScale and iconScale ~= 1 then
+		local uiScale = Instance.new("UIScale")
+		uiScale.Scale = iconScale
+		uiScale.Parent = container
+	end
 
 	-- Fundaluri speciale: Day 2 (bronz), Day 4 (argintiu), Day 7 (curcubeu,
 	-- singurul animat) -- ca sa se vada o progresie de raritate intre zile,
@@ -583,67 +590,77 @@ local function createDayIcon(parent, dayConfig)
 	return container
 end
 
--- ---- Grila cu cele 7 zile ----
--- ScrollingFrame + AutomaticCanvasSize (nu Frame fix) -- ca sa functioneze
--- indiferent daca celulele incap intr-un singur rand (PC) sau se resfira pe
--- mai multe randuri (mobil, coloane mai putine) fara sa se taie/suprapuna.
+-- ---- Grila cu zilele 1-6 (3x2) + Day 7, mare, separat ----
+-- Layout fix (nu ScrollingFrame) in 2 zone: un grid mic (3 coloane x 2
+-- randuri) pentru zilele 1-6, si un card separat, mai mare, pentru Day 7 --
+-- exact structura din referinta primita (Day 7 vizibil mai mare ca restul).
 
-local daysHolder = Instance.new("ScrollingFrame")
-daysHolder.Name = "DaysScroll"
-daysHolder.BackgroundTransparency = 1
-daysHolder.Position = UDim2.new(0, 20, 0, 82)
-daysHolder.Size = UDim2.new(1, -40, 1, -130)
-daysHolder.ScrollBarThickness = 6
-daysHolder.ScrollBarImageColor3 = CYAN_ACCENT
-daysHolder.CanvasSize = UDim2.new(0, 0, 0, 0)
-daysHolder.AutomaticCanvasSize = Enum.AutomaticSize.Y
-daysHolder.ZIndex = 22
-daysHolder.Parent = card
+local smallGridHolder = Instance.new("Frame")
+smallGridHolder.Name = "SmallDaysGrid"
+smallGridHolder.BackgroundTransparency = 1
+smallGridHolder.ZIndex = 22
+smallGridHolder.Parent = card
 
--- Fara padding, primul rand de carduri incepe EXACT la marginea de sus a
--- ScrollingFrame-ului -- jumatatea de sus a conturului de accent (bronz/
--- argintiu/curcubeu) se taia acolo, cu 0 rezerva. Un pic de padding sus
--- rezolva -- cardurile "coboara" putin, iar linia de sus ramane intreaga.
-local daysPadding = Instance.new("UIPadding")
-daysPadding.PaddingTop = UDim.new(0, 6)
-daysPadding.PaddingBottom = UDim.new(0, 4)
-daysPadding.Parent = daysHolder
+local smallGrid = Instance.new("UIGridLayout")
+smallGrid.SortOrder = Enum.SortOrder.LayoutOrder
+smallGrid.Parent = smallGridHolder
 
-local daysGrid = Instance.new("UIGridLayout")
-daysGrid.SortOrder = Enum.SortOrder.LayoutOrder
-daysGrid.Parent = daysHolder
+-- UICorner/UIStroke/tint-ul de fundal pentru day7Card se adauga mai jos, in
+-- buildDayContents (acelasi cod refolosit si pentru zilele 1-6) -- nu aici,
+-- ca sa nu ajunga duplicate (2x UICorner, 2x tint) pe acelasi Frame.
+local day7Card = Instance.new("Frame")
+day7Card.Name = "Day7"
+day7Card.BackgroundColor3 = CARD_BG
+day7Card.ZIndex = 22
+day7Card.Parent = card
 
--- Calculam latimea celulei in pixeli ficsi, din latimea CUNOSCUTA a cardului
--- (cea intoarsa de getMainFrameSize -- nu AbsoluteSize, care poate fi 0/stale
--- in exact momentul in care rulam asta, inainte de primul randare). Scazand
--- si o marja de siguranta explicita (nu doar "exact cat incape"), cele 7
--- carduri nu mai sar niciodata pe un rand nou din cauza rotunjirii sau a
--- ScrollBar-ului -- inainte calculul se potrivea EXACT, cu 0 rezerva reala.
-local SAFETY_MARGIN_PX = 32
-
-local function setUniformGrid(columns, cellHeight, padding, containerWidth)
-	local usableWidth = containerWidth - SAFETY_MARGIN_PX
-	local totalPadding = (columns - 1) * padding
-	local cellWidth = math.floor((usableWidth - totalPadding) / columns)
-
-	daysGrid.CellSize = UDim2.new(0, cellWidth, 0, cellHeight)
-	daysGrid.CellPadding = UDim2.new(0, padding, 0, padding)
-end
-
--- Butonul de revendicare s-a micsorat -- spatiul eliberat s-a dus la carduri
--- (124, nu 96).
+-- Recalculeaza pozitiile/marimile celor 2 zone, din marimea CUNOSCUTA a
+-- cardului principal (nu AbsoluteSize, care poate fi stale/0 chiar inainte
+-- de primul randare).
 local function updateDaysGridLayout()
 	local cardSize = getMainFrameSize()
-	local containerWidth = cardSize.X.Offset - 40 -- cele 20px de margine din fiecare parte
+	local isMobile = computeIsMobile()
 
-	-- Putin mai mici (124 -> 108) -- cardurile ajungeau prea aproape de
-	-- marginea de jos a ScrollingFrame-ului, taind linia/conturul cardurilor
-	-- speciale. Iconita si textul raman la aceeasi marime, doar spatiile
-	-- goale din jurul lor s-au strans.
-	if computeIsMobile() then
-		setUniformGrid(4, 108, 8, containerWidth)
+	local sideMargin = 20
+	local contentTop = 84
+	local bottomReserve = 58
+	local gap = 12
+	local cellPad = 8
+
+	local contentWidth = cardSize.X.Offset - sideMargin * 2
+	local contentHeight = cardSize.Y.Offset - contentTop - bottomReserve
+
+	if isMobile then
+		-- Grid 2x3 sus, Day 7 lat cat tot cardul, dedesubt.
+		local day7Height = 110
+		local gridHeight = contentHeight - day7Height - gap
+
+		smallGridHolder.Position = UDim2.new(0, sideMargin, 0, contentTop)
+		smallGridHolder.Size = UDim2.new(0, contentWidth, 0, gridHeight)
+
+		local cellWidth = math.floor((contentWidth - cellPad) / 2)
+		local cellHeight = math.floor((gridHeight - cellPad * 2) / 3)
+		smallGrid.CellSize = UDim2.new(0, cellWidth, 0, cellHeight)
+		smallGrid.CellPadding = UDim2.new(0, cellPad, 0, cellPad)
+
+		day7Card.Position = UDim2.new(0, sideMargin, 0, contentTop + gridHeight + gap)
+		day7Card.Size = UDim2.new(0, contentWidth, 0, day7Height)
 	else
-		setUniformGrid(7, 108, 10, containerWidth)
+		-- Grid 3x2 in stanga (~66% din latime), Day 7 mare in dreapta, pe toata
+		-- inaltimea celor 2 randuri combinate.
+		local gridWidth = math.floor(contentWidth * 0.66)
+		local day7Width = contentWidth - gridWidth - gap
+
+		smallGridHolder.Position = UDim2.new(0, sideMargin, 0, contentTop)
+		smallGridHolder.Size = UDim2.new(0, gridWidth, 0, contentHeight)
+
+		local cellWidth = math.floor((gridWidth - cellPad * 2) / 3)
+		local cellHeight = math.floor((contentHeight - cellPad) / 2)
+		smallGrid.CellSize = UDim2.new(0, cellWidth, 0, cellHeight)
+		smallGrid.CellPadding = UDim2.new(0, cellPad, 0, cellPad)
+
+		day7Card.Position = UDim2.new(0, sideMargin + gridWidth + gap, 0, contentTop)
+		day7Card.Size = UDim2.new(0, day7Width, 0, contentHeight)
 	end
 end
 
@@ -651,16 +668,11 @@ updateDaysGridLayout()
 
 local dayCells = {}
 
-for dayNumber = 1, Economy.DailyRewards.CycleLength do
-	local dayConfig = Economy.DailyRewards.Days[dayNumber]
-
-	local cell = Instance.new("Frame")
-	cell.Name = "Day" .. dayNumber
-	cell.BackgroundColor3 = CARD_BG
-	cell.LayoutOrder = dayNumber
-	cell.ZIndex = 22
-	cell.Parent = daysHolder
-
+-- Construieste continutul unei zile (eticheta, iconita, descriere, lacat,
+-- bifa de "revendicat") intr-un cell deja existent -- refolosit atat pentru
+-- zilele mici din grid (1-6) cat si pentru Day 7 (cardul mare, cu iconScale
+-- > 1 ca sa arate vizibil mai important, nu doar cardul din jurul lui).
+local function buildDayContents(cell, dayNumber, dayConfig, opts)
 	Instance.new("UICorner", cell).CornerRadius = UDim.new(0, 10)
 	applyCellRewardTint(cell, dayConfig)
 
@@ -672,7 +684,7 @@ for dayNumber = 1, Economy.DailyRewards.CycleLength do
 	local dayLabel = Instance.new("TextLabel")
 	dayLabel.BackgroundTransparency = 1
 	dayLabel.Position = UDim2.new(0, 0, 0, 2)
-	dayLabel.Size = UDim2.new(1, 0, 0, 16)
+	dayLabel.Size = UDim2.new(1, 0, 0, opts.DayLabelSize)
 	dayLabel.Text = "DAY " .. dayNumber
 	dayLabel.TextColor3 = TEXT_DIM
 	dayLabel.Font = FONT_BODY
@@ -680,17 +692,20 @@ for dayNumber = 1, Economy.DailyRewards.CycleLength do
 	dayLabel.ZIndex = 23
 	dayLabel.Parent = cell
 
-	createDayIcon(cell, dayConfig)
+	-- IconCenterY separat de dayLabelSize -- cu iconita marita (iconScale),
+	-- centrul ei trebuie mutat mai jos ca sa nu se suprapuna peste eticheta
+	-- "DAY X" de sus (iconita creste simetric in ambele directii din centru).
+	createDayIcon(cell, dayConfig, opts.IconScale, opts.IconCenterY)
 
 	local descLabel = Instance.new("TextLabel")
 	descLabel.BackgroundTransparency = 1
-	descLabel.Position = UDim2.new(0, 4, 0, 68)
-	descLabel.Size = UDim2.new(1, -8, 0, 36)
+	descLabel.Position = UDim2.new(0, 4, 0, opts.DescTop)
+	descLabel.Size = UDim2.new(1, -8, 0, opts.DescSize)
 	descLabel.Text = dayConfig.Description or ""
 	descLabel.TextColor3 = TEXT_LIGHT
 	descLabel.TextWrapped = true
-	descLabel.Font = FONT_BODY
-	descLabel.TextSize = 14
+	descLabel.Font = FONT_DISPLAY
+	descLabel.TextSize = opts.DescTextSize
 	descLabel.ZIndex = 23
 	descLabel.Parent = cell
 
@@ -726,14 +741,25 @@ for dayNumber = 1, Economy.DailyRewards.CycleLength do
 	-- exact in centru. Bratele sunt si putin mai lungi decat distanta stricta
 	-- dintre puncte, ca sa se suprapuna clar la varf (nu doar sa se atinga) --
 	-- altfel putea sa para "incompleta", cu un gol vizibil la imbinare.
+	-- Bifa e centrata pe aceeasi inaltime ca iconita (IconCenterY), NU la
+	-- jumatatea intregului card -- altfel s-ar suprapune peste eticheta
+	-- "DAY X" de sus sau peste descriere de jos. Marimea ei (CheckScale) e
+	-- separata de IconScale -- inainte erau legate 1:1, si bifa marita odata
+	-- cu iconita ajungea prea mare pentru card.
 	local checkContainer = Instance.new("Frame")
 	checkContainer.Name = "CheckShape"
 	checkContainer.BackgroundTransparency = 1
 	checkContainer.AnchorPoint = Vector2.new(0.5, 0.5)
-	checkContainer.Position = UDim2.new(0.5, 0, 0.5, -8)
+	checkContainer.Position = UDim2.new(0.5, 0, 0, opts.IconCenterY)
 	checkContainer.Size = UDim2.new(0, 60, 0, 60)
 	checkContainer.ZIndex = 26
 	checkContainer.Parent = checkmark
+
+	if opts.CheckScale and opts.CheckScale ~= 1 then
+		local checkScale = Instance.new("UIScale")
+		checkScale.Scale = opts.CheckScale
+		checkScale.Parent = checkContainer
+	end
 
 	-- Punctele bifei (in interiorul containerului de 60x60):
 	-- A = (14,30) varful bratului scurt, V = (25,44) varful de jos,
@@ -764,14 +790,55 @@ for dayNumber = 1, Economy.DailyRewards.CycleLength do
 	dayCells[dayNumber] = {Cell = cell, Stroke = cellStroke, Checkmark = checkmark}
 end
 
+for dayNumber = 1, 6 do
+	local dayConfig = Economy.DailyRewards.Days[dayNumber]
+
+	local cell = Instance.new("Frame")
+	cell.Name = "Day" .. dayNumber
+	cell.BackgroundColor3 = CARD_BG
+	cell.LayoutOrder = dayNumber
+	cell.ZIndex = 22
+	cell.Parent = smallGridHolder
+
+	buildDayContents(cell, dayNumber, dayConfig, {
+		IconScale = 1.7,
+		IconCenterY = 85,
+		DayLabelSize = 22,
+		DescTop = 128,
+		DescSize = 40,
+		DescTextSize = 19,
+		CheckScale = 1.35
+	})
+end
+
+do
+	-- Day 7: acelasi continut, dar cu iconita/bifa/text vizibil mai mari, in
+	-- cardul day7Card (construit deja mai sus, in afara grid-ului -- ocupa
+	-- toata inaltimea celor 2 randuri, nu doar o celula). IconCenterY e mutat
+	-- mult mai jos decat la zilele mici, ca sa lase loc etichetei "DAY 7" de
+	-- sus, care si ea e mai mare aici.
+	local dayNumber = 7
+	local dayConfig = Economy.DailyRewards.Days[dayNumber]
+
+	buildDayContents(day7Card, dayNumber, dayConfig, {
+		IconScale = 2.3,
+		IconCenterY = 140,
+		DayLabelSize = 30,
+		DescTop = 215,
+		DescSize = 60,
+		DescTextSize = 24,
+		CheckScale = 1.8
+	})
+end
+
 -- ---- Buton de revendicare ----
 
 -- Mai mic decat inainte (era prea dominant, "maricel") -- TextSize fix in
 -- loc de TextScaled, ca sa nu creasca odata cu butonul daca il marim.
 local claimButton = Instance.new("TextButton")
 claimButton.AnchorPoint = Vector2.new(0.5, 1)
-claimButton.Position = UDim2.new(0.5, 0, 1, -14)
-claimButton.Size = UDim2.new(0, 200, 0, 34)
+claimButton.Position = UDim2.new(0.5, 0, 1, -8)
+claimButton.Size = UDim2.new(1, -40, 0, 40)
 claimButton.AutoButtonColor = false
 claimButton.Text = "..."
 claimButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -862,7 +929,7 @@ end
 local function refreshClaimButton()
 	if latestState.CanClaim then
 		claimButton.BackgroundColor3 = GREEN_OK
-		claimButton.Text = "CLAIM DAY " .. latestState.NextDay
+		claimButton.Text = "CLAIM ALL"
 		claimButton.Active = true
 	else
 		claimButton.BackgroundColor3 = GRAY_LOCKED
