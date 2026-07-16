@@ -417,7 +417,16 @@ local function updateResponsiveLayout()
 		toggleButton.AnchorPoint = Vector2.new(1, 0)
 		toggleButton.Position = UDim2.new(1, -8, 0, 48)
 		toggleButton.Size = UDim2.new(0, 112, 0, 42)
-		cardScale.Scale = MIN_UI_SCALE
+
+		-- MIN_UI_SCALE (0.75) era un scale FIX -- cardul de baza (340x440px)
+		-- la 0.75 ramane 255x330px, mai mare decat inaltimea disponibila pe
+		-- un telefon landscape, deci iesea pe sub marginea ecranului.
+		-- Calculam scale-ul din dimensiunea REALA a ecranului.
+		local fitScale = math.min(
+			(camera.ViewportSize.X * 0.78) / 340,
+			(camera.ViewportSize.Y * 0.70) / 440
+		)
+		cardScale.Scale = math.min(MIN_UI_SCALE, fitScale)
 
 		-- Banda "LIMITED" ramane vizibila si pe mobil (jucatorul trebuie sa
 		-- inteleaga ca e o oferta limitata si acolo), doar mai mica, ca sa

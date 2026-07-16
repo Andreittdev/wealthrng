@@ -385,26 +385,6 @@ local function createStands()
 
 		table.insert(stands, stand)
 	end
-
-	-- DEBUG TEMPORAR -- listeaza in Output (F9 in Studio) toate piesele din
-	-- primul stand, cu dimensiuni, ca sa identificam exact "bucata gri"
-	-- (fara acces la Explorer/Studio, asta e singurul mod sa aflam numele
-	-- corect). Sterge blocul asta dupa ce gasim piesa.
-	if stands[1] then
-		print("=== DEBUG: piesele din " .. stands[1].Name .. " ===")
-		for _, descendant in ipairs(stands[1]:GetDescendants()) do
-			if descendant:IsA("BasePart") then
-				print(string.format(
-					"  %s (%s) - Size=%s Color=%s",
-					descendant.Name,
-					descendant.ClassName,
-					tostring(descendant.Size),
-					tostring(descendant.Color)
-				))
-			end
-		end
-		print("=== END DEBUG ===")
-	end
 end
 
 local function setStandName(stand, text)

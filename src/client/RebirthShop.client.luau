@@ -451,7 +451,17 @@ local function updateUIScale()
 		toggleButton.AnchorPoint = Vector2.new(1, 0)
 		toggleButton.Position = UDim2.new(1, -8, 0, 96)
 		toggleButton.Size = UDim2.new(0, 102, 0, 36)
-		cardScale.Scale = MIN_UI_SCALE
+
+		-- MIN_UI_SCALE (0.75) era un scale FIX -- cardul de baza (340x470px)
+		-- la 0.75 ramane 255x352px, mai mare decat inaltimea disponibila pe
+		-- un telefon landscape (ecran lat-dar-scund), deci iesea pe sub
+		-- marginea ecranului. Calculam scale-ul din dimensiunea REALA a
+		-- ecranului, ca sa incapa garantat, indiferent cat de mic e telefonul.
+		local fitScale = math.min(
+			(camera.ViewportSize.X * 0.78) / 340,
+			(camera.ViewportSize.Y * 0.70) / 470
+		)
+		cardScale.Scale = math.min(MIN_UI_SCALE, fitScale)
 	else
 		toggleButton.AnchorPoint = Vector2.new(1, 0.5)
 		toggleButton.Position = UDim2.new(1, -16, 0.5, 81)

@@ -47,6 +47,9 @@
       },
       "BankGui": {
         "$path": "src/gui/BankGui.rbxmx"
+      },
+      "MarketGui": {
+        "$path": "src/gui/MarketGui.rbxmx"
       }
     }
   }

@@ -57,10 +57,8 @@ local function getMainFrameSize(scaleFactor)
 	local camera = workspace.CurrentCamera
 	local viewport = camera and camera.ViewportSize or Vector2.new(400, 700)
 
-	-- Pe mobil, grid-ul 2x3 + Day 7 dedesubt au nevoie de mai multa inaltime
-	-- decat vechiul layout (0.75 -> 0.85 din viewport).
-	local width = math.min(viewport.X * 0.9, viewport.X - 24) * scaleFactor
-	local height = math.min(viewport.Y * 0.85, viewport.Y - 24) * scaleFactor
+	local width = math.min(viewport.X * 0.80, viewport.X - 24) * scaleFactor
+	local height = math.min(viewport.Y * 0.74, viewport.Y - 24) * scaleFactor
 
 	return UDim2.fromOffset(width, height)
 end
@@ -619,7 +617,6 @@ day7Card.Parent = card
 -- de primul randare).
 local function updateDaysGridLayout()
 	local cardSize = getMainFrameSize()
-	local isMobile = computeIsMobile()
 
 	local sideMargin = 20
 	local contentTop = 84
@@ -630,38 +627,25 @@ local function updateDaysGridLayout()
 	local contentWidth = cardSize.X.Offset - sideMargin * 2
 	local contentHeight = cardSize.Y.Offset - contentTop - bottomReserve
 
-	if isMobile then
-		-- Grid 2x3 sus, Day 7 lat cat tot cardul, dedesubt.
-		local day7Height = 110
-		local gridHeight = contentHeight - day7Height - gap
+	-- Acelasi aranjament pe mobil si pe PC -- grid 3x2 in stanga (~66% din
+	-- latime), Day 7 mare in dreapta, pe toata inaltimea celor 2 randuri
+	-- combinate. Layout-ul mobil vechi (grid deasupra, Day7 dedesubt, cu
+	-- inaltime FIXA de 110px pentru Day7) lasa aproape deloc spatiu pentru
+	-- grid pe un ecran de telefon lat-dar-scund (landscape), facand zilele
+	-- 1-6 sa iasa inghesuite/suprapuse.
+	local gridWidth = math.floor(contentWidth * 0.66)
+	local day7Width = contentWidth - gridWidth - gap
 
-		smallGridHolder.Position = UDim2.new(0, sideMargin, 0, contentTop)
-		smallGridHolder.Size = UDim2.new(0, contentWidth, 0, gridHeight)
+	smallGridHolder.Position = UDim2.new(0, sideMargin, 0, contentTop)
+	smallGridHolder.Size = UDim2.new(0, gridWidth, 0, contentHeight)
 
-		local cellWidth = math.floor((contentWidth - cellPad) / 2)
-		local cellHeight = math.floor((gridHeight - cellPad * 2) / 3)
-		smallGrid.CellSize = UDim2.new(0, cellWidth, 0, cellHeight)
-		smallGrid.CellPadding = UDim2.new(0, cellPad, 0, cellPad)
+	local cellWidth = math.floor((gridWidth - cellPad * 2) / 3)
+	local cellHeight = math.floor((contentHeight - cellPad) / 2)
+	smallGrid.CellSize = UDim2.new(0, cellWidth, 0, cellHeight)
+	smallGrid.CellPadding = UDim2.new(0, cellPad, 0, cellPad)
 
-		day7Card.Position = UDim2.new(0, sideMargin, 0, contentTop + gridHeight + gap)
-		day7Card.Size = UDim2.new(0, contentWidth, 0, day7Height)
-	else
-		-- Grid 3x2 in stanga (~66% din latime), Day 7 mare in dreapta, pe toata
-		-- inaltimea celor 2 randuri combinate.
-		local gridWidth = math.floor(contentWidth * 0.66)
-		local day7Width = contentWidth - gridWidth - gap
-
-		smallGridHolder.Position = UDim2.new(0, sideMargin, 0, contentTop)
-		smallGridHolder.Size = UDim2.new(0, gridWidth, 0, contentHeight)
-
-		local cellWidth = math.floor((gridWidth - cellPad * 2) / 3)
-		local cellHeight = math.floor((contentHeight - cellPad) / 2)
-		smallGrid.CellSize = UDim2.new(0, cellWidth, 0, cellHeight)
-		smallGrid.CellPadding = UDim2.new(0, cellPad, 0, cellPad)
-
-		day7Card.Position = UDim2.new(0, sideMargin + gridWidth + gap, 0, contentTop)
-		day7Card.Size = UDim2.new(0, day7Width, 0, contentHeight)
-	end
+	day7Card.Position = UDim2.new(0, sideMargin + gridWidth + gap, 0, contentTop)
+	day7Card.Size = UDim2.new(0, day7Width, 0, contentHeight)
 end
 
 updateDaysGridLayout()
@@ -800,14 +784,30 @@ for dayNumber = 1, 6 do
 	cell.ZIndex = 22
 	cell.Parent = smallGridHolder
 
+	-- IconCenterY/DescTop/DescSize erau pixeli ficsi (85/128/40), calculati
+	-- pentru celula mare de PC (~165px inalta) -- pe telefon, celula e mult
+	-- mai scunda, deci iconita si descrierea iesteau pe sub/langa celula,
+	-- suprapunandu-se cu celula de dedesubt (de-aia arata neclar). Acum
+	-- procente din inaltimea REALA a celulei (setata deja de
+	-- updateDaysGridLayout, care ruleaza inaintea acestei bucle).
+	local cellHeight = smallGrid.CellSize.Y.Offset
+
+	-- IconScale/DayLabelSize/DescTextSize/CheckScale NU sunt proportionale cu
+	-- celula (spre deosebire de IconCenterY/DescTop/DescSize, calculate mai
+	-- sus din cellHeight) -- sunt constante fixe. Foloseam aceeasi valoare
+	-- mica (tunata pentru celula ingusta de mobil) si pe PC, unde celula e
+	-- mult mai mare -- acolo iconitele/textul ajungeau sa para mult mai mici
+	-- decat inainte. Le separam pe device.
+	local isMobileDay = computeIsMobile()
+
 	buildDayContents(cell, dayNumber, dayConfig, {
-		IconScale = 1.7,
-		IconCenterY = 85,
-		DayLabelSize = 22,
-		DescTop = 128,
-		DescSize = 40,
-		DescTextSize = 19,
-		CheckScale = 1.35
+		IconScale = isMobileDay and 0.7 or 1.7,
+		IconCenterY = math.floor(cellHeight * 0.50),
+		DayLabelSize = isMobileDay and 15 or 22,
+		DescTop = math.floor(cellHeight * 0.80),
+		DescSize = math.floor(cellHeight * 0.24),
+		DescTextSize = isMobileDay and 12 or 19,
+		CheckScale = isMobileDay and 0.65 or 1.35
 	})
 end
 
@@ -820,14 +820,22 @@ do
 	local dayNumber = 7
 	local dayConfig = Economy.DailyRewards.Days[dayNumber]
 
+	-- IconCenterY/DescTop/DescSize erau pixeli ficsi, calculati pentru
+	-- day7Card-ul mare de PC (~338px inalt) -- pe un telefon (landscape),
+	-- cardul e mult mai scund, si descrierea iesea pe sub marginea cardului.
+	-- Acum sunt procente din inaltimea REALA a cardului (deja setata de
+	-- updateDaysGridLayout, care ruleaza inaintea acestui bloc).
+	local day7Height = day7Card.Size.Y.Offset
+	local isMobileDay7 = computeIsMobile()
+
 	buildDayContents(day7Card, dayNumber, dayConfig, {
-		IconScale = 2.3,
-		IconCenterY = 140,
-		DayLabelSize = 30,
-		DescTop = 215,
-		DescSize = 60,
-		DescTextSize = 24,
-		CheckScale = 1.8
+		IconScale = isMobileDay7 and 1.8 or 2.3,
+		IconCenterY = math.floor(day7Height * 0.41),
+		DayLabelSize = isMobileDay7 and 22 or 30,
+		DescTop = math.floor(day7Height * 0.72),
+		DescSize = math.floor(day7Height * 0.18),
+		DescTextSize = isMobileDay7 and 18 or 24,
+		CheckScale = isMobileDay7 and 1.4 or 1.8
 	})
 end
 

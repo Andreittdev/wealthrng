@@ -40,6 +40,7 @@ local AUTO_SELL_PASS_ID = 1906256722
 
 local storeGui = script.Parent
 local mainFrame = storeGui:WaitForChild("MainFrame")
+local mainFrameSizeConstraint = mainFrame:FindFirstChildOfClass("UISizeConstraint")
 
 -- TouchEnabled singur nu e de incredere (poate fi false pe telefon in
 -- anumite ferestre/Studio) -- verificam si dimensiunea reala a ecranului,
@@ -57,9 +58,11 @@ local closeButton = header:WaitForChild("CloseButton")
 
 local vipCard = mainFrame:WaitForChild("VIPPassCard")
 local vipBuyButton = vipCard:WaitForChild("BuyButton")
+local vipIcon = vipCard:WaitForChild("Icon")
 
 local inventoryCard = mainFrame:WaitForChild("InventoryPassCard")
 local inventoryBuyButton = inventoryCard:WaitForChild("BuyButton")
+local inventoryIcon = inventoryCard:WaitForChild("Icon")
 local vipTitle = vipCard:WaitForChild("PassTitle")
 local vipDescription = vipCard:WaitForChild("PassDescription")
 
@@ -77,17 +80,70 @@ local autoSellTitle = autoSellCard:WaitForChild("PassTitle")
 local autoSellDescription = autoSellCard:WaitForChild("PassDescription")
 
 local function applyLayout()
+	-- Recalculat de fiecare data cand applyLayout ruleaza (nu doar citit din
+	-- variabila externa "isMobile", calculata o singura data la incarcare) --
+	-- ViewportSize poate sa nu fi fost inca corect la momentul acela, si nu
+	-- ne mai bazam pe niciun eveniment/semnal care ar putea sa nu se declanseze.
+	isMobile = computeIsMobile()
+
+	do
+		local camera = workspace.CurrentCamera
+		local viewport = camera and camera.ViewportSize
+		print("StoreGui applyLayout: isMobile=" .. tostring(isMobile) .. " viewport=" .. tostring(viewport) .. " TouchEnabled=" .. tostring(UserInputService.TouchEnabled))
+	end
+
 	mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 	mainFrame.ClipsDescendants = false
 	header.ClipsDescendants = false
 
 	if isMobile then
-		header.Size = UDim2.new(1, 0, 0.10, 0)
+		header.Size = UDim2.new(1, 0, 0.09, 0)
 
-		vipCard.Position = UDim2.new(0.05, 0, 0.13, 0)
-		inventoryCard.Position = UDim2.new(0.05, 0, 0.34, 0)
-		speedCard.Position = UDim2.new(0.05, 0, 0.55, 0)
-		autoSellCard.Position = UDim2.new(0.05, 0, 0.76, 0)
+		-- mainFrame avea un UISizeConstraint cu MinSize=(620,720) pixeli
+		-- (gandit pentru PC) -- pe un telefon cu ecranul mai mic decat atat,
+		-- Size-ul de mai jos era complet ignorat, mainFrame ramanea mereu
+		-- minim 720px inalt, mai mare decat tot ecranul. Il neutralizam.
+		if mainFrameSizeConstraint then
+			mainFrameSizeConstraint.MinSize = Vector2.new(0, 0)
+			mainFrameSizeConstraint.MaxSize = Vector2.new(10000, 10000)
+		end
+
+		-- Randuri COMPACTE, gen "Grow a Garden": iconita mica in stanga,
+		-- titlu + pret/Owned in dreapta -- grid 2x2, fara nevoie de scroll
+		-- (doar 4 pass-uri). Nu mai folosim ScrollingFrame -- cardurile stau
+		-- direct in mainFrame, ca pe PC.
+		mainFrame.Position = UDim2.new(0.50, 0, 0.50, 0)
+		mainFrame.Size = UDim2.new(0.98, 0, 0.72, 0)
+
+		local oldScroll = mainFrame:FindFirstChild("MobileCardsScroll")
+		if oldScroll then
+			oldScroll:Destroy()
+		end
+
+		for _, card in ipairs({vipCard, inventoryCard, speedCard, autoSellCard}) do
+			if card.Parent ~= mainFrame then
+				card.Parent = mainFrame
+			end
+		end
+
+		local cardWidth = 0.47
+		local cardHeight = 0.38
+		local leftX = 0.02
+		local rightX = leftX + cardWidth + 0.02
+		local topY = 0.14
+		local bottomY = topY + cardHeight + 0.04
+
+		vipCard.Position = UDim2.new(leftX, 0, topY, 0)
+		vipCard.Size = UDim2.new(cardWidth, 0, cardHeight, 0)
+
+		inventoryCard.Position = UDim2.new(rightX, 0, topY, 0)
+		inventoryCard.Size = UDim2.new(cardWidth, 0, cardHeight, 0)
+
+		speedCard.Position = UDim2.new(leftX, 0, bottomY, 0)
+		speedCard.Size = UDim2.new(cardWidth, 0, cardHeight, 0)
+
+		autoSellCard.Position = UDim2.new(rightX, 0, bottomY, 0)
+		autoSellCard.Size = UDim2.new(cardWidth, 0, cardHeight, 0)
 
 		local function limitTextSize(parent, maxSize)
 			for _, obj in ipairs(parent:GetDescendants()) do
@@ -103,96 +159,152 @@ local function applyLayout()
 					end
 
 					constraint.MaxTextSize = maxSize
-					constraint.MinTextSize = 8
+					constraint.MinTextSize = 7
 				end
 			end
 		end
 
-		limitTextSize(vipCard, 18)
-		limitTextSize(inventoryCard, 20)
-		limitTextSize(speedCard, 20)
-		limitTextSize(autoSellCard, 20)
+		limitTextSize(vipCard, 13)
+		limitTextSize(inventoryCard, 13)
+		limitTextSize(speedCard, 13)
+		limitTextSize(autoSellCard, 13)
 
-		-- Titlurile si descrierile au nevoie de dimensiuni fixe, nu doar
-		-- constrangerea generica de mai sus, ca sa ramana lizibile pe un
-		-- card ingust (era dublat mai jos, intr-un al doilea "if isMobile",
-		-- care rula DUPA asta si suprascria valorile -- acum e un singur loc).
-		mainFrame.Position = UDim2.new(0.50, 0, 0.50, 0)
-		mainFrame.Size = UDim2.new(0.62, 0, 0.86, 0)
+		-- Iconita MICA, in STANGA randului (nu sus, centrata) -- rotunda,
+		-- ca in referinta. UIAspectRatioConstraint ca sa ramana patrata.
+		local function makeIconResponsive(icon)
+			icon.AnchorPoint = Vector2.new(0, 0.5)
+			icon.Size = UDim2.new(0, 0, 0.68, 0)
+			icon.Position = UDim2.new(0.05, 0, 0.5, 0)
 
-		vipCard.Size = UDim2.new(0.92, 0, 0.19, 0)
-		inventoryCard.Size = UDim2.new(0.92, 0, 0.19, 0)
-		speedCard.Size = UDim2.new(0.92, 0, 0.19, 0)
-		autoSellCard.Size = UDim2.new(0.92, 0, 0.19, 0)
+			local constraint = icon:FindFirstChildOfClass("UIAspectRatioConstraint")
+			if not constraint then
+				constraint = Instance.new("UIAspectRatioConstraint")
+				constraint.Parent = icon
+			end
+
+			constraint.AspectRatio = 1
+			constraint.DominantAxis = Enum.DominantAxis.Height
+			constraint.AspectType = Enum.AspectType.ScaleWithParentSize
+
+			local mask = icon:FindFirstChildOfClass("UICorner")
+			if not mask then
+				mask = Instance.new("UICorner")
+				mask.Parent = icon
+			end
+			mask.CornerRadius = UDim.new(0.5, 0)
+		end
+
+		makeIconResponsive(vipIcon)
+		makeIconResponsive(inventoryIcon)
+
+		-- VIP/Inventory: iconita ocupa coloana din stanga (~38% latime) --
+		-- titlul/descrierea/butonul incep dupa ea, in dreapta.
+		local rightColX = 0.40
 
 		vipTitle.TextScaled = false
-		vipTitle.TextSize = 20
+		vipTitle.TextSize = 13
+		vipTitle.Position = UDim2.new(rightColX, 0, 0.06, 0)
+		vipTitle.Size = UDim2.new(1 - rightColX - 0.04, 0, 0.30, 0)
+		vipTitle.TextXAlignment = Enum.TextXAlignment.Left
+		vipTitle.TextWrapped = true
 
 		inventoryTitle.TextScaled = false
-		inventoryTitle.TextSize = 18
+		inventoryTitle.TextSize = 13
+		inventoryTitle.Position = UDim2.new(rightColX, 0, 0.06, 0)
+		inventoryTitle.Size = UDim2.new(1 - rightColX - 0.04, 0, 0.30, 0)
+		inventoryTitle.TextXAlignment = Enum.TextXAlignment.Left
+		inventoryTitle.TextWrapped = true
 
+		-- Speed/AutoSell nu au iconita -- titlul foloseste toata latimea.
 		speedTitle.TextScaled = false
-		speedTitle.TextSize = 18
+		speedTitle.TextSize = 13
+		speedTitle.Position = UDim2.new(0.05, 0, 0.06, 0)
+		speedTitle.Size = UDim2.new(0.9, 0, 0.30, 0)
+		speedTitle.TextXAlignment = Enum.TextXAlignment.Center
+		speedTitle.TextWrapped = true
 
 		autoSellTitle.TextScaled = false
-		autoSellTitle.TextSize = 18
+		autoSellTitle.TextSize = 13
+		autoSellTitle.Position = UDim2.new(0.05, 0, 0.06, 0)
+		autoSellTitle.Size = UDim2.new(0.9, 0, 0.30, 0)
+		autoSellTitle.TextXAlignment = Enum.TextXAlignment.Center
+		autoSellTitle.TextWrapped = true
 
-		-- X=0.32 inainte dodging iconul mare (90px) centrat in mijlocul
-		-- cardului -- acum iconul e mic si sus (34px, langa titlu), deci
-		-- descrierea poate incepe mult mai aproape de marginea stanga.
-		vipDescription.Position = UDim2.new(0.06, 0, 0.30, 0)
-		vipDescription.Size = UDim2.new(0.88, 0, 0.42, 0)
-		vipDescription.TextScaled = false
-		vipDescription.TextSize = 9
+		-- Descrierea: o singura linie scurta, sub titlu (nu blocuri mari de
+		-- text, ca in referinta -- doar esentialul).
+		-- VIP are lista de perks pe mai multe linii (Perks: + 4 randuri) --
+		-- cutia trebuie mult mai inalta decat la celelalte, si TextScaled=true
+		-- (nu marime fixa) ca sa incapa tot textul, indiferent de lungime.
+		vipDescription.Position = UDim2.new(rightColX, 0, 0.34, 0)
+		vipDescription.Size = UDim2.new(1 - rightColX - 0.04, 0, 0.42, 0)
+		vipDescription.TextScaled = true
 		vipDescription.TextWrapped = true
 		vipDescription.TextYAlignment = Enum.TextYAlignment.Top
 		vipDescription.TextXAlignment = Enum.TextXAlignment.Left
 
-		inventoryDescription.Position = UDim2.new(0.06, 0, 0.30, 0)
-		inventoryDescription.Size = UDim2.new(0.88, 0, 0.42, 0)
+		inventoryDescription.Position = UDim2.new(rightColX, 0, 0.38, 0)
+		inventoryDescription.Size = UDim2.new(1 - rightColX - 0.04, 0, 0.20, 0)
 		inventoryDescription.TextScaled = false
-		inventoryDescription.TextSize = 12
+		inventoryDescription.TextSize = 9
 		inventoryDescription.TextWrapped = true
 		inventoryDescription.TextYAlignment = Enum.TextYAlignment.Top
 		inventoryDescription.TextXAlignment = Enum.TextXAlignment.Left
 
-		speedDescription.Position = UDim2.new(0.06, 0, 0.30, 0)
-		speedDescription.Size = UDim2.new(0.88, 0, 0.42, 0)
+		speedDescription.Position = UDim2.new(0.05, 0, 0.38, 0)
+		speedDescription.Size = UDim2.new(0.9, 0, 0.20, 0)
 		speedDescription.TextScaled = false
-		speedDescription.TextSize = 11
+		speedDescription.TextSize = 9
 		speedDescription.TextWrapped = true
 		speedDescription.TextYAlignment = Enum.TextYAlignment.Top
-		speedDescription.TextXAlignment = Enum.TextXAlignment.Left
+		speedDescription.TextXAlignment = Enum.TextXAlignment.Center
 
-		autoSellDescription.Position = UDim2.new(0.06, 0, 0.30, 0)
-		autoSellDescription.Size = UDim2.new(0.88, 0, 0.42, 0)
+		autoSellDescription.Position = UDim2.new(0.05, 0, 0.38, 0)
+		autoSellDescription.Size = UDim2.new(0.9, 0, 0.20, 0)
 		autoSellDescription.TextScaled = false
-		autoSellDescription.TextSize = 11
+		autoSellDescription.TextSize = 9
 		autoSellDescription.TextWrapped = true
 		autoSellDescription.TextYAlignment = Enum.TextYAlignment.Top
-		autoSellDescription.TextXAlignment = Enum.TextXAlignment.Left
+		autoSellDescription.TextXAlignment = Enum.TextXAlignment.Center
 
-		-- Butoanele sunt centrate DEDESUBT textului (AnchorPoint 0.5,0 setat
-		-- deja in proprietatile de PC) -- nu mai lipite in dreapta cardului,
-		-- la fel ca pe PC, doar cu coordonate procentuale (cardul mobil e
-		-- dimensionat relativ, nu in pixeli ficsi).
-		vipBuyButton.Size = UDim2.new(0.45, 0, 0.20, 0)
-		vipBuyButton.Position = UDim2.new(0.5, 0, 0.78, 0)
+		-- Butonul/pretul: mic, sub descriere, NU o bara lata pe tot cardul
+		-- (ca in referinta -- doar textul "OWNED"/pretul, compact).
+		vipBuyButton.AnchorPoint = Vector2.new(0, 0)
+		vipBuyButton.Position = UDim2.new(rightColX, 0, 0.80, 0)
+		vipBuyButton.Size = UDim2.new(1 - rightColX - 0.04, 0, 0.18, 0)
 		vipBuyButton.TextScaled = true
 
-		inventoryBuyButton.Size = UDim2.new(0.45, 0, 0.20, 0)
-		inventoryBuyButton.Position = UDim2.new(0.5, 0, 0.78, 0)
+		inventoryBuyButton.AnchorPoint = Vector2.new(0, 0)
+		inventoryBuyButton.Position = UDim2.new(rightColX, 0, 0.66, 0)
+		inventoryBuyButton.Size = UDim2.new(1 - rightColX - 0.04, 0, 0.26, 0)
 		inventoryBuyButton.TextScaled = true
 
-		speedBuyButton.Size = UDim2.new(0.45, 0, 0.20, 0)
-		speedBuyButton.Position = UDim2.new(0.5, 0, 0.78, 0)
+		speedBuyButton.AnchorPoint = Vector2.new(0, 0)
+		speedBuyButton.Position = UDim2.new(0.25, 0, 0.66, 0)
+		speedBuyButton.Size = UDim2.new(0.5, 0, 0.26, 0)
 		speedBuyButton.TextScaled = true
 
-		autoSellBuyButton.Size = UDim2.new(0.45, 0, 0.20, 0)
-		autoSellBuyButton.Position = UDim2.new(0.5, 0, 0.78, 0)
+		autoSellBuyButton.AnchorPoint = Vector2.new(0, 0)
+		autoSellBuyButton.Position = UDim2.new(0.25, 0, 0.66, 0)
+		autoSellBuyButton.Size = UDim2.new(0.5, 0, 0.26, 0)
 		autoSellBuyButton.TextScaled = true
 	else
 		mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+
+		-- Restauram constraint-ul original de PC (in caz ca a fost neutralizat
+		-- intr-o sesiune anterioara pe mobil, apoi jucatorul a ajuns pe PC).
+		if mainFrameSizeConstraint then
+			mainFrameSizeConstraint.MinSize = Vector2.new(620, 720)
+			mainFrameSizeConstraint.MaxSize = Vector2.new(920, 760)
+		end
+
+		-- Daca cardurile fusesera mutate in ScrollingFrame-ul de mobil
+		-- (ex: jucatorul a trecut de la mobil la PC in acelasi joc), le
+		-- punem inapoi direct in mainFrame, ca pe PC.
+		for _, card in ipairs({vipCard, inventoryCard, speedCard, autoSellCard}) do
+			if card.Parent and card.Parent.Name == "MobileCardsScroll" then
+				card.Parent = mainFrame
+			end
+		end
 	end
 
 	closeButton.AnchorPoint = Vector2.new(1, 0.5)
@@ -326,6 +438,10 @@ end)
 -- (inclusiv grila Inventory/Bank/Market/Stand/Store/Pets) se ascund.
 mainFrame:GetPropertyChangedSignal("Visible"):Connect(function()
 	player:SetAttribute("ShopModalOpen", mainFrame.Visible)
+
+	if mainFrame.Visible then
+		applyLayout()
+	end
 end)
 
 -- Daca jucatorul roteste telefonul cat timp e deschis, recalculam.
@@ -340,6 +456,18 @@ do
 		end)
 	end
 end
+
+-- computeIsMobile() de la pornirea jocului poate prinde ViewportSize gresit
+-- (Roblox nu a apucat inca sa il seteze la dimensiunea reala a ecranului --
+-- acelasi bug vazut si la EggShop, unde viewport-ul initial era 1x1).
+-- Recalculam de fiecare data cand magazinul chiar se deschide (nu doar la
+-- rotit telefonul), ca sa nu ramanem blocati cu valoarea gresita de la inceput.
+storeGui:GetPropertyChangedSignal("Enabled"):Connect(function()
+	if storeGui.Enabled then
+		isMobile = computeIsMobile()
+		applyLayout()
+	end
+end)
 
 refreshStore()]]></ProtectedString>
 				<bool name="Disabled">false</bool>

@@ -43,7 +43,7 @@ local marketGui = script.Parent
 local marketFrame = marketGui:WaitForChild("MarketFrame")
 
 local mainHud = playerGui:WaitForChild("MainHUD")
-local marketButton = mainHud.BottomBar.Row2:WaitForChild("MarketButton")
+local marketButton = mainHud.BottomBar.Row1:WaitForChild("MarketButton")
 
 local categories = {"Clothing", "Shoes", "Electronics", "Luxury", "Collectibles"}
 
