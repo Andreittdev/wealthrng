@@ -385,4 +385,36 @@ Economy.Market = {
 	AntiAbuseHoldTime = 900     -- 15 minute
 }
 
+-- ============================
+-- PREMIUM EGG (Developer Product, cumparabil oricand -- NU gamepass)
+-- ============================
+Economy.PremiumEgg = {
+	ProductId = 3610412564,
+	RobuxPrice = 99, -- doar text afisat in UI; pretul real e cel setat in Creator Dashboard
+
+	-- Sanse MULT mai bune decat ouale normale (Economy.NPCRarityChances avea
+	-- Common=60/Rare=28/Epic=10/Legendary=2) -- asta e chiar motivul pentru
+	-- care cineva ar plati Robux pe el.
+	RarityChances = {
+		{Rarity = "Common", Chance = 20},
+		{Rarity = "Rare", Chance = 35},
+		{Rarity = "Epic", Chance = 35},
+		{Rarity = "Legendary", Chance = 10}
+	}
+}
+
+-- ============================
+-- CASH PACKS (Developer Products, cumparabile oricand -- NU gamepass-uri)
+-- ============================
+-- Tiny e intentionat un raport $/Robux mai slab decat celelalte (1000/5=200
+-- vs 10000/49=~204, 50000/199=~251, 150000/499=~301) -- pachetele mai mari
+-- dau mai multi bani per Robux, ca sa incurajeze cumparaturi mai mari, dar
+-- Tiny ramane un impuls-buy ieftin, la indemana oricui.
+Economy.CashPacks = {
+	{Id = "CashPackTiny", ProductId = 3610412333, RobuxPrice = 5, Money = 1000},
+	{Id = "CashPackSmall", ProductId = 3610412460, RobuxPrice = 49, Money = 10000},
+	{Id = "CashPackMedium", ProductId = 3610412497, RobuxPrice = 199, Money = 50000},
+	{Id = "CashPackLarge", ProductId = 3610412530, RobuxPrice = 499, Money = 150000}
+}
+
 return Economy

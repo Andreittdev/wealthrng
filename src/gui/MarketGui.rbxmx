@@ -446,11 +446,12 @@ local function updateMarketUI()
 
 	-- Cand NU e activ niciun eveniment: "Next Market Update" (updatarea
 	-- GENERALA de preturi, la fiecare 10 minute). Cand UNUL e activ chiar
-	-- acum: acelasi text si numar ca pe panoul din tunel, sincronizate.
-	if currentSpecialEvent.Type == "GoldenHour" then
-		timerLabel.Text = "GOLDEN HOUR ACTIVE!\nEnds in: " .. timeText
-	elseif currentSpecialEvent.Type == "MarketCrash" then
-		timerLabel.Text = "MARKET CRASH ACTIVE!\nEnds in: " .. timeText
+	-- acum: doar "Ends in:" (fara "GOLDEN HOUR ACTIVE!" -- text pe doua
+	-- randuri intr-o caseta de un rand facea totul ilizibil/inghesuit,
+	-- cerut explicit sa fie scos) -- acelasi numar ca pe panoul din tunel,
+	-- sincronizat.
+	if currentSpecialEvent.Type == "GoldenHour" or currentSpecialEvent.Type == "MarketCrash" then
+		timerLabel.Text = "Ends in: " .. timeText
 	else
 		timerLabel.Text = "Next Market Update: " .. timeText
 	end

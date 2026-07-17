@@ -13,6 +13,7 @@ local function getDefaultData()
 		Money = 1000,
 		CashEarned = 0,
 		TimePlayed = 0,
+		DevProductRobuxSpent = 0,
 		BankMoney = 0,
 		StandLevel = 1,
 		Inventory = {},
@@ -56,6 +57,7 @@ function DataManager.LoadData(player)
 	data.Money = data.Money or 1000
 	data.CashEarned = data.CashEarned or 0
 	data.TimePlayed = data.TimePlayed or 0
+	data.DevProductRobuxSpent = data.DevProductRobuxSpent or 0
 	data.BankMoney = data.BankMoney or 0
 	data.StandLevel = data.StandLevel or 1
 	data.Inventory = data.Inventory or {}
@@ -98,11 +100,13 @@ function DataManager.SaveData(player)
 
 	local cashEarned = leaderstats:FindFirstChild("CashEarned")
 	local timePlayed = leaderstats:FindFirstChild("TimePlayed")
+	local devProductRobuxSpent = leaderstats:FindFirstChild("DevProductRobuxSpent")
 
 	local dataToSave = {
 		Money = money.Value,
 		CashEarned = cashEarned and cashEarned.Value or 0,
 		TimePlayed = timePlayed and timePlayed.Value or 0,
+		DevProductRobuxSpent = devProductRobuxSpent and devProductRobuxSpent.Value or 0,
 		BankMoney = bankMoney and bankMoney.Value or 0,
 		StandLevel = standLevel and standLevel.Value or 1,
 		Inventory = {},
@@ -265,6 +269,18 @@ function DataManager.ApplyData(player, data)
 		timePlayed.Parent = leaderstats
 	end
 	timePlayed.Value = data.TimePlayed or 0
+
+	-- Suma cumulata (Robux) din Developer Products (Premium Egg, Cash Packs)
+	-- -- alimentata de PremiumPurchaseManager.server.luau la fiecare
+	-- achizitie, citita de RobuxSpentCalculator ca sa o adauge la partea de
+	-- gamepass-uri (RobuxSpent = gamepass-uri + astea).
+	local devProductRobuxSpent = leaderstats:FindFirstChild("DevProductRobuxSpent")
+	if not devProductRobuxSpent then
+		devProductRobuxSpent = Instance.new("IntValue")
+		devProductRobuxSpent.Name = "DevProductRobuxSpent"
+		devProductRobuxSpent.Parent = leaderstats
+	end
+	devProductRobuxSpent.Value = data.DevProductRobuxSpent or 0
 
 	-- Aceeasi logica -- intrare imediata in leaderboard, chiar la 0 minute.
 	TimePlayedStore.QueueUpdate(player)
