@@ -29,10 +29,10 @@ function TokenShopKeeper.Spawn(stall)
 
 	-- Pozitie fixa, primita direct de la jucator (coordonatele HumanoidRootPart
 	-- din Studio, stand langa masa).
-	local KEEPER_POSITION = Vector3.new(6.557, 9.0, 220.837)
+	local KEEPER_POSITION = Vector3.new(-33.30670928955078, 8.999999046325684, 686.814208984375)
 
 	local keeperCFrame = CFrame.new(KEEPER_POSITION)
-		* CFrame.Angles(0, math.rad(180), 0)
+		* CFrame.Angles(0, math.rad(90), 0)
 
 	local keeper = NPCKeeperBuilder.Build(keeperCFrame, "TokenShopKeeper")
 	keeper.Parent = workspaceParent

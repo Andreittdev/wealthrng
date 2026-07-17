@@ -11,7 +11,7 @@ local WAVE_PAUSE_SECONDS = 5
 -- Pozitie EXACTA, data de user (coordonatele personajului lui, luate chiar
 -- din locul unde vrea sa stea NPC-ul, dupa geamul bancii) -- folosita direct,
 -- fara niciun calcul relativ la banca.
-local TELLER_POSITION = Vector3.new(80.9704818725586, 9.895245552062988, 336.9122009277344)
+local TELLER_POSITION = Vector3.new(56.046993255615234, 10.437660217285156, 737.3899536132812)
 
 -- "Bobux Man" (numele Modelului) apare plutind deasupra capului -- e nametag-ul
 -- implicit al Roblox pentru orice model cu Humanoid (ia automat Model.Name).

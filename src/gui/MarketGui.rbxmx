@@ -442,7 +442,18 @@ local function updateMarketUI()
 
 	local minutes = math.floor(timeLeft / 60)
 	local seconds = timeLeft % 60
-	timerLabel.Text = string.format("Next Update: %02d:%02d", minutes, seconds)
+	local timeText = string.format("%02d:%02d", minutes, seconds)
+
+	-- Cand NU e activ niciun eveniment: "Next Market Update" (updatarea
+	-- GENERALA de preturi, la fiecare 10 minute). Cand UNUL e activ chiar
+	-- acum: acelasi text si numar ca pe panoul din tunel, sincronizate.
+	if currentSpecialEvent.Type == "GoldenHour" then
+		timerLabel.Text = "GOLDEN HOUR ACTIVE!\nEnds in: " .. timeText
+	elseif currentSpecialEvent.Type == "MarketCrash" then
+		timerLabel.Text = "MARKET CRASH ACTIVE!\nEnds in: " .. timeText
+	else
+		timerLabel.Text = "Next Market Update: " .. timeText
+	end
 
 	progressBar.Size = UDim2.new(
 		math.clamp(timeLeft / marketUpdateTime, 0, 1),
@@ -465,7 +476,15 @@ task.spawn(function()
 			currentSpecialEvent = data.SpecialEvent or {Type = "None"}
 		end
 
-		timeLeft = marketUpdateTime
+		-- Daca un eveniment special e activ ACUM, folosim countdown-ul lui
+		-- (acelasi ca pe panoul din tunel) -- altfel, timpul real ramas din
+		-- slot-ul curent (nu un 10:00 fix), sincronizat cu orarul serverului.
+		if currentSpecialEvent.Type ~= "None" and data.EventCountdown then
+			timeLeft = data.EventCountdown.SecondsLeft
+		else
+			timeLeft = data.SecondsUntilNextUpdate or marketUpdateTime
+		end
+
 		updateMarketUI()
 	end
 end)
@@ -491,7 +510,12 @@ marketUpdateEvent.OnClientEvent:Connect(function(newMarket)
 		currentSpecialEvent = {Type = "None"}
 	end
 
-	timeLeft = marketUpdateTime
+	if currentSpecialEvent.Type ~= "None" and newMarket.EventCountdown then
+		timeLeft = newMarket.EventCountdown.SecondsLeft
+	else
+		timeLeft = newMarket.SecondsUntilNextUpdate or marketUpdateTime
+	end
+
 	updateMarketUI()
 end)
 
@@ -502,11 +526,12 @@ task.spawn(function()
 		end
 
 		task.wait(1)
-		timeLeft -= 1
 
-		if timeLeft <= 0 then
-			timeLeft = marketUpdateTime
-		end
+		-- NU se mai reseteaza singur la un numar fix cand ajunge la 0 --
+		-- ramane pe 0 pana vine urmatorul broadcast real de la server (care
+		-- soseste exact cand se schimba ceva: incepe/se termina un eveniment,
+		-- sau trece un slot nou), ca sa nu se desincronizeze niciodata.
+		timeLeft = math.max(0, timeLeft - 1)
 	end
 end)]]></ProtectedString>
 				<bool name="Disabled">false</bool>

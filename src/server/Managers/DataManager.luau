@@ -1,6 +1,9 @@
 local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
 
+local CashLeaderboardStore = require(script.Parent:WaitForChild("CashLeaderboardStore"))
+local TimePlayedStore = require(script.Parent:WaitForChild("TimePlayedStore"))
+
 local DataManager = {}
 
 local playerDataStore = DataStoreService:GetDataStore("PlayerData_V2")
@@ -8,6 +11,8 @@ local playerDataStore = DataStoreService:GetDataStore("PlayerData_V2")
 local function getDefaultData()
 	return {
 		Money = 1000,
+		CashEarned = 0,
+		TimePlayed = 0,
 		BankMoney = 0,
 		StandLevel = 1,
 		Inventory = {},
@@ -49,6 +54,8 @@ function DataManager.LoadData(player)
 	end
 
 	data.Money = data.Money or 1000
+	data.CashEarned = data.CashEarned or 0
+	data.TimePlayed = data.TimePlayed or 0
 	data.BankMoney = data.BankMoney or 0
 	data.StandLevel = data.StandLevel or 1
 	data.Inventory = data.Inventory or {}
@@ -89,8 +96,13 @@ function DataManager.SaveData(player)
 		return
 	end
 
+	local cashEarned = leaderstats:FindFirstChild("CashEarned")
+	local timePlayed = leaderstats:FindFirstChild("TimePlayed")
+
 	local dataToSave = {
 		Money = money.Value,
+		CashEarned = cashEarned and cashEarned.Value or 0,
+		TimePlayed = timePlayed and timePlayed.Value or 0,
 		BankMoney = bankMoney and bankMoney.Value or 0,
 		StandLevel = standLevel and standLevel.Value or 1,
 		Inventory = {},
@@ -204,6 +216,77 @@ function DataManager.ApplyData(player, data)
 	local money = leaderstats:FindFirstChild("Money")
 	if money then
 		money.Value = data.Money or 500
+	end
+
+	local cashEarned = leaderstats:FindFirstChild("CashEarned")
+	if not cashEarned then
+		cashEarned = Instance.new("IntValue")
+		cashEarned.Name = "CashEarned"
+		cashEarned.Parent = leaderstats
+	end
+	cashEarned.Value = data.CashEarned or 0
+
+	-- Trimitem imediat o intrare in leaderboard, chiar daca scorul e 0 --
+	-- altfel un jucator nou (sau unul care nu a mai castigat bani de la
+	-- ultimul join) nu apare DELOC pe tabla/podium pana nu-i creste scorul
+	-- prima data, ceea ce putea insemna minute intregi de "-" / nume lipsa.
+	CashLeaderboardStore.QueueUpdate(player)
+
+	-- Urmarim orice CRESTERE a lui Money (vanzari, recompense, dobanda,
+	-- gamepass-uri etc.) ca "bani castigati", indiferent de sursa -- fara sa
+	-- fie nevoie sa modificam fiecare script care aduna bani in joc.
+	-- Scaderile (cheltuieli) NU se scad din CashEarned -- e un total
+	-- cumulativ ("lifetime"), pentru clasament, nu balanta curenta.
+	--
+	-- money.Value e deja setat mai sus (linia anterioara), deci baseline-ul
+	-- de "lastMoney" de aici e valoarea REALA, incarcata din DataStore -- nu
+	-- valoarea implicita (1000) cu care porneste un jucator nou -- altfel
+	-- primul update ar adauga artificial diferenta la CashEarned la fiecare
+	-- rejoin.
+	if money and not player:GetAttribute("CashEarnedTrackerConnected") then
+		player:SetAttribute("CashEarnedTrackerConnected", true)
+
+		local lastMoney = money.Value
+
+		money:GetPropertyChangedSignal("Value"):Connect(function()
+			local delta = money.Value - lastMoney
+			if delta > 0 then
+				cashEarned.Value += delta
+				CashLeaderboardStore.QueueUpdate(player)
+			end
+			lastMoney = money.Value
+		end)
+	end
+
+	local timePlayed = leaderstats:FindFirstChild("TimePlayed")
+	if not timePlayed then
+		timePlayed = Instance.new("IntValue")
+		timePlayed.Name = "TimePlayed"
+		timePlayed.Parent = leaderstats
+	end
+	timePlayed.Value = data.TimePlayed or 0
+
+	-- Aceeasi logica -- intrare imediata in leaderboard, chiar la 0 minute.
+	TimePlayedStore.QueueUpdate(player)
+
+	-- +1 minut la fiecare 60 de secunde petrecute efectiv in joc (nu conteaza
+	-- daca personajul e mort/AFK -- doar daca e conectat la server). Se
+	-- opreste singur cand jucatorul pleaca (player.Parent devine nil).
+	if not player:GetAttribute("TimePlayedTrackerConnected") then
+		player:SetAttribute("TimePlayedTrackerConnected", true)
+
+		task.spawn(function()
+			while player.Parent do
+				task.wait(60)
+
+				if not player.Parent then
+					break
+				end
+
+				timePlayed.Value += 1
+				TimePlayedStore.QueueUpdate(player)
+			end
+		end)
 	end
 
 	player:SetAttribute("StarterPackRedeemed", data.StarterPackRedeemed == true)

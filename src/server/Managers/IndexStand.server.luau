@@ -10,8 +10,9 @@ if not openIndexEvent then
 	openIndexEvent.Parent = remotes
 end
 
--- Pe noua strada.
-local STAND_POSITION = Vector3.new(18.11, 5.8, 369.48)
+-- Pozitie exacta, data de jucator (X/Z) -- Y ramane 5.8, calibrat sa stea pe
+-- sol (nu inaltimea HumanoidRootPart-ului primita de la jucator).
+local STAND_POSITION = Vector3.new(104.87107849121094, 5.8, 676.2765502929688)
 
 local CYLINDER_HEIGHT = 8
 local CYLINDER_DIAMETER = 5
@@ -94,7 +95,7 @@ if not stall then
 	-- si la firma de Rebirth/Egg Shop).
 	local signBillboard = Instance.new("BillboardGui")
 	signBillboard.Name = "SignBillboard"
-	signBillboard.Size = UDim2.new(0, 110, 0, 32)
+	signBillboard.Size = UDim2.new(0, 78, 0, 24)
 	signBillboard.StudsOffset = Vector3.new(0, CYLINDER_HEIGHT / 2 + 2, 0)
 	signBillboard.AlwaysOnTop = true
 	signBillboard.MaxDistance = 100
@@ -119,7 +120,7 @@ if not stall then
 	signLabel.Size = UDim2.new(1, -8, 1, -8)
 	signLabel.Position = UDim2.new(0, 4, 0, 4)
 	signLabel.BackgroundTransparency = 1
-	signLabel.Text = "📖 INDEX"
+	signLabel.Text = "INDEX"
 	signLabel.TextColor3 = Color3.fromRGB(230, 210, 255)
 	signLabel.Font = Enum.Font.FredokaOne
 	signLabel.TextScaled = true

@@ -370,12 +370,15 @@ Economy.Market = {
 	MaxPriceDeviation = 50,     -- cap ±50% față de bază
 
 	GoldenHour = {
-		Duration = 300,          -- 5 minute
+		Duration = 600,          -- 10 minute (cat un slot intreg -- se termina
+		                         -- exact cand vine si urmatorul update general,
+		                         -- ca countdown-urile din MarketGui si din
+		                         -- tunel sa coincida mereu cat timp e activ)
 		Boost = 40
 	},
 
 	MarketCrash = {
-		Duration = 300,          -- 5 minute
+		Duration = 600,          -- 10 minute (acelasi motiv ca la GoldenHour)
 		Drop = 40
 	},
 

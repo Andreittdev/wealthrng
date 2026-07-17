@@ -20,7 +20,7 @@ function EggShopKeeper.Spawn(petShop, position)
 	end
 
 	local keeperCFrame = CFrame.new(position)
-		* CFrame.Angles(0, math.rad(180), 0)
+		* CFrame.Angles(0, math.rad(90), 0)
 
 	local keeper = NPCKeeperBuilder.Build(keeperCFrame, "EggShopKeeper")
 	keeper.Parent = workspaceParent

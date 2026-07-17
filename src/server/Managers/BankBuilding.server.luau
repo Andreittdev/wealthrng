@@ -22,66 +22,60 @@ if oldHandBuilt and oldHandBuilt:FindFirstChild("VaultRing") then
 	print("BankBuilding: am sters banca veche, construita de mine din piese.")
 end
 
-local function findAnchorPart(model)
-	if model.PrimaryPart then
-		return model.PrimaryPart
+-- Prompt-ul "The Bank / Open" era agatat de PrimaryPart-ul modelului (sau
+-- prima piesa gasita) -- o piesa mare, arbitrara, din interiorul cladirii.
+-- Roblox pozitioneaza automat GUI-ul deasupra piesei de care e agatat, deci
+-- pe o piesa mare (perete/acoperis) prompt-ul apare sus de tot, departe de
+-- jucator. Fix: o piesa mica, invizibila, pusa chiar la intrare (fata
+-- cladirii, spre strada), la inaltime de om -- prompt-ul apare "aproape".
+local function findOrCreatePromptAnchor(model)
+	local existingAnchor = model:FindFirstChild("BankPromptAnchor")
+	if existingAnchor then
+		existingAnchor:Destroy()
 	end
 
-	return model:FindFirstChildWhichIsA("BasePart", true)
+	-- Pozitie fixa, primita direct de la jucator (coordonatele HumanoidRootPart
+	-- din Studio, chiar unde vrea sa apara promptul).
+	local ANCHOR_POSITION = Vector3.new(52.744178771972656, 9.916838645935059, 738.1323852539062)
+
+	local anchor = Instance.new("Part")
+	anchor.Name = "BankPromptAnchor"
+	anchor.Size = Vector3.new(1, 1, 1)
+	anchor.Transparency = 1
+	anchor.CanCollide = false
+	anchor.Anchored = true
+	anchor.Position = ANCHOR_POSITION
+	anchor.Parent = model
+
+	return anchor
 end
 
--- Muta modelul langa un stand de jucator (primul gasit -- "oricare", cum a
--- cerut userul) -- pe iarba, la o distanta fixa in AFARA standului (nu peste
--- el), cu baza modelului asezata pe sol (GROUND_Y), fara sa ii schimbam
--- rotatia (pastram orientarea din Toolbox, doar il translatam).
-local function positionNearStand(model)
-	local standsFolder = Workspace:FindFirstChild("GeneratedStands")
-	if not standsFolder then
-		warn("BankBuilding: nu am gasit Workspace.GeneratedStands -- nu pot pozitiona banca langa un stand. Ramane unde a fost pus manual.")
-		return
-	end
+-- Pozitie fixa pe orizontala (X/Z), primita direct de la jucator (coordonatele
+-- HumanoidRootPart din Studio, in noua extindere a hartii). Y-ul NU se ia de
+-- la jucator (HumanoidRootPart sta cu ~2-3 studs deasupra solului, si nu are
+-- nicio legatura cu unde e pivotul intern al modelului din Toolbox) -- il
+-- calculam din bounding box, ca baza modelului sa stea exact pe sol
+-- (GROUND_Y), la fel ca in varianta veche (positionNearStand).
+local BANK_X = 45.847381591796875
+local BANK_Z = 737.329345703125
 
-	local referenceStand = standsFolder:FindFirstChild("Stand_1") or standsFolder:GetChildren()[1]
-	if not referenceStand then
-		warn("BankBuilding: GeneratedStands e gol -- nu am dupa ce sa ma ghidez.")
-		return
-	end
+-- Banca e pe partea de Est a strazii (X pozitiv), la fel ca Egg Shop-ul --
+-- aceeasi rotatie (90) o pune cu fata spre Vest (-X), catre strada.
+local ROTATION_Y_DEGREES = 90
 
-	local standBase = referenceStand:FindFirstChild("Base") or referenceStand.PrimaryPart
-	if not standBase then
-		warn("BankBuilding: standul de referinta nu are o piesa 'Base' -- nu pot calcula pozitia.")
-		return
-	end
-
-	local standPosition = standBase.Position
-	local sideSign = standPosition.X < 0 and -1 or 1
-
-	-- STAND_OFFSET: cat de departe, pe orizontala (fata de stand), sa apara
-	-- banca -- suficient cat sa nu se suprapuna cu standul (care are ~10-12
-	-- studs latime) sau cu propriile ei dimensiuni (modelele din Toolbox pot
-	-- fi mari, vezi BANK_CLEARANCE mai jos).
-	local BANK_CLEARANCE = 30
-	local bankX = standPosition.X + sideSign * BANK_CLEARANCE
-	local bankZ = standPosition.Z
-
+local function positionAtFixedSpot(model)
 	local _, modelSize = model:GetBoundingBox()
 	local halfHeight = modelSize.Y / 2
 
-	local currentCFrame = model:GetPivot()
-	local newCFrame = CFrame.new(bankX, GROUND_Y + halfHeight, bankZ) * (currentCFrame.Rotation)
+	local newCFrame = CFrame.new(BANK_X, GROUND_Y + halfHeight, BANK_Z) * CFrame.Angles(0, math.rad(ROTATION_Y_DEGREES), 0)
 
 	model:PivotTo(newCFrame)
 
-	print("BankBuilding: banca mutata langa " .. referenceStand.Name .. ", la (" .. bankX .. ", " .. (GROUND_Y + halfHeight) .. ", " .. bankZ .. ").")
+	print("BankBuilding: banca mutata la (" .. BANK_X .. ", " .. (GROUND_Y + halfHeight) .. ", " .. BANK_Z .. ").")
 end
 
 local function setupPrompt(model)
-	local anchorPart = findAnchorPart(model)
-
-	if not anchorPart then
-		warn("BankBuilding: modelul '" .. model.Name .. "' nu are nicio piesa (BasePart) -- nu pot pune ProximityPrompt-ul. Verifica sa nu fie doar un Folder gol sau doar MeshPart-uri fara colisiune.")
-		return
-	end
+	local anchorPart = findOrCreatePromptAnchor(model)
 
 	local prompt = anchorPart:FindFirstChild("OpenPrompt")
 	if not prompt then
@@ -109,7 +103,7 @@ end
 
 local function setupBank(model)
 	if not model:GetAttribute("BankPositioned") then
-		positionNearStand(model)
+		positionAtFixedSpot(model)
 		model:SetAttribute("BankPositioned", true)
 	end
 

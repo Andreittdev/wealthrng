@@ -15,7 +15,12 @@ end
 -- Pozitia standului fizic in lume (coordonate primite de la jucator, ajustate
 -- pe Y ca baza standului sa stea pe sol, nu la inaltimea HumanoidRootPart-ului
 -- unui personaj in picioare).
-local STALL_POSITION = Vector3.new(10.035, 5.8, 219.254)
+local STALL_POSITION = Vector3.new(-36.116424560546875, 5.8, 683.343505859375)
+
+-- Standul e construit "brut" (fara CFrame de rotatie), cu fata deschisa
+-- (fara BackWall) spre +Z local. Standul e acum pe partea de Vest a strazii
+-- (X negativ), deci il rotim cu fata spre Est (+X), catre strada.
+local ROTATION_Y_DEGREES = 90
 
 -- Marimea textului de pe firma (BillboardGui). Offset-ul se comporta ca o
 -- dimensiune in lume (creste cand esti aproape) -- 260x70 a iesit gigantic
@@ -217,7 +222,7 @@ end
 -- STALL_POSITION de fiecare data -- si daca a fost creat acum, si daca
 -- exista deja dintr-o sesiune anterioara (ex: mutat acum la inceputul strazii).
 if stall.PrimaryPart then
-	stall:PivotTo(CFrame.new(STALL_POSITION))
+	stall:PivotTo(CFrame.new(STALL_POSITION) * CFrame.Angles(0, math.rad(ROTATION_Y_DEGREES), 0))
 end
 
 -- Abia ACUM, dupa ce standul e la pozitia lui finala, punem NPC-ul --

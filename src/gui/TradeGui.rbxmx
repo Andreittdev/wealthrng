@@ -30,6 +30,8 @@
 				<ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
 
 local player = Players.LocalPlayer
 
@@ -211,9 +213,59 @@ skipButton.Size = UDim2.new(0.40, 0, 0.11, 0)
 skipButton.ZIndex = 70
 addCorner(skipButton, UDim.new(0.25, 0))
 
+-- "Raza standului" = TOATA podeaua (Base), nu cercul galben mic de la Stand
+-- Upgrades -- jucatorul poate sta oriunde pe platforma (langa NPC, nu neaparat
+-- in cercul ala) si tot trebuie sa vada oferta. Verificam daca punctul cade
+-- in dreptunghiul lui base (acelasi tipar ca la StandManager.server.luau,
+-- functia isPointOnBase folosita pentru textul "STAND UPGRADES").
+local function findOwnStandBase()
+	local standsFolder = Workspace:FindFirstChild("GeneratedStands")
+	if not standsFolder then
+		return nil
+	end
+
+	for _, stand in ipairs(standsFolder:GetChildren()) do
+		if stand:GetAttribute("OwnerUserId") == player.UserId then
+			return stand:FindFirstChild("Base")
+		end
+	end
+
+	return nil
+end
+
+local function isPlayerInOwnZone()
+	local character = player.Character
+	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+	local base = rootPart and findOwnStandBase()
+
+	if not base then
+		return false
+	end
+
+	local relative = base.CFrame:PointToObjectSpace(rootPart.Position)
+	return math.abs(relative.X) <= base.Size.X / 2 and math.abs(relative.Z) <= base.Size.Z / 2
+end
+
+local ZONE_CHECK_INTERVAL = 0.3
+local zoneCheckTimer = 0
+
+RunService.Heartbeat:Connect(function(dt)
+	if not currentItem then
+		return
+	end
+
+	zoneCheckTimer += dt
+	if zoneCheckTimer < ZONE_CHECK_INTERVAL then
+		return
+	end
+	zoneCheckTimer = 0
+
+	tradeFrame.Visible = isPlayerInOwnZone()
+end)
+
 showTrade.OnClientEvent:Connect(function(data)
 	currentItem = data
-	tradeFrame.Visible = true
+	tradeFrame.Visible = isPlayerInOwnZone()
 
 	local rarity = safe(data.Rarity, "Common")
 	local color = rarityColors[rarity] or Color3.fromRGB(255, 255, 255)
@@ -240,12 +292,14 @@ buyButton.Activated:Connect(function()
 	if currentItem then
 		buyItem:FireServer(currentItem)
 		tradeFrame.Visible = false
+		currentItem = nil
 	end
 end)
 
 skipButton.Activated:Connect(function()
 	skipItem:FireServer()
 	tradeFrame.Visible = false
+	currentItem = nil
 end)]]></ProtectedString>
 				<bool name="Disabled">false</bool>
 				<Content name="LinkedSource"><null></null></Content>

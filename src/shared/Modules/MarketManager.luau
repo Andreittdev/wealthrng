@@ -22,9 +22,31 @@ end
 
 local CYCLE_LENGTH = 3600
 local SLOT_INTERVAL = 600
-local GOLDEN_SLOT = 600
-local CRASH_SLOT = 2400
+local SLOTS = {0, 600, 1200, 1800, 2400, 3000}
 local lastSlotProcessed = nil
+
+-- Golden Hour si Market Crash NU mai sunt mereu pe aceleasi sloturi (:10 si
+-- :40 din fiecare ora) -- fiecare "ciclu" (ora) de CYCLE_LENGTH secunde are
+-- doua sloturi alese ALEATORIU (diferite intre ele) din cele 6 disponibile.
+-- Random.new(cycleIndex) e determinist -- acelasi index de ciclu produce
+-- MEREU aceeasi alegere, deci orice cod poate recalcula "ce e programat in
+-- ciclul N" oricand, fara sa tina stare separata (functioneaza corect si
+-- daca serverul reporneste la mijlocul unui ciclu).
+local function getCycleSlots(cycleIndex)
+	local rng = Random.new(cycleIndex)
+	local shuffled = table.clone(SLOTS)
+
+	for i = #shuffled, 2, -1 do
+		local j = rng:NextInteger(1, i)
+		shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
+	end
+
+	return {GoldenHour = shuffled[1], MarketCrash = shuffled[2]}
+end
+
+local function getCycleIndex(time)
+	return math.floor(time / CYCLE_LENGTH)
+end
 
 local function getTrendFromPercent(percent)
 	if percent > 3 then
@@ -157,10 +179,68 @@ function MarketManager.GetNews()
 	return ""
 end
 
+-- Timpul real ramas pana la urmatorul slot (orice update, nu doar
+-- Golden Hour/Crash) -- clientul (MarketGui) foloseste asta ca sa isi
+-- porneasca countdown-ul de la valoarea CORECTA, nu de la un 10:00 fix.
+-- BUG vechi: MarketGui reseta mereu la marketUpdateTime (600) fix, in loc sa
+-- afle cat a mai ramas cu adevarat din slot-ul curent -- daca jucatorul se
+-- alatura sau deschide market-ul la mijlocul unui slot, countdown-ul lui
+-- arata gresit (prea mult), desincronizat fata de orarul real al serverului.
+function MarketManager.GetSecondsUntilNextUpdate()
+	local cycleTime = os.time() % SLOT_INTERVAL
+	return SLOT_INTERVAL - cycleTime
+end
+
+-- Cat mai e pana la urmatoarea aparitie a lui `eventType` (GoldenHour sau
+-- MarketCrash) -- se poate intampla in ciclul curent (daca slotul lui nu a
+-- trecut inca) sau in ciclul URMATOR (daca a trecut deja) -- ambele cazuri
+-- calculate direct, fara sa fie nevoie sa "stim dinainte" ciclul urmator,
+-- pentru ca getCycleSlots e determinist.
+local function secondsUntilEvent(eventType)
+	local now = os.time()
+	local cycleIndex = getCycleIndex(now)
+	local cycleTime = now % CYCLE_LENGTH
+	local targetSlot = getCycleSlots(cycleIndex)[eventType]
+
+	if cycleTime < targetSlot then
+		return targetSlot - cycleTime
+	end
+
+	local nextTargetSlot = getCycleSlots(cycleIndex + 1)[eventType]
+	return (CYCLE_LENGTH - cycleTime) + nextTargetSlot
+end
+
+-- SINGURA sursa de adevar pentru countdown-ul de Golden Hour/Market Crash --
+-- folosita DIRECT atat de tunel (server) cat si trimisa la MarketGui
+-- (client), ca sa arate EXACT acelasi numar, mereu. Fara asta, fiecare parte
+-- isi calcula propriul countdown, separat -- usor sa ajunga desincronizate.
+function MarketManager.GetEventCountdown()
+	local event = MarketManager.SpecialEvent
+
+	if event.Type ~= "None" and event.EndTime then
+		return {
+			Active = true,
+			Type = event.Type,
+			SecondsLeft = math.max(0, math.floor(event.EndTime - os.time()))
+		}
+	end
+
+	local goldenIn = secondsUntilEvent("GoldenHour")
+	local crashIn = secondsUntilEvent("MarketCrash")
+
+	if goldenIn <= crashIn then
+		return {Active = false, Type = "GoldenHour", SecondsLeft = goldenIn}
+	end
+
+	return {Active = false, Type = "MarketCrash", SecondsLeft = crashIn}
+end
+
 function MarketManager.GetClientData()
 	return {
 		Categories = MarketManager.CategoryData,
-		SpecialEvent = MarketManager.SpecialEvent
+		SpecialEvent = MarketManager.SpecialEvent,
+		SecondsUntilNextUpdate = MarketManager.GetSecondsUntilNextUpdate(),
+		EventCountdown = MarketManager.GetEventCountdown()
 	}
 end
 
@@ -180,15 +260,17 @@ local function marketLoop()
 			broadcastMarket()
 		end
 
+		local cycleIndex = getCycleIndex(now)
 		local cycleTime = now % CYCLE_LENGTH
 		local currentSlot = math.floor(cycleTime / SLOT_INTERVAL) * SLOT_INTERVAL
+		local slots = getCycleSlots(cycleIndex)
 
 		if currentSlot ~= lastSlotProcessed then
 			lastSlotProcessed = currentSlot
 
-			if currentSlot == GOLDEN_SLOT then
+			if currentSlot == slots.GoldenHour then
 				startGoldenHour()
-			elseif currentSlot == CRASH_SLOT then
+			elseif currentSlot == slots.MarketCrash then
 				startMarketCrash()
 			else
 				applyNormalUpdate()
