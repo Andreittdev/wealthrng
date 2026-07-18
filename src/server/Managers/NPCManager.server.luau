@@ -149,7 +149,11 @@ local function getMaxInventory(player)
 		return MarketplaceService:UserOwnsGamePassAsync(player.UserId, INVENTORY_PASS_ID)
 	end)
 
-	if success and ownsPass then
+	-- GiftedInventoryPass (persistat de DataManager) -- Inventory Pass nu are
+	-- un attribute dedicat, propriu, ca VIP/Speed/AutoSell (e verificat live,
+	-- direct aici), deci gift-ul are nevoie de propriul lui flag, verificat
+	-- alaturi de proprietatea reala.
+	if (success and ownsPass) or player:GetAttribute("GiftedInventoryPass") == true then
 		maxInventory = PASS_MAX_INVENTORY
 	end
 

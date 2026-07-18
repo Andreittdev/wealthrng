@@ -26,6 +26,14 @@ local function isPetDiscovered(petId)
 	return folder ~= nil and folder:FindFirstChild(petId) ~= nil
 end
 
+-- Acelasi tipar, dar pentru iteme de tranzactionat -- folder replicat de
+-- InventoryManager, un copil per ItemId (cheia din Clothing/Shoes/etc.)
+-- prin care a trecut vreodata jucatorul.
+local function isItemDiscovered(itemId)
+	local folder = player:FindFirstChild("DiscoveredItems")
+	return folder ~= nil and folder:FindFirstChild(itemId) ~= nil
+end
+
 local FONT_DISPLAY = Enum.Font.Bangers
 local FONT_BODY = Enum.Font.FredokaOne
 
@@ -96,8 +104,14 @@ end
 local function buildItemList()
 	local list = {}
 	for _, categoryModule in ipairs({Clothing, Shoes, Electronics, Luxury, Collectibles}) do
-		for _, item in pairs(categoryModule) do
-			table.insert(list, item)
+		for key, item in pairs(categoryModule) do
+			-- Clonam (nu mutam direct item) -- acelasi motiv ca la buildPetList:
+			-- avem nevoie de cheia din modul (ItemId, acelasi folosit de
+			-- InventoryManager/TradeManager) ca sa stim ce e descoperit, dar
+			-- entry-urile originale nu au campul asta.
+			local entry = table.clone(item)
+			entry.ItemKey = key
+			table.insert(list, entry)
 		end
 	end
 	table.sort(list, function(a, b)
@@ -291,22 +305,27 @@ end
 local petsScroll = createContentScroll("PetsScroll", 1)
 local itemsScroll = createContentScroll("ItemsScroll", 2)
 
--- ---- Card generic pentru o intrare (pet sau item) ----
+-- ---- Card pentru un item de tranzactionat -- aceeasi abordare ca la
+-- pet-uri (createPetEntryCard mai jos): umbra neagra daca nu a fost
+-- descoperit niciodata, iar categoria/pretul ascunse pana dai click (si
+-- doar daca a fost descoperit -- altfel nu are ce sa arate). ----
 
-local function createEntryCard(parent, order, name, rarity, subtitleText, icon)
+local function createEntryCard(parent, order, name, rarity, subtitleText, icon, discovered)
 	local color = RARITY_COLORS[rarity] or Color3.fromRGB(255, 255, 255)
 
-	local entry = Instance.new("Frame")
+	local entry = Instance.new("TextButton")
 	entry.Name = name
 	entry.LayoutOrder = order
 	entry.BackgroundColor3 = CARD_BG
+	entry.AutoButtonColor = false
+	entry.Text = ""
 	entry.ZIndex = 23
 	entry.Parent = parent
 
 	Instance.new("UICorner", entry).CornerRadius = UDim.new(0, 10)
 
 	local stroke = Instance.new("UIStroke")
-	stroke.Color = color
+	stroke.Color = discovered and color or Color3.fromRGB(70, 70, 78)
 	stroke.Thickness = 2
 	stroke.Parent = entry
 
@@ -315,6 +334,7 @@ local function createEntryCard(parent, order, name, rarity, subtitleText, icon)
 	image.Position = UDim2.new(0, 4, 0, 4)
 	image.Size = UDim2.new(1, -8, 0, 96)
 	image.Image = icon or ""
+	image.ImageColor3 = discovered and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(0, 0, 0)
 	image.ScaleType = Enum.ScaleType.Fit
 	image.ZIndex = 24
 	image.Parent = entry
@@ -333,7 +353,8 @@ local function createEntryCard(parent, order, name, rarity, subtitleText, icon)
 
 	-- TextScaled (nu TextSize fix) -- un text fix putea sa nu incapa toate
 	-- liniile (2 randuri la iteme/pet-uri cu Source) si sa se taie, aceeasi
-	-- greseala gasita si reparata la Stand Upgrade.
+	-- greseala gasita si reparata la Stand Upgrade. Ascuns implicit -- se
+	-- arata doar la click, si doar daca itemul a fost descoperit.
 	local subLabel = Instance.new("TextLabel")
 	subLabel.BackgroundTransparency = 1
 	subLabel.Position = UDim2.new(0, 6, 0, 124)
@@ -343,8 +364,15 @@ local function createEntryCard(parent, order, name, rarity, subtitleText, icon)
 	subLabel.TextWrapped = true
 	subLabel.Font = FONT_BODY
 	subLabel.TextScaled = true
+	subLabel.Visible = false
 	subLabel.ZIndex = 24
 	subLabel.Parent = entry
+
+	if discovered then
+		entry.Activated:Connect(function()
+			subLabel.Visible = not subLabel.Visible
+		end)
+	end
 
 	return entry
 end
@@ -491,6 +519,7 @@ local itemGrids = {}
 -- sesiunii, fiindca starea "discovered" era citita o singura data, la
 -- pornire.
 local petGridHolders = {}
+local itemGridHolders = {}
 local contentBuilt = false
 
 -- Constructia integrala (~830 Instance.new + ~118 imagini reale) e amanata
@@ -517,10 +546,11 @@ local function buildIndexContent()
 		if itemsByRarity[rarity] then
 			local gridHolder, grid = createRaritySection(itemsScroll, rarity, order)
 			table.insert(itemGrids, grid)
+			table.insert(itemGridHolders, {Holder = gridHolder, Rarity = rarity})
 
 			for itemOrder, itemData in ipairs(itemsByRarity[rarity]) do
 				local subtitleText = itemData.Category .. "\n" .. formatMoney(itemData.MinSell) .. " - " .. formatMoney(itemData.MaxSell)
-				createEntryCard(gridHolder, itemOrder, itemData.ItemName or itemData.Name, rarity, subtitleText, itemData.Icon)
+				createEntryCard(gridHolder, itemOrder, itemData.ItemName or itemData.Name, rarity, subtitleText, itemData.Icon, isItemDiscovered(itemData.ItemKey))
 			end
 		end
 	end
@@ -536,6 +566,25 @@ local function refreshPetCards()
 
 		for petOrder, petData in ipairs(petsByRarity[entry.Rarity]) do
 			createPetEntryCard(entry.Holder, petOrder, petData, entry.Rarity)
+		end
+	end
+end
+
+-- Acelasi motiv ca refreshPetCards -- un item proaspat descoperit (cumparat
+-- de la un NPC dupa ce Index-ul a fost deja construit o data) ramanea umbra
+-- pentru tot restul sesiunii, fiindca starea "discovered" era citita o
+-- singura data, la construire.
+local function refreshItemCards()
+	for _, entry in ipairs(itemGridHolders) do
+		for _, child in ipairs(entry.Holder:GetChildren()) do
+			if child:IsA("GuiObject") then
+				child:Destroy()
+			end
+		end
+
+		for itemOrder, itemData in ipairs(itemsByRarity[entry.Rarity]) do
+			local subtitleText = itemData.Category .. "\n" .. formatMoney(itemData.MinSell) .. " - " .. formatMoney(itemData.MaxSell)
+			createEntryCard(entry.Holder, itemOrder, itemData.ItemName or itemData.Name, entry.Rarity, subtitleText, itemData.Icon, isItemDiscovered(itemData.ItemKey))
 		end
 	end
 end
@@ -620,6 +669,7 @@ local function setOpen(open)
 		card.Size = getMainFrameSize()
 		if not firstBuild then
 			refreshPetCards()
+			refreshItemCards()
 		end
 		updateAllGrids()
 	end

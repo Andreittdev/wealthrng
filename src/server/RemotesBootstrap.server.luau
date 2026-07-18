@@ -45,6 +45,7 @@ end
 -- nu FindFirstChild simplu, deci nu exista risc de cursa cu alte scripturi.
 local REMOTE_EVENTS = {
 	"BuyItem",
+	"CodeResult",
 	"DailyClaimResult",
 	"DailyStatusResult",
 	"DepositMoney",
@@ -61,6 +62,7 @@ local REMOTE_EVENTS = {
 	"PetInventoryUpdate",
 	"PetOpened",
 	"RebirthResult",
+	"RedeemCode",
 	"RequestDailyClaim",
 	"RequestDailyStatus",
 	"RequestEggHatch",
@@ -70,6 +72,7 @@ local REMOTE_EVENTS = {
 	"RequestTokenPurchase",
 	"SellFirstItem",
 	"SellSelectedItem",
+	"SetGiftTarget",
 	"ShowInventory",
 	"ShowNotification",
 	"ShowTrade",

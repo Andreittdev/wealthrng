@@ -64,7 +64,7 @@ Economy.SpeedPass = {
 -- ============================
 Economy.AutoSellPass = {
 	GamePassId = 1906256722,
-	Price = 149 -- Robux
+	Price = 139 -- Robux
 }
 
 -- ============================
@@ -430,6 +430,27 @@ Economy.CashPacks = {
 	{Id = "CashPackSmall", ProductId = 3610412460, RobuxPrice = 49, Money = 150000},
 	{Id = "CashPackMedium", ProductId = 3610412497, RobuxPrice = 199, Money = 750000},
 	{Id = "CashPackLarge", ProductId = 3610412530, RobuxPrice = 499, Money = 1000000}
+}
+
+-- ============================
+-- GIFT PASSES (Developer Products, cumparabile oricand -- NU gamepass-uri)
+-- ============================
+-- Roblox NU are niciun API prin care un jucator sa transfere efectiv un
+-- Gamepass real altui cont (PromptGamePassPurchase acorda mereu DOAR
+-- cumparatorului). Astea sunt Developer Products SEPARATE, unul per
+-- gamepass -- cumparatorul alege un jucator din server, iar serverul
+-- (PremiumPurchaseManager.server.luau) acorda direct pe contul ALES atributul
+-- persistat GrantAttribute (nu gamepass-ul Roblox in sine -- destinatarul nu
+-- va aparea ca detinand gamepass-ul in inventarul lui Roblox, dar primeste
+-- exact aceleasi perk-uri in joc).
+--
+-- ProductId = 0 sunt PLACEHOLDER-e, la fel ca la PremiumEgg/CashPacks --
+-- trebuie create manual in Creator Dashboard, cate unul pentru fiecare intrare.
+Economy.GiftPasses = {
+	{Id = "GiftVIP", ProductId = 3610553561, Name = "VIP", GrantAttribute = "GiftedVIP"},
+	{Id = "GiftSpeedPass", ProductId = 3610554070, Name = "Speed Pass", GrantAttribute = "GiftedSpeedPass"},
+	{Id = "GiftAutoSellPass", ProductId = 3610554009, Name = "Auto Sell Pass", GrantAttribute = "GiftedAutoSellPass"},
+	{Id = "GiftInventoryPass", ProductId = 3610553662, Name = "Inventory Pass", GrantAttribute = "GiftedInventoryPass"}
 }
 
 return Economy

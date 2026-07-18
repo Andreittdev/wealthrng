@@ -16,6 +16,32 @@ local function createInt(parent, name, value)
 	v.Parent = parent
 end
 
+-- Marcheaza un ItemId ca "descoperit vreodata" -- ramane asa chiar daca
+-- exemplarul respectiv e ulterior vandut, la fel ca markDiscovered din
+-- PetManager.luau (folosit de Index ca sa stie ce iteme sa arate normal vs.
+-- ca o umbra neagra/nedescoperit).
+local function markItemDiscovered(player, itemId)
+	if not itemId or itemId == "" then
+		return
+	end
+
+	local discovered = player:FindFirstChild("DiscoveredItems")
+	if not discovered then
+		discovered = Instance.new("Folder")
+		discovered.Name = "DiscoveredItems"
+		discovered.Parent = player
+	end
+
+	if discovered:FindFirstChild(itemId) then
+		return
+	end
+
+	local marker = Instance.new("BoolValue")
+	marker.Name = itemId
+	marker.Value = true
+	marker.Parent = discovered
+end
+
 function InventoryManager.AddItem(player, offer)
 	local inventory = player:FindFirstChild("Inventory")
 
@@ -48,6 +74,8 @@ function InventoryManager.AddItem(player, offer)
 	createInt(item, "MinSell", offer.MinSell or offer.BuyPrice)
 	createInt(item, "MaxSell", offer.MaxSell or offer.BaseValue or offer.BuyPrice)
 	createInt(item, "PurchaseTime", offer.PurchaseTime or os.time())
+
+	markItemDiscovered(player, offer.ItemId)
 
 	print(player.Name .. " received " .. tostring(offer.ItemName))
 

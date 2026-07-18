@@ -20,6 +20,7 @@ local Economy = require(modulesFolder:WaitForChild("EconomyConfig"))
 
 local PetManager = require(script.Parent:WaitForChild("PetManager"))
 local RobuxSpentCalculator = require(script.Parent:WaitForChild("RobuxSpentCalculator"))
+local DataManager = require(script.Parent:WaitForChild("DataManager"))
 
 -- Tinem minte ce PurchaseId-uri am procesat deja -- Roblox reincearca acelasi
 -- receipt (posibil in sesiuni server diferite) pana cand ProcessReceipt
@@ -50,6 +51,52 @@ end
 -- DailyRewardsManager/RebirthManager etc.
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local showNotificationEvent = remotes:WaitForChild("ShowNotification")
+
+local setGiftTargetEvent = remotes:FindFirstChild("SetGiftTarget")
+if not setGiftTargetEvent then
+	setGiftTargetEvent = Instance.new("RemoteEvent")
+	setGiftTargetEvent.Name = "SetGiftTarget"
+	setGiftTargetEvent.Parent = remotes
+end
+
+-- Roblox nu are niciun API de "gift gamepass la alt jucator" -- vezi
+-- comentariul din Economy.GiftPasses (EconomyConfig.luau). Clientul apeleaza
+-- SetGiftTarget CHIAR INAINTE de PromptProductPurchase, ca sa stim cui sa
+-- acordam perk-ul cand vine receipt-ul (ProcessReceipt nu primite decat
+-- PlayerId-ul CUMPARATORULUI + ProductId, niciun payload custom).
+--
+-- Cheie dubla (cumparator -> productId -> destinatar), nu un singur slot per
+-- cumparator -- altfel doua cadouri diferite (produse diferite) trimise
+-- rapid unul dupa altul s-ar suprascrie intre ele inainte ca receipt-urile
+-- sa se intoarca.
+local pendingGiftTargets = {}
+
+local function onSetGiftTarget(player, productId, recipientUserId)
+	local isValidGiftProduct = false
+	for _, giftEntry in ipairs(Economy.GiftPasses) do
+		if giftEntry.ProductId == productId then
+			isValidGiftProduct = true
+			break
+		end
+	end
+
+	if not isValidGiftProduct then
+		return
+	end
+
+	if typeof(recipientUserId) ~= "number" then
+		return
+	end
+
+	pendingGiftTargets[player] = pendingGiftTargets[player] or {}
+	pendingGiftTargets[player][productId] = recipientUserId
+end
+
+setGiftTargetEvent.OnServerEvent:Connect(onSetGiftTarget)
+
+Players.PlayerRemoving:Connect(function(player)
+	pendingGiftTargets[player] = nil
+end)
 
 -- Aceeasi logica de "roll ponderat" ca PetManager.rollPetFromEgg, dar pe
 -- RARITATE (nu pe pet direct) -- alegem intai raritatea (sanse mai bune
@@ -142,6 +189,42 @@ local function grantCashPack(player, amount)
 	return true
 end
 
+-- purchaser = cine a platit; giftEntry = intrarea din Economy.GiftPasses.
+-- Cauta destinatarul ales (setat prin SetGiftTarget chiar inainte de
+-- PromptProductPurchase) -- daca a plecat intre timp (sau nu a fost setat
+-- deloc, ex: cineva a cumparat direct fara sa treaca prin UI-ul de gift),
+-- acordam perk-ul CUMPARATORULUI insusi, ca sa nu piarda Robux-ul platit
+-- degeaba.
+local function grantGiftPass(purchaser, giftEntry)
+	local targets = pendingGiftTargets[purchaser]
+	local recipientUserId = targets and targets[giftEntry.ProductId]
+	local recipient = recipientUserId and Players:GetPlayerByUserId(recipientUserId)
+
+	if not recipient then
+		recipient = purchaser
+		showNotificationEvent:FireClient(
+			purchaser,
+			"🎁 Your gift recipient wasn't found, so you got " .. giftEntry.Name .. " for yourself instead!"
+		)
+	else
+		showNotificationEvent:FireClient(recipient, "🎁 " .. purchaser.Name .. " gifted you " .. giftEntry.Name .. "!")
+
+		if recipient ~= purchaser then
+			showNotificationEvent:FireClient(purchaser, "🎁 Gifted " .. giftEntry.Name .. " to " .. recipient.Name .. "!")
+		end
+	end
+
+	recipient:SetAttribute(giftEntry.GrantAttribute, true)
+
+	if targets then
+		targets[giftEntry.ProductId] = nil
+	end
+
+	DataManager.SaveData(recipient)
+
+	return true
+end
+
 -- productId -> function(player) -> boolean (adevarat doar daca s-a acordat efectiv)
 local productHandlers = {}
 
@@ -155,6 +238,14 @@ for _, pack in ipairs(Economy.CashPacks) do
 	if pack.ProductId ~= 0 then
 		productHandlers[pack.ProductId] = function(player)
 			return grantCashPack(player, pack.Money)
+		end
+	end
+end
+
+for _, giftEntry in ipairs(Economy.GiftPasses) do
+	if giftEntry.ProductId ~= 0 then
+		productHandlers[giftEntry.ProductId] = function(player)
+			return grantGiftPass(player, giftEntry)
 		end
 	end
 end

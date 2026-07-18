@@ -28,14 +28,20 @@ local function getDefaultData()
         Pets = {},
         EquippedPets = {"",""},
         DiscoveredPets = {},
+        DiscoveredItems = {},
         EquippedTitle = "",
         BoughtTokenItems = {},
+        RedeemedCodes = {},
         StarterPackRedeemed = false,
         RebirthCount = 0,
         RebirthTokens = 0,
         RebirthPetClaimed = false,
         DailyStreakDay = 0,
-        DailyLastClaimTimestamp = 0
+        DailyLastClaimTimestamp = 0,
+        GiftedVIP = false,
+        GiftedSpeedPass = false,
+        GiftedAutoSellPass = false,
+        GiftedInventoryPass = false
 	}
 end
 
@@ -90,14 +96,20 @@ function DataManager.LoadData(player)
     data.Pets = data.Pets or {}
 	data.EquippedPets = data.EquippedPets or {"",""}
 	data.DiscoveredPets = data.DiscoveredPets or {}
+	data.DiscoveredItems = data.DiscoveredItems or {}
 	data.EquippedTitle = data.EquippedTitle or ""
 	data.BoughtTokenItems = data.BoughtTokenItems or {}
+	data.RedeemedCodes = data.RedeemedCodes or {}
 	data.StarterPackRedeemed = data.StarterPackRedeemed or false
 	data.RebirthCount = data.RebirthCount or 0
 	data.RebirthTokens = data.RebirthTokens or 0
 	data.RebirthPetClaimed = data.RebirthPetClaimed or false
 	data.DailyStreakDay = data.DailyStreakDay or 0
 	data.DailyLastClaimTimestamp = data.DailyLastClaimTimestamp or 0
+	data.GiftedVIP = data.GiftedVIP or false
+	data.GiftedSpeedPass = data.GiftedSpeedPass or false
+	data.GiftedAutoSellPass = data.GiftedAutoSellPass or false
+	data.GiftedInventoryPass = data.GiftedInventoryPass or false
 
 	return data
 end
@@ -116,6 +128,7 @@ function DataManager.SaveData(player)
     local pets = player:FindFirstChild("Pets")
     local equippedPets = player:FindFirstChild("EquippedPets")
 	local discoveredPets = player:FindFirstChild("DiscoveredPets")
+	local discoveredItems = player:FindFirstChild("DiscoveredItems")
 	local equippedCosmetics = player:FindFirstChild("EquippedCosmetics")
 
 	if not leaderstats or not inventory then
@@ -144,14 +157,20 @@ function DataManager.SaveData(player)
         Pets = {},
         EquippedPets = {"",""},
         DiscoveredPets = {},
+        DiscoveredItems = {},
         EquippedTitle = player:GetAttribute("EquippedTitle") or "",
         BoughtTokenItems = {},
+        RedeemedCodes = {},
         StarterPackRedeemed = player:GetAttribute("StarterPackRedeemed") == true,
         RebirthCount = leaderstats:FindFirstChild("Rebirths") and leaderstats.Rebirths.Value or 0,
         RebirthTokens = player:FindFirstChild("RebirthTokens") and player.RebirthTokens.Value or 0,
         RebirthPetClaimed = player:GetAttribute("RebirthPetClaimed") == true,
         DailyStreakDay = player:GetAttribute("DailyStreakDay") or 0,
-        DailyLastClaimTimestamp = player:GetAttribute("DailyLastClaimTimestamp") or 0
+        DailyLastClaimTimestamp = player:GetAttribute("DailyLastClaimTimestamp") or 0,
+        GiftedVIP = player:GetAttribute("GiftedVIP") == true,
+        GiftedSpeedPass = player:GetAttribute("GiftedSpeedPass") == true,
+        GiftedAutoSellPass = player:GetAttribute("GiftedAutoSellPass") == true,
+        GiftedInventoryPass = player:GetAttribute("GiftedInventoryPass") == true
 	}
 
 	for _, item in ipairs(inventory:GetChildren()) do
@@ -214,12 +233,23 @@ function DataManager.SaveData(player)
 		end
 	end
 
+	-- DiscoveredItems -- acelasi tipar ca DiscoveredPets, dar pentru iteme de
+	-- tranzactionat (folosit de Index ca sa arate itemele nedescoperite ca o
+	-- umbra neagra).
+	if discoveredItems then
+		for _, itemIdValue in ipairs(discoveredItems:GetChildren()) do
+			table.insert(dataToSave.DiscoveredItems, itemIdValue.Name)
+		end
+	end
+
 	-- Titlurile/cosmeticele cumparate din Token Shop erau marcate doar ca
 	-- atribute (TokenShopBought_<Id>), niciodata salvate -- disparea la
 	-- rejoin. Le salvam generic, dupa numele atributului.
 	for attributeName, attributeValue in pairs(player:GetAttributes()) do
 		if attributeName:sub(1, 16) == "TokenShopBought_" and attributeValue == true then
 			table.insert(dataToSave.BoughtTokenItems, attributeName)
+		elseif attributeName:sub(1, 13) == "CodeRedeemed_" and attributeValue == true then
+			table.insert(dataToSave.RedeemedCodes, attributeName)
 		end
 	end
 
@@ -353,6 +383,10 @@ function DataManager.ApplyData(player, data)
 		player:SetAttribute(attributeName, true)
 	end
 
+	for _, attributeName in ipairs(data.RedeemedCodes or {}) do
+		player:SetAttribute(attributeName, true)
+	end
+
 	local rebirths = leaderstats:FindFirstChild("Rebirths")
 	if not rebirths then
 		rebirths = Instance.new("IntValue")
@@ -372,6 +406,15 @@ function DataManager.ApplyData(player, data)
 	player:SetAttribute("RebirthPetClaimed", data.RebirthPetClaimed == true)
 	player:SetAttribute("DailyStreakDay", data.DailyStreakDay or 0)
 	player:SetAttribute("DailyLastClaimTimestamp", data.DailyLastClaimTimestamp or 0)
+
+	-- Gifted*: sursa de adevar pentru perk-urile primite cadou (vezi
+	-- VIPManager/SpeedPassManager/AutoSellPassManager -- recalculeaza
+	-- IsVIP/HasSpeedPass/HasAutoSellPass ca "real SAU cadou" de fiecare data
+	-- cand oricare din cele doua se schimba, inclusiv aici la incarcare).
+	player:SetAttribute("GiftedVIP", data.GiftedVIP == true)
+	player:SetAttribute("GiftedSpeedPass", data.GiftedSpeedPass == true)
+	player:SetAttribute("GiftedAutoSellPass", data.GiftedAutoSellPass == true)
+	player:SetAttribute("GiftedInventoryPass", data.GiftedInventoryPass == true)
 
 	local bankMoney = player:FindFirstChild("BankMoney")
 	if not bankMoney then
@@ -545,6 +588,22 @@ function DataManager.ApplyData(player, data)
 		marker.Name = petId
 		marker.Value = true
 		marker.Parent = discoveredPets
+	end
+
+	local discoveredItems = player:FindFirstChild("DiscoveredItems")
+	if not discoveredItems then
+		discoveredItems = Instance.new("Folder")
+		discoveredItems.Name = "DiscoveredItems"
+		discoveredItems.Parent = player
+	end
+
+	discoveredItems:ClearAllChildren()
+
+	for _, itemId in ipairs(data.DiscoveredItems or {}) do
+		local marker = Instance.new("BoolValue")
+		marker.Name = itemId
+		marker.Value = true
+		marker.Parent = discoveredItems
 	end
 end
 

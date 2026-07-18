@@ -20,6 +20,11 @@ local playerGui = player:WaitForChild("PlayerGui")
 local modulesFolder = ReplicatedStorage:WaitForChild("Modules")
 local Economy = require(modulesFolder:WaitForChild("EconomyConfig"))
 
+local remotes = ReplicatedStorage:WaitForChild("Remotes")
+local redeemCodeEvent = remotes:WaitForChild("RedeemCode")
+local codeResultEvent = remotes:WaitForChild("CodeResult")
+local setGiftTargetEvent = remotes:WaitForChild("SetGiftTarget")
+
 local FONT_DISPLAY = Enum.Font.Bangers
 local FONT_BODY = Enum.Font.FredokaOne
 
@@ -30,10 +35,14 @@ local ROW_INFO_BG = Color3.fromRGB(120, 78, 16)
 local PRICE_COLOR = Color3.fromRGB(120, 235, 150)
 local OWNED_COLOR = Color3.fromRGB(100, 235, 140)
 
+local GIFT_TAB_COLOR = Color3.fromRGB(230, 100, 180)
+
 local TABS = {
 	{Key = "GamePasses", Label = "Game\nPasses", Color = Color3.fromRGB(230, 150, 40)},
 	{Key = "Cash", Label = "Cash", Color = Color3.fromRGB(70, 150, 230)},
-	{Key = "Eggs", Label = "Eggs", Color = Color3.fromRGB(210, 200, 40)}
+	{Key = "Eggs", Label = "Eggs", Color = Color3.fromRGB(210, 200, 40)},
+	{Key = "Codes", Label = "Codes", Color = Color3.fromRGB(90, 210, 130)},
+	{Key = "Gift", Label = "Gift", Color = GIFT_TAB_COLOR}
 }
 
 -- "$15,000" in loc de "Tiny Cash Pack" -- cerut explicit, jucatorul vrea sa
@@ -83,6 +92,29 @@ local function getPassPrice(passId)
 	end
 
 	passPriceCache[passId] = price
+	return price
+end
+
+-- Acelasi tipar ca getPassPrice, dar pentru Developer Products (Enum.InfoType
+-- .Product, nu .GamePass) -- folosit de tab-ul Gift, ca preturile afisate
+-- pentru cele 4 Gift Passes sa fie mereu cele REALE din Creator Dashboard.
+local giftPassPriceCache = {}
+
+local function getGiftPassPrice(productId)
+	if giftPassPriceCache[productId] ~= nil then
+		return giftPassPriceCache[productId]
+	end
+
+	local price = nil
+	local ok, info = pcall(function()
+		return MarketplaceService:GetProductInfo(productId, Enum.InfoType.Product)
+	end)
+
+	if ok and info and info.PriceInRobux then
+		price = info.PriceInRobux
+	end
+
+	giftPassPriceCache[productId] = price
 	return price
 end
 
@@ -441,16 +473,268 @@ local function buildEggsTab()
 	oddsLabel.Parent = scroll
 end
 
+-- Nu exista niciun API Roblox prin care un jucator sa transfere efectiv un
+-- Gamepass real altui cont -- vezi comentariul din Economy.GiftPasses
+-- (EconomyConfig.luau). Alegi un jucator din server, apoi cumperi un
+-- Developer Product dedicat -- serverul (PremiumPurchaseManager) acorda
+-- perk-ul direct pe contul ALES.
+local selectedGiftTargetUserId = nil
+
+local function buildGiftTab()
+	selectedGiftTargetUserId = nil
+
+	local pickerLabel = Instance.new("TextLabel")
+	pickerLabel.Name = "PickerLabel"
+	pickerLabel.LayoutOrder = 1
+	pickerLabel.BackgroundTransparency = 1
+	pickerLabel.Size = UDim2.new(1, 0, 0, 24)
+	pickerLabel.Text = "Choose a player, then tap Gift below:"
+	pickerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	pickerLabel.Font = FONT_BODY
+	pickerLabel.TextSize = 15
+	pickerLabel.TextXAlignment = Enum.TextXAlignment.Left
+	pickerLabel.Parent = scroll
+
+	local others = {}
+	for _, otherPlayer in ipairs(Players:GetPlayers()) do
+		if otherPlayer ~= player then
+			table.insert(others, otherPlayer)
+		end
+	end
+
+	if #others == 0 then
+		local emptyLabel = Instance.new("TextLabel")
+		emptyLabel.Name = "NoPlayersLabel"
+		emptyLabel.LayoutOrder = 2
+		emptyLabel.BackgroundTransparency = 1
+		emptyLabel.Size = UDim2.new(1, 0, 0, 40)
+		emptyLabel.Text = "No other players in the server right now"
+		emptyLabel.TextColor3 = Color3.fromRGB(200, 200, 210)
+		emptyLabel.Font = FONT_BODY
+		emptyLabel.TextSize = 14
+		emptyLabel.TextWrapped = true
+		emptyLabel.Parent = scroll
+	end
+
+	local playerButtons = {}
+
+	local function refreshPlayerButtons()
+		for userId, entry in pairs(playerButtons) do
+			local isSelected = userId == selectedGiftTargetUserId
+			entry.Stroke.Thickness = isSelected and 4 or 2
+			entry.Stroke.Color = isSelected and GIFT_TAB_COLOR or Color3.fromRGB(20, 18, 24)
+		end
+	end
+
+	for i, otherPlayer in ipairs(others) do
+		local playerButton = Instance.new("TextButton")
+		playerButton.Name = "PlayerButton_" .. otherPlayer.UserId
+		playerButton.LayoutOrder = 2 + i
+		playerButton.Size = UDim2.new(1, 0, 0, 40)
+		playerButton.AutoButtonColor = false
+		playerButton.BackgroundColor3 = ROW_INFO_BG
+		playerButton.Text = otherPlayer.DisplayName
+		playerButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+		playerButton.Font = FONT_DISPLAY
+		playerButton.TextScaled = true
+		playerButton.Parent = scroll
+
+		Instance.new("UICorner", playerButton).CornerRadius = UDim.new(0.14, 0)
+
+		local stroke = Instance.new("UIStroke")
+		stroke.Color = Color3.fromRGB(20, 18, 24)
+		stroke.Thickness = 2
+		stroke.Parent = playerButton
+
+		playerButtons[otherPlayer.UserId] = {Button = playerButton, Stroke = stroke}
+
+		playerButton.Activated:Connect(function()
+			selectedGiftTargetUserId = otherPlayer.UserId
+			refreshPlayerButtons()
+		end)
+	end
+
+	local anyConfigured = false
+
+	for i, giftEntry in ipairs(Economy.GiftPasses) do
+		if giftEntry.ProductId ~= 0 then
+			anyConfigured = true
+			local price = getGiftPassPrice(giftEntry.ProductId)
+
+			buildRow({
+				Name = "Gift " .. giftEntry.Name,
+				LayoutOrder = 2 + #others + i,
+				IconEmoji = "🎁",
+				PriceText = price and (price .. " R$") or "BUY",
+				OnClick = function()
+					if not selectedGiftTargetUserId then
+						return
+					end
+					setGiftTargetEvent:FireServer(giftEntry.ProductId, selectedGiftTargetUserId)
+					MarketplaceService:PromptProductPurchase(player, giftEntry.ProductId)
+				end
+			})
+		end
+	end
+
+	if not anyConfigured then
+		local comingSoonLabel = Instance.new("TextLabel")
+		comingSoonLabel.Name = "ComingSoonLabel"
+		comingSoonLabel.LayoutOrder = 999
+		comingSoonLabel.BackgroundTransparency = 1
+		comingSoonLabel.Size = UDim2.new(1, 0, 0, 40)
+		comingSoonLabel.Text = "🚧 Gifting coming soon!"
+		comingSoonLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+		comingSoonLabel.Font = FONT_BODY
+		comingSoonLabel.TextScaled = true
+		comingSoonLabel.Parent = scroll
+	end
+end
+
+-- Cat timp asteptam raspunsul serverului la un cod, blocam butonul de Redeem
+-- -- fara asta, un dublu-click rapid trimite acelasi cod de 2 ori inainte de
+-- primul raspuns (server-ul e oricum protejat de re-redeem, dar rezultatele
+-- s-ar putea intoarce in alta ordine si arata gresit in UI).
+local codesWaitingForResult = false
+
+-- Referinta catre label-ul de rezultat curent -- actualizata de fiecare data
+-- cand buildCodesTab ruleaza (la fiecare selectare a tab-ului). Handler-ul
+-- codeResultEvent.OnClientEvent e conectat O SINGURA DATA, la nivel de modul
+-- (mai jos) -- NU aici, in interiorul builder-ului, ca sa nu se acumuleze o
+-- conexiune noua de fiecare data cand jucatorul revine pe tab-ul Codes
+-- (exact tiparul de bug reparat mai devreme in ItemsGui.rbxmx).
+local codesResultLabel = nil
+local codesInputBox = nil
+
+local function setCodesResult(text, color)
+	-- Verificam .Parent, nu doar existenta referintei -- daca jucatorul a
+	-- schimbat tab-ul intre timp, clearScroll() a distrus deja acest label
+	-- (codesResultLabel ramane o referinta "moarta" pana la urmatorul
+	-- buildCodesTab).
+	if not codesResultLabel or not codesResultLabel.Parent then
+		return
+	end
+	codesResultLabel.Text = text
+	codesResultLabel.TextColor3 = color
+end
+
+local function buildCodesTab()
+	codesWaitingForResult = false
+
+	local inputRow = Instance.new("Frame")
+	inputRow.Name = "CodeInputRow"
+	inputRow.LayoutOrder = 1
+	inputRow.Size = UDim2.new(1, 0, 0, 56)
+	inputRow.BackgroundColor3 = ROW_INFO_BG
+	inputRow.Parent = scroll
+
+	Instance.new("UICorner", inputRow).CornerRadius = UDim.new(0.14, 0)
+
+	local inputStroke = Instance.new("UIStroke")
+	inputStroke.Color = Color3.fromRGB(20, 18, 24)
+	inputStroke.Thickness = 2
+	inputStroke.Parent = inputRow
+
+	local codeBox = Instance.new("TextBox")
+	codeBox.Name = "CodeBox"
+	codeBox.BackgroundTransparency = 1
+	codeBox.Position = UDim2.new(0, 14, 0, 0)
+	codeBox.Size = UDim2.new(1, -28, 1, 0)
+	codeBox.Text = ""
+	codeBox.PlaceholderText = "Enter code..."
+	codeBox.PlaceholderColor3 = Color3.fromRGB(200, 200, 210)
+	codeBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+	codeBox.Font = FONT_BODY
+	codeBox.TextScaled = true
+	codeBox.ClearTextOnFocus = false
+	codeBox.TextXAlignment = Enum.TextXAlignment.Left
+	codeBox.Parent = inputRow
+
+	codesInputBox = codeBox
+
+	local redeemButton = Instance.new("TextButton")
+	redeemButton.Name = "RedeemButton"
+	redeemButton.LayoutOrder = 2
+	redeemButton.Size = UDim2.new(1, 0, 0, 56)
+	redeemButton.AutoButtonColor = false
+	redeemButton.BackgroundColor3 = Color3.fromRGB(90, 200, 120)
+	redeemButton.Text = "REDEEM"
+	redeemButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	redeemButton.Font = FONT_DISPLAY
+	redeemButton.TextScaled = true
+	redeemButton.Parent = scroll
+
+	Instance.new("UICorner", redeemButton).CornerRadius = UDim.new(0.14, 0)
+
+	local redeemStroke = Instance.new("UIStroke")
+	redeemStroke.Color = Color3.fromRGB(20, 18, 24)
+	redeemStroke.Thickness = 2
+	redeemStroke.Parent = redeemButton
+
+	local resultLabel = Instance.new("TextLabel")
+	resultLabel.Name = "CodeResultLabel"
+	resultLabel.LayoutOrder = 3
+	resultLabel.BackgroundTransparency = 1
+	resultLabel.Size = UDim2.new(1, 0, 0, 40)
+	resultLabel.Text = ""
+	resultLabel.TextColor3 = Color3.fromRGB(200, 200, 210)
+	resultLabel.TextWrapped = true
+	resultLabel.Font = FONT_BODY
+	resultLabel.TextSize = 14
+	resultLabel.TextXAlignment = Enum.TextXAlignment.Left
+	resultLabel.Parent = scroll
+
+	codesResultLabel = resultLabel
+
+	redeemButton.Activated:Connect(function()
+		if codesWaitingForResult then
+			return
+		end
+
+		local code = codeBox.Text
+
+		if code == "" then
+			setCodesResult("Enter a code first", Color3.fromRGB(255, 110, 110))
+			return
+		end
+
+		codesWaitingForResult = true
+		setCodesResult("Checking...", Color3.fromRGB(200, 200, 210))
+		redeemCodeEvent:FireServer(code)
+	end)
+end
+
+codeResultEvent.OnClientEvent:Connect(function(data)
+	codesWaitingForResult = false
+
+	if not data then
+		return
+	end
+
+	if data.Success then
+		setCodesResult("✅ Redeemed \"" .. tostring(data.Code) .. "\"!", Color3.fromRGB(90, 230, 130))
+		if codesInputBox and codesInputBox.Parent then
+			codesInputBox.Text = ""
+		end
+	else
+		setCodesResult("❌ " .. tostring(data.Message or "Something went wrong"), Color3.fromRGB(255, 110, 110))
+	end
+end)
+
 local TAB_TITLES = {
 	GamePasses = "GAME PASSES",
 	Cash = "CASH",
-	Eggs = "EGGS"
+	Eggs = "EGGS",
+	Codes = "CODES",
+	Gift = "GIFT"
 }
 
 local TAB_BUILDERS = {
 	GamePasses = buildGamePassesTab,
 	Cash = buildCashTab,
-	Eggs = buildEggsTab
+	Eggs = buildEggsTab,
+	Codes = buildCodesTab,
+	Gift = buildGiftTab
 }
 
 local currentTab = "GamePasses"
@@ -509,3 +793,15 @@ MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(purchasedPlay
 		selectTab("GamePasses")
 	end
 end)
+
+-- Lista de jucatori din tab-ul Gift trebuie sa ramana la zi cat timp panoul
+-- e deschis -- conectate O SINGURA DATA, la nivel de modul (nu in
+-- buildGiftTab), ca sa nu se acumuleze conexiuni la fiecare rebuild.
+local function refreshGiftTabIfOpen()
+	if mainFrame.Visible and currentTab == "Gift" then
+		selectTab("Gift")
+	end
+end
+
+Players.PlayerAdded:Connect(refreshGiftTabIfOpen)
+Players.PlayerRemoving:Connect(refreshGiftTabIfOpen)

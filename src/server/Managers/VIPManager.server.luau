@@ -37,12 +37,32 @@ local function createVIPTag(character)
 	label.Parent = billboard
 end
 
+-- IsVIP = detine gamepass-ul REAL sau a primit perk-ul cadou (GiftedVIP,
+-- persistat de DataManager) -- recalculat de fiecare data cand ORICARE
+-- dintre cele doua se schimba, nu doar o singura data la join, ca rezultatul
+-- sa nu depinda de ordinea in care ruleaza acest script fata de
+-- DataManager.ApplyData (scripturi separate, fara garantie de ordine intre
+-- handlere PlayerAdded diferite).
+local function recompute(player)
+	local real = player:GetAttribute("RealVIP") == true
+	local gifted = player:GetAttribute("GiftedVIP") == true
+	player:SetAttribute("IsVIP", real or gifted)
+end
+
 Players.PlayerAdded:Connect(function(player)
+	player:SetAttribute("RealVIP", false)
 	player:SetAttribute("IsVIP", false)
+
+	player:GetAttributeChangedSignal("RealVIP"):Connect(function()
+		recompute(player)
+	end)
+	player:GetAttributeChangedSignal("GiftedVIP"):Connect(function()
+		recompute(player)
+	end)
 
 	task.spawn(function()
 		local hasVIP = playerHasVIP(player)
-		player:SetAttribute("IsVIP", hasVIP)
+		player:SetAttribute("RealVIP", hasVIP)
 	end)
 
 	player.CharacterAdded:Connect(function(character)
