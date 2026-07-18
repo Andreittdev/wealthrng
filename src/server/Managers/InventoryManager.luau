@@ -24,8 +24,14 @@ function InventoryManager.AddItem(player, offer)
 		return
 	end
 
+	-- Prefix "New" -- nextItemId e un contor GLOBAL, comun tuturor jucatorilor
+	-- de pe server, in timp ce iteme restaurate din DataStore sunt numite
+	-- "1".."N" (DataManager.luau:398, per jucator). Fara prefix, un jucator
+	-- care revine cu iteme restaurate putea primi un item nou cu acelasi nume
+	-- ca unul restaurat -- coliziune care facea unul din ele de negasit/
+	-- ne-vandabil (FindFirstChild gasea mereu primul).
 	local item = Instance.new("Folder")
-	item.Name = tostring(nextItemId)
+	item.Name = "New" .. tostring(nextItemId)
 	item.Parent = inventory
 
 	nextItemId += 1

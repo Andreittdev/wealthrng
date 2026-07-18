@@ -339,7 +339,7 @@ if nextMarketEventPanel then
 		surfaceGui.Name = "NextMarketEventSurface" .. face.Name
 		surfaceGui.Face = face
 		surfaceGui.Adornee = nextMarketEventPanel
-		surfaceGui.AlwaysOnTop = true
+		surfaceGui.AlwaysOnTop = false
 		surfaceGui.LightInfluence = 0
 		surfaceGui.PixelsPerStud = 36
 		surfaceGui.Parent = nextMarketEventPanel
@@ -531,7 +531,7 @@ if nextUpdatePanel then
 		surfaceGui.Name = "NextUpdateSurface" .. face.Name
 		surfaceGui.Face = face
 		surfaceGui.Adornee = nextUpdatePanel
-		surfaceGui.AlwaysOnTop = true
+		surfaceGui.AlwaysOnTop = false
 		surfaceGui.LightInfluence = 0
 		surfaceGui.PixelsPerStud = 36
 		surfaceGui.Parent = nextUpdatePanel
@@ -679,6 +679,10 @@ local function createTree(position, scale, hueShift)
 	local trunk = Instance.new("Part")
 	trunk.Name = "TreeTrunk"
 	trunk.Anchored = true
+	-- CanCollide=false -- decor pur, nu vrem ca jucatorii sa se blocheze in
+	-- cei 60+ copaci imprastiati pe harta (si scapam de costul de fizica al
+	-- atator piese cu coliziune).
+	trunk.CanCollide = false
 	trunk.Size = Vector3.new(1.8 * scale, trunkHeight + 0.4, 1.8 * scale)
 	trunk.Material = Enum.Material.Wood
 	trunk.Color = Color3.fromRGB(92, 64, 40)
@@ -705,6 +709,7 @@ local function createTree(position, scale, hueShift)
 		local foliage = Instance.new("Part")
 		foliage.Name = "TreeFoliage" .. i
 		foliage.Anchored = true
+		foliage.CanCollide = false
 		foliage.Size = layer.Size * scale
 		foliage.Material = Enum.Material.Grass
 		foliage.Color = foliageColor
@@ -735,6 +740,7 @@ local function createBush(position, scale, hueShift)
 		local bush = Instance.new("Part")
 		bush.Name = "Bush" .. i
 		bush.Anchored = true
+		bush.CanCollide = false
 		bush.Size = layer.Size * scale
 		bush.Material = Enum.Material.Grass
 		bush.Color = bushColor
@@ -819,6 +825,9 @@ while treesPlaced < TREE_COUNT and attempts < TREE_COUNT * 25 do
 		createTree(Vector3.new(x, GROUND_Y, z), scale, hueShift)
 		table.insert(placedDecor, {X = x, Z = z, Radius = 4.5 * scale})
 		treesPlaced += 1
+		if treesPlaced % 6 == 0 then
+			task.wait()
+		end
 	end
 end
 
@@ -835,6 +844,9 @@ while bushesPlaced < BUSH_COUNT and attempts < BUSH_COUNT * 25 do
 		createBush(Vector3.new(x, GROUND_Y, z), scale, hueShift)
 		table.insert(placedDecor, {X = x, Z = z, Radius = 1.8 * scale})
 		bushesPlaced += 1
+		if bushesPlaced % 6 == 0 then
+			task.wait()
+		end
 	end
 end
 
@@ -911,6 +923,9 @@ while mainTreesPlaced < MAIN_MAP_TREE_COUNT and attempts < MAIN_MAP_TREE_COUNT *
 		createTree(Vector3.new(x, GROUND_Y, z), scale, hueShift)
 		table.insert(placedDecor, {X = x, Z = z, Radius = 4.5 * scale})
 		mainTreesPlaced += 1
+		if mainTreesPlaced % 6 == 0 then
+			task.wait()
+		end
 	end
 end
 
@@ -927,6 +942,9 @@ while mainBushesPlaced < MAIN_MAP_BUSH_COUNT and attempts < MAIN_MAP_BUSH_COUNT 
 		createBush(Vector3.new(x, GROUND_Y, z), scale, hueShift)
 		table.insert(placedDecor, {X = x, Z = z, Radius = 1.8 * scale})
 		mainBushesPlaced += 1
+		if mainBushesPlaced % 6 == 0 then
+			task.wait()
+		end
 	end
 end
 
@@ -979,6 +997,9 @@ while extraTreesPlaced < EXTRA_TREE_COUNT and attempts < EXTRA_TREE_COUNT * 25 d
 		createTree(Vector3.new(x, GROUND_Y, z), scale, hueShift)
 		table.insert(placedDecor, {X = x, Z = z, Radius = 4.5 * scale})
 		extraTreesPlaced += 1
+		if extraTreesPlaced % 6 == 0 then
+			task.wait()
+		end
 	end
 end
 
@@ -995,6 +1016,9 @@ while extraBushesPlaced < EXTRA_BUSH_COUNT and attempts < EXTRA_BUSH_COUNT * 25 
 		createBush(Vector3.new(x, GROUND_Y, z), scale, hueShift)
 		table.insert(placedDecor, {X = x, Z = z, Radius = 1.8 * scale})
 		extraBushesPlaced += 1
+		if extraBushesPlaced % 6 == 0 then
+			task.wait()
+		end
 	end
 end
 
@@ -1074,6 +1098,23 @@ if #resolvedSpeedZones > 0 then
 	Players.PlayerRemoving:Connect(function(player)
 		playerSpeedState[player] = nil
 	end)
+
+	-- Humanoid-ul nou de la un respawn reseteaza WalkSpeed la valoarea
+	-- default -- fara asta, daca jucatorul moare/respawneaza stand chiar in
+	-- zona de boost, starea cache-uita coincide deja cu targetSpeed, deci
+	-- bucla Heartbeat de mai sus n-o mai reaplica pana nu iese si reintra
+	-- fizic in zona.
+	local function resetSpeedStateOnRespawn(player)
+		player.CharacterAdded:Connect(function()
+			playerSpeedState[player] = nil
+		end)
+	end
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		resetSpeedStateOnRespawn(player)
+	end
+
+	Players.PlayerAdded:Connect(resetSpeedStateOnRespawn)
 end
 
 print("TownMapBuilder: harta noua construita in Workspace.TownMap (strada + trotuare + iarba, "

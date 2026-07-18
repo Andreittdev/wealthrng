@@ -392,29 +392,44 @@ Economy.PremiumEgg = {
 	ProductId = 3610412564,
 	RobuxPrice = 99, -- doar text afisat in UI; pretul real e cel setat in Creator Dashboard
 
-	-- Sanse MULT mai bune decat ouale normale (Economy.NPCRarityChances avea
-	-- Common=60/Rare=28/Epic=10/Legendary=2) -- asta e chiar motivul pentru
-	-- care cineva ar plati Robux pe el.
+	-- DOAR Legendary/Mythic/Secret -- fara Common/Rare/Epic deloc (cerut
+	-- explicit, ca oul premium sa fie clar P2W: fiecare deschidere garanteaza
+	-- minim un pet Legendary). Toate 3 raritatile au pool real de pet-uri in
+	-- PetDatabase (Legendary=4, Mythic=4, Secret=2 -- THE COLLECTOR/THE
+	-- KINGPIN), deci PetManager.GrantRandomPetByRarity are din ce alege.
 	RarityChances = {
-		{Rarity = "Common", Chance = 20},
-		{Rarity = "Rare", Chance = 35},
-		{Rarity = "Epic", Chance = 35},
-		{Rarity = "Legendary", Chance = 10}
+		{Rarity = "Legendary", Chance = 60},
+		{Rarity = "Mythic", Chance = 35},
+		{Rarity = "Secret", Chance = 5}
 	}
 }
 
 -- ============================
 -- CASH PACKS (Developer Products, cumparabile oricand -- NU gamepass-uri)
 -- ============================
--- Tiny e intentionat un raport $/Robux mai slab decat celelalte (1000/5=200
--- vs 10000/49=~204, 50000/199=~251, 150000/499=~301) -- pachetele mai mari
--- dau mai multi bani per Robux, ca sa incurajeze cumparaturi mai mari, dar
--- Tiny ramane un impuls-buy ieftin, la indemana oricui.
+-- Recalibrate fata de pragurile de Rebirth (425k pentru Rebirth 1, pana la
+-- 1.76M pentru Rebirth 5) -- cerut explicit sa fie "putin P2W" (sa scoata
+-- ceva bani din joc), nu doar un bonus simbolic.
+--
+-- IMPORTANT pentru stabilitate: banii se reseteaza la 1000 dupa FIECARE
+-- rebirth (RebirthManager.server.luau:115), deci un singur Cash Pack acopera
+-- DOAR rebirth-ul curent, nu toate deodata. Large era initial 2.5M, ceea ce
+-- acoperea SINGUR si cel mai greu prag (Rebirth 5, 1.76M) -- un whale putea
+-- cumpara acelasi pachet (Developer Product, repetabil) de 5 ori (~25$) si
+-- sa treaca toata progresia de rebirth fara sa mai joace deloc bucla de baza
+-- (cumparat/vandut de la NPC). Redus la 1M: acopera confortabil Rebirth 1-2,
+-- dar NU mai ajunge singur la Rebirth 3-5 (1.025M/1.37M/1.76M) -- chiar si un
+-- whale tot trebuie sa macine putin la rebirth-urile grele, bucla de baza
+-- ramane relevanta la orice nivel.
+--   Tiny:   $15,000    (~3.5% din Rebirth 1 -- un mic impuls-buy)
+--   Small:  $150,000   (~35% din Rebirth 1 -- un sfert de sesiune de grind sarita)
+--   Medium: $750,000   (aproape 2x Rebirth 1 -- sare direct un rebirth intreg)
+--   Large:  $1,000,000 (acopera Rebirth 1-2, dar sub pragul Rebirth 3 -- 1.025M)
 Economy.CashPacks = {
-	{Id = "CashPackTiny", ProductId = 3610412333, RobuxPrice = 5, Money = 1000},
-	{Id = "CashPackSmall", ProductId = 3610412460, RobuxPrice = 49, Money = 10000},
-	{Id = "CashPackMedium", ProductId = 3610412497, RobuxPrice = 199, Money = 50000},
-	{Id = "CashPackLarge", ProductId = 3610412530, RobuxPrice = 499, Money = 150000}
+	{Id = "CashPackTiny", ProductId = 3610412333, RobuxPrice = 5, Money = 15000},
+	{Id = "CashPackSmall", ProductId = 3610412460, RobuxPrice = 49, Money = 150000},
+	{Id = "CashPackMedium", ProductId = 3610412497, RobuxPrice = 199, Money = 750000},
+	{Id = "CashPackLarge", ProductId = 3610412530, RobuxPrice = 499, Money = 1000000}
 }
 
 return Economy

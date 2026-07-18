@@ -57,26 +57,26 @@ function OrderedStatStore.new(dataStoreName, updateInterval, getValue)
 		flushPlayer(player)
 	end)
 
-	-- Intoarce pana la `listCount` intrari (Top N), sortate descrescator, ca
-	-- {{UserId=..., Score=..., Rank=...}, ...} -- gol daca DataStore-ul nu
-	-- raspunde, niciodata eroare.
-	--
-	-- Daca `targetUserId` e dat, in plus cauta si locul LUI exact (chiar
-	-- daca e mai jos decat listCount) -- opreste cautarea la
-	-- `rankSearchLimit` locuri. Returneaza (list, rank, score).
-	function api.GetLeaderboard(listCount, targetUserId, rankSearchLimit)
+	-- Cache COMUN -- inainte, tabla (GetTop, la fiecare 30s) si placa
+	-- "Your Rank" (GetLeaderboard cu targetUserId, la fiecare cerere de
+	-- rank a unui jucator apropiat) faceau FIECARE propriul fetch complet
+	-- din DataStore (pana la 5-10 avansari de pagina), desi citeau exact
+	-- aceleasi date -- bug real de performanta/request-uri, gasit la audit.
+	-- Acum ambele citesc din ACEEASI lista, reimprospatata cel mult o data
+	-- la CACHE_TTL secunde.
+	local CACHE_TTL = 25
+	local CACHE_MAX_ENTRIES = 1000
+	local cache = nil -- {list = {...}, fetchedAt = os.clock()}
+
+	local function fetchList(maxCount)
 		local list = {}
-		local rank = nil
-		local rankScore = nil
-		local targetKey = targetUserId and tostring(targetUserId)
-		rankSearchLimit = rankSearchLimit or listCount
 
 		local success, pages = pcall(function()
 			return store:GetSortedAsync(false, MAX_PAGE_SIZE)
 		end)
 
 		if not success or not pages then
-			return list, nil, nil
+			return list
 		end
 
 		local position = 0
@@ -87,21 +87,12 @@ function OrderedStatStore.new(dataStoreName, updateInterval, getValue)
 			for _, entry in ipairs(page) do
 				position += 1
 
-				if position <= listCount then
+				if position <= maxCount then
 					table.insert(list, {UserId = tonumber(entry.key), Score = entry.value, Rank = position})
-				end
-
-				if targetKey and entry.key == targetKey then
-					rank = position
-					rankScore = entry.value
 				end
 			end
 
-			local haveEnoughList = position >= listCount
-			local haveRankOrNoNeed = (not targetKey) or rank ~= nil
-			local hitSearchLimit = position >= rankSearchLimit
-
-			if (haveEnoughList and haveRankOrNoNeed) or hitSearchLimit or pages.IsFinished then
+			if position >= maxCount or pages.IsFinished then
 				break
 			end
 
@@ -111,6 +102,51 @@ function OrderedStatStore.new(dataStoreName, updateInterval, getValue)
 
 			if not advanceOk then
 				break
+			end
+		end
+
+		return list
+	end
+
+	local function getCachedList()
+		local now = os.clock()
+
+		if cache and (now - cache.fetchedAt) < CACHE_TTL then
+			return cache.list
+		end
+
+		local list = fetchList(CACHE_MAX_ENTRIES)
+		cache = {list = list, fetchedAt = now}
+		return list
+	end
+
+	-- Intoarce pana la `listCount` intrari (Top N), sortate descrescator, ca
+	-- {{UserId=..., Score=..., Rank=...}, ...} -- gol daca DataStore-ul nu
+	-- raspunde, niciodata eroare.
+	--
+	-- Daca `targetUserId` e dat, in plus cauta si locul LUI exact (chiar
+	-- daca e mai jos decat listCount), din ACELASI cache. Returneaza
+	-- (list, rank, score).
+	function api.GetLeaderboard(listCount, targetUserId, rankSearchLimit)
+		local fullList = getCachedList()
+		local list = {}
+
+		for i = 1, math.min(listCount, #fullList) do
+			table.insert(list, fullList[i])
+		end
+
+		local rank = nil
+		local rankScore = nil
+
+		if targetUserId then
+			local targetKey = tostring(targetUserId)
+
+			for _, entry in ipairs(fullList) do
+				if tostring(entry.UserId) == targetKey then
+					rank = entry.Rank
+					rankScore = entry.Score
+					break
+				end
 			end
 		end
 

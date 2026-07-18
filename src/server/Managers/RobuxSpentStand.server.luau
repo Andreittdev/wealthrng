@@ -259,36 +259,52 @@ for _, face in ipairs({Enum.NormalId.Front, Enum.NormalId.Back}) do
 	table.insert(rowScrolls, scroll)
 end
 
-local function clearRows(scroll)
-	for _, child in ipairs(scroll:GetChildren()) do
-		if child:IsA("TextLabel") or child:IsA("Frame") then
-			child:Destroy()
-		end
-	end
-end
+-- Pool de randuri, REFOLOSITE intre refresh-uri (nu mai stergem/recreem
+-- pana la 500 TextLabel-uri x2 fete la fiecare 30s -- bug real de
+-- performanta, gasit la audit). Doar textul/culoarea se schimba; randurile
+-- in plus fata de lista noua raman create dar ascunse.
+local rowPools = {}
 
-local function buildRow(scroll, i, text, isFirst)
-	local label = Instance.new("TextLabel")
-	label.Name = "Row" .. i
-	label.LayoutOrder = i
-	label.Size = UDim2.new(1, 0, 0, 40)
-	label.BackgroundTransparency = 1
-	label.Text = text
-	label.TextColor3 = isFirst and Color3.fromRGB(255, 215, 90) or Color3.fromRGB(235, 235, 240)
-	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-	label.TextStrokeTransparency = 0.3
-	label.Font = Enum.Font.FredokaOne
-	label.TextScaled = true
-	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.Parent = scroll
+local function getOrCreateRow(scroll, i)
+	local pool = rowPools[scroll]
+	if not pool then
+		pool = {}
+		rowPools[scroll] = pool
+	end
+
+	local label = pool[i]
+	if not label then
+		label = Instance.new("TextLabel")
+		label.Name = "Row" .. i
+		label.LayoutOrder = i
+		label.Size = UDim2.new(1, 0, 0, 40)
+		label.BackgroundTransparency = 1
+		label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+		label.TextStrokeTransparency = 0.3
+		label.Font = Enum.Font.FredokaOne
+		label.TextScaled = true
+		label.TextXAlignment = Enum.TextXAlignment.Left
+		label.Parent = scroll
+		pool[i] = label
+	end
+
+	return label
 end
 
 local function setRows(lines)
 	for _, scroll in ipairs(rowScrolls) do
-		clearRows(scroll)
+		local pool = rowPools[scroll] or {}
+		rowPools[scroll] = pool
 
 		for i, line in ipairs(lines) do
-			buildRow(scroll, i, line, i == 1)
+			local label = getOrCreateRow(scroll, i)
+			label.Text = line
+			label.TextColor3 = (i == 1) and Color3.fromRGB(255, 215, 90) or Color3.fromRGB(235, 235, 240)
+			label.Visible = true
+		end
+
+		for i = #lines + 1, #pool do
+			pool[i].Visible = false
 		end
 	end
 end

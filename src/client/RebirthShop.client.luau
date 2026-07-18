@@ -474,12 +474,22 @@ local function updateUIScale()
 	mobileLabel.Visible = isMobile
 end
 
+local viewportConnection = nil
+
 local function bindCamera()
 	updateUIScale()
 
+	-- Deconectam handler-ul vechi inainte sa conectam unul nou -- altfel
+	-- fiecare schimbare de CurrentCamera adauga inca o conexiune, fara sa o
+	-- scoata pe cea veche pe niciun teren.
+	if viewportConnection then
+		viewportConnection:Disconnect()
+		viewportConnection = nil
+	end
+
 	local camera = workspace.CurrentCamera
 	if camera then
-		camera:GetPropertyChangedSignal("ViewportSize"):Connect(updateUIScale)
+		viewportConnection = camera:GetPropertyChangedSignal("ViewportSize"):Connect(updateUIScale)
 	end
 end
 

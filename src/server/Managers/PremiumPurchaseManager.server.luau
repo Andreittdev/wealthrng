@@ -13,12 +13,36 @@
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local DataStoreService = game:GetService("DataStoreService")
 
 local modulesFolder = ReplicatedStorage:WaitForChild("Modules")
 local Economy = require(modulesFolder:WaitForChild("EconomyConfig"))
 
 local PetManager = require(script.Parent:WaitForChild("PetManager"))
 local RobuxSpentCalculator = require(script.Parent:WaitForChild("RobuxSpentCalculator"))
+
+-- Tinem minte ce PurchaseId-uri am procesat deja -- Roblox reincearca acelasi
+-- receipt (posibil in sesiuni server diferite) pana cand ProcessReceipt
+-- intoarce PurchaseGranted, deci fara asta un restart de server intre
+-- acordarea reward-ului si confirmare putea acorda a doua oara acelasi
+-- Cash Pack/Premium Egg pentru o singura plata.
+local processedPurchasesStore = DataStoreService:GetDataStore("ProcessedPurchases_V1")
+
+local function isPurchaseAlreadyProcessed(purchaseId)
+	local ok, result = pcall(function()
+		return processedPurchasesStore:GetAsync(purchaseId)
+	end)
+	return ok and result == true
+end
+
+local function markPurchaseProcessed(purchaseId)
+	local ok, err = pcall(function()
+		processedPurchasesStore:SetAsync(purchaseId, true)
+	end)
+	if not ok then
+		warn("PremiumPurchaseManager: nu am putut marca PurchaseId " .. tostring(purchaseId) .. " ca procesat: " .. tostring(err))
+	end
+end
 
 -- Refolosim sistemul de notificari deja existent (ShowNotification +
 -- NotificationDisplay.client.luau), in loc sa construim un remote/UI de
@@ -79,47 +103,58 @@ local function addDevProductSpend(player, productId)
 	RobuxSpentCalculator.Recompute(player)
 end
 
+-- Ambele functii de grant intorc true/false -- ProcessReceipt foloseste
+-- valoarea ca sa stie daca a acordat CU ADEVARAT reward-ul inainte sa
+-- confirme PurchaseGranted (altfel un leaderstats inca neincarcat facea
+-- handler-ul sa "reuseasca" fara sa dea nimic, iar Robux-ul era luat degeaba,
+-- fara nicio reincercare posibila dupa aceea).
 local function grantPremiumEgg(player)
 	local rarity = rollPremiumRarity()
 	local result = PetManager.GrantRandomPetByRarity(player, rarity)
 
-	if result then
-		if result.IsDuplicate then
-			showNotificationEvent:FireClient(
-				player,
-				"Premium Egg: " .. result.Rarity .. " " .. result.DisplayName
-					.. " (duplicate, sold for $" .. tostring(result.AutoSellCash) .. ")"
-			)
-		else
-			showNotificationEvent:FireClient(player, "Premium Egg: got a " .. result.Rarity .. " " .. result.DisplayName .. "!")
-		end
+	if not result then
+		return false
 	end
+
+	if result.IsDuplicate then
+		showNotificationEvent:FireClient(
+			player,
+			"Premium Egg: " .. result.Rarity .. " " .. result.DisplayName
+				.. " (duplicate, sold for $" .. tostring(result.AutoSellCash) .. ")"
+		)
+	else
+		showNotificationEvent:FireClient(player, "Premium Egg: got a " .. result.Rarity .. " " .. result.DisplayName .. "!")
+	end
+
+	return true
 end
 
 local function grantCashPack(player, amount)
 	local leaderstats = player:FindFirstChild("leaderstats")
 	local money = leaderstats and leaderstats:FindFirstChild("Money")
 
-	if money then
-		money.Value += amount
+	if not money then
+		return false
 	end
 
+	money.Value += amount
 	showNotificationEvent:FireClient(player, "Cash Pack: +$" .. tostring(amount) .. " added to your balance!")
+	return true
 end
 
--- productId -> function(player) -- populat mai jos, o singura data.
+-- productId -> function(player) -> boolean (adevarat doar daca s-a acordat efectiv)
 local productHandlers = {}
 
 if Economy.PremiumEgg.ProductId ~= 0 then
 	productHandlers[Economy.PremiumEgg.ProductId] = function(player)
-		grantPremiumEgg(player)
+		return grantPremiumEgg(player)
 	end
 end
 
 for _, pack in ipairs(Economy.CashPacks) do
 	if pack.ProductId ~= 0 then
 		productHandlers[pack.ProductId] = function(player)
-			grantCashPack(player, pack.Money)
+			return grantCashPack(player, pack.Money)
 		end
 	end
 end
@@ -133,16 +168,27 @@ MarketplaceService.ProcessReceipt = function(receiptInfo)
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 
+	if isPurchaseAlreadyProcessed(receiptInfo.PurchaseId) then
+		-- Deja acordat intr-o sesiune anterioara -- Roblox tot reincearca
+		-- receipt-ul pana confirmam din nou, dar NU mai acordam a doua oara.
+		return Enum.ProductPurchaseDecision.PurchaseGranted
+	end
+
 	local handler = productHandlers[receiptInfo.ProductId]
 	if not handler then
 		warn("PremiumPurchaseManager: ProductId necunoscut -- " .. tostring(receiptInfo.ProductId))
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 
-	local ok = pcall(handler, player)
-	if not ok then
+	local ok, granted = pcall(handler, player)
+	if not ok or not granted then
+		-- Fie handler-ul a aruncat eroare, fie n-a putut acorda efectiv
+		-- reward-ul (ex: leaderstats inca nu exista) -- NU marcam procesat,
+		-- ca Roblox sa reincerce receipt-ul mai tarziu in loc sa piarda plata.
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
+
+	markPurchaseProcessed(receiptInfo.PurchaseId)
 
 	local spendOk = pcall(addDevProductSpend, player, receiptInfo.ProductId)
 	if not spendOk then

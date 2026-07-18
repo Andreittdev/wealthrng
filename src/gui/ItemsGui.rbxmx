@@ -251,19 +251,6 @@ end
 local function refreshFromPlayerPets()
 	local petsFolder = player:FindFirstChild("Pets")
 
-	if petsFolder then
-		petsFolder.ChildAdded:Connect(function()
-			if mainFrame.Visible then
-				refreshFromPlayerPets()
-			end
-		end)
-
-		petsFolder.ChildRemoved:Connect(function()
-			if mainFrame.Visible then
-				refreshFromPlayerPets()
-			end
-		end)
-	end
 	if not petsFolder then
 		refreshItems({})
 		return

@@ -172,7 +172,10 @@ local itemsButton = row2:WaitForChild("ItemsButton")
 
 local inventoryFrame = playerGui:WaitForChild("InventoryV2"):WaitForChild("MainFrame")
 
-local storeGui = playerGui:WaitForChild("StoreGui")
+-- MainShopGui (nou, cu tab-uri Game Passes/Cash/Eggs) inlocuieste StoreGui-ul
+-- vechi -- acelasi tipar ScreenGui>MainFrame, deci restul codului de mai jos
+-- (Enabled/Visible toggling) ramane neschimbat.
+local storeGui = playerGui:WaitForChild("MainShopGui")
 local storeFrame = storeGui:WaitForChild("MainFrame")
 local itemsGui = playerGui:WaitForChild("ItemsGui")
 local itemsFrame = itemsGui:WaitForChild("MainFrame")
@@ -622,29 +625,6 @@ end)]]></ProtectedString>
 						<int64 name="SourceAssetId">-1</int64>
 						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
 					</Properties>
-					<Item class="LocalScript" referent="RBX7D155A3387D94E52BB7BAEB589CABC9A">
-						<Properties>
-							<ProtectedString name="Source"><![CDATA[local button = script.Parent
-local player = game.Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
-
-local storeGui = playerGui:WaitForChild("StoreGui") -- numele GUI-ului tău de store
-
-button.MouseButton1Click:Connect(function()
-	storeGui.Enabled = not storeGui.Enabled
-end)]]></ProtectedString>
-							<bool name="Disabled">false</bool>
-							<Content name="LinkedSource"><null></null></Content>
-							<token name="RunContext">0</token>
-							<string name="ScriptGuid">{CE573EC7-8430-4638-B613-BC6FB62CD44C}</string>
-							<BinaryString name="AttributesSerialize"></BinaryString>
-							<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
-							<bool name="DefinesCapabilities">false</bool>
-							<string name="Name">LocalScript</string>
-							<int64 name="SourceAssetId">-1</int64>
-							<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
-						</Properties>
-					</Item>
 					<Item class="UICorner" referent="RBXCEA15CB2559B465E8D346AC0DF1C778A">
 						<Properties>
 							<UDim name="BottomLeftRadius">
@@ -1917,29 +1897,6 @@ end)]]></ProtectedString>
 						<int64 name="SourceAssetId">-1</int64>
 						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
 					</Properties>
-					<Item class="LocalScript" referent="RBX3CC911D4F4E94117BCC76854B266B8CA">
-						<Properties>
-							<ProtectedString name="Source"><![CDATA[local button = script.Parent
-local player = game.Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
-
-local storeGui = playerGui:WaitForChild("StoreGui") -- numele GUI-ului tău de store
-
-button.MouseButton1Click:Connect(function()
-	storeGui.Enabled = not storeGui.Enabled
-end)]]></ProtectedString>
-							<bool name="Disabled">false</bool>
-							<Content name="LinkedSource"><null></null></Content>
-							<token name="RunContext">0</token>
-							<string name="ScriptGuid">{05D2070A-E32A-4149-84E5-D1A540383B88}</string>
-							<BinaryString name="AttributesSerialize"></BinaryString>
-							<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
-							<bool name="DefinesCapabilities">false</bool>
-							<string name="Name">LocalScript</string>
-							<int64 name="SourceAssetId">-1</int64>
-							<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
-						</Properties>
-					</Item>
 					<Item class="UICorner" referent="RBXD3BF9BAE71AB479296467B99DFF51013">
 						<Properties>
 							<UDim name="BottomLeftRadius">

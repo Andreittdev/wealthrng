@@ -53,7 +53,13 @@ withdrawMoneyEvent.OnServerEvent:Connect(function(player, amount)
 	if bankMoney.Value < amount then return end
 
 	bankMoney.Value -= amount
+
+	-- Suprimam tracker-ul de CashEarned cat timp setam Money -- banii astia
+	-- erau deja ai jucatorului (doar ii mutam inapoi din banca), nu bani noi
+	-- castigati -- altfel depune+retrage in bucla umfla clasamentul gratis.
+	player:SetAttribute("SuppressCashEarnedTracking", true)
 	cash.Value += amount
+	player:SetAttribute("SuppressCashEarnedTracking", false)
 end)
 
 getBankDataFunction.OnServerInvoke = function(player)

@@ -279,7 +279,12 @@ local function marketLoop()
 			broadcastMarket()
 		end
 
-		task.wait(1)
+		-- 0.25s (nu 1s) -- GetEventCountdown poate fi interogat de un client
+		-- chiar in secunda in care cycleTime trece de un slot, dar INAINTE ca
+		-- bucla asta sa fi apucat sa seteze SpecialEvent -- fereastra aia de
+		-- lag e cat intervalul de poll. Micsorata la 0.25s ca sa nu mai fie
+		-- vizibila (flicker de countdown la inceputul fiecarui eveniment).
+		task.wait(0.25)
 	end
 end
 

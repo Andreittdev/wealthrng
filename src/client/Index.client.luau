@@ -293,7 +293,7 @@ local itemsScroll = createContentScroll("ItemsScroll", 2)
 
 -- ---- Card generic pentru o intrare (pet sau item) ----
 
-local function createEntryCard(parent, order, name, rarity, subtitleText, columns)
+local function createEntryCard(parent, order, name, rarity, subtitleText, icon)
 	local color = RARITY_COLORS[rarity] or Color3.fromRGB(255, 255, 255)
 
 	local entry = Instance.new("Frame")
@@ -310,10 +310,19 @@ local function createEntryCard(parent, order, name, rarity, subtitleText, column
 	stroke.Thickness = 2
 	stroke.Parent = entry
 
+	local image = Instance.new("ImageLabel")
+	image.BackgroundTransparency = 1
+	image.Position = UDim2.new(0, 4, 0, 4)
+	image.Size = UDim2.new(1, -8, 0, 96)
+	image.Image = icon or ""
+	image.ScaleType = Enum.ScaleType.Fit
+	image.ZIndex = 24
+	image.Parent = entry
+
 	local nameLabel = Instance.new("TextLabel")
 	nameLabel.BackgroundTransparency = 1
-	nameLabel.Position = UDim2.new(0, 6, 0, 4)
-	nameLabel.Size = UDim2.new(1, -12, 0, 34)
+	nameLabel.Position = UDim2.new(0, 6, 0, 102)
+	nameLabel.Size = UDim2.new(1, -12, 0, 22)
 	nameLabel.Text = name
 	nameLabel.TextColor3 = TEXT_LIGHT
 	nameLabel.TextWrapped = true
@@ -327,7 +336,7 @@ local function createEntryCard(parent, order, name, rarity, subtitleText, column
 	-- greseala gasita si reparata la Stand Upgrade.
 	local subLabel = Instance.new("TextLabel")
 	subLabel.BackgroundTransparency = 1
-	subLabel.Position = UDim2.new(0, 6, 0, 40)
+	subLabel.Position = UDim2.new(0, 6, 0, 124)
 	subLabel.Size = UDim2.new(1, -12, 0, 34)
 	subLabel.Text = subtitleText
 	subLabel.TextColor3 = color
@@ -482,25 +491,37 @@ local itemGrids = {}
 -- sesiunii, fiindca starea "discovered" era citita o singura data, la
 -- pornire.
 local petGridHolders = {}
+local contentBuilt = false
 
-for order, rarity in ipairs(RARITY_ORDER) do
-	if petsByRarity[rarity] then
-		local gridHolder, grid = createRaritySection(petsScroll, rarity, order)
-		table.insert(petGrids, grid)
-		table.insert(petGridHolders, {Holder = gridHolder, Rarity = rarity})
-
-		for petOrder, petData in ipairs(petsByRarity[rarity]) do
-			createPetEntryCard(gridHolder, petOrder, petData, rarity)
-		end
+-- Constructia integrala (~830 Instance.new + ~118 imagini reale) e amanata
+-- pana la prima deschidere a Index-ului, nu rulata la pornirea scriptului --
+-- rularea ei imediat la join cauza un hitch vizibil in primele secunde de
+-- sesiune (toate iconitele noi incep sa se streamuiasca deodata).
+local function buildIndexContent()
+	if contentBuilt then
+		return
 	end
+	contentBuilt = true
 
-	if itemsByRarity[rarity] then
-		local gridHolder, grid = createRaritySection(itemsScroll, rarity, order)
-		table.insert(itemGrids, grid)
+	for order, rarity in ipairs(RARITY_ORDER) do
+		if petsByRarity[rarity] then
+			local gridHolder, grid = createRaritySection(petsScroll, rarity, order)
+			table.insert(petGrids, grid)
+			table.insert(petGridHolders, {Holder = gridHolder, Rarity = rarity})
 
-		for itemOrder, itemData in ipairs(itemsByRarity[rarity]) do
-			local subtitleText = itemData.Category .. "\n" .. formatMoney(itemData.MinSell) .. " - " .. formatMoney(itemData.MaxSell)
-			createEntryCard(gridHolder, itemOrder, itemData.ItemName or itemData.Name, rarity, subtitleText)
+			for petOrder, petData in ipairs(petsByRarity[rarity]) do
+				createPetEntryCard(gridHolder, petOrder, petData, rarity)
+			end
+		end
+
+		if itemsByRarity[rarity] then
+			local gridHolder, grid = createRaritySection(itemsScroll, rarity, order)
+			table.insert(itemGrids, grid)
+
+			for itemOrder, itemData in ipairs(itemsByRarity[rarity]) do
+				local subtitleText = itemData.Category .. "\n" .. formatMoney(itemData.MinSell) .. " - " .. formatMoney(itemData.MaxSell)
+				createEntryCard(gridHolder, itemOrder, itemData.ItemName or itemData.Name, rarity, subtitleText, itemData.Icon)
+			end
 		end
 	end
 end
@@ -523,18 +544,14 @@ local function updateAllGrids()
 	local isMobile = computeIsMobile()
 	local columns = isMobile and 2 or 4
 
-	-- Cardurile de pet-uri sunt mai inalte acum (poza mare) -- au nevoie de
-	-- o celula mai mare decat cea de la iteme (care nu au imagine).
 	for _, grid in ipairs(petGrids) do
 		updateGridColumns(grid, columns, 168)
 	end
 
 	for _, grid in ipairs(itemGrids) do
-		updateGridColumns(grid, columns, 78)
+		updateGridColumns(grid, columns, 168)
 	end
 end
-
-updateAllGrids()
 
 -- ================= Footer =================
 
@@ -598,8 +615,12 @@ local function setOpen(open)
 	setShopModalOpen(open)
 
 	if open then
+		local firstBuild = not contentBuilt
+		buildIndexContent()
 		card.Size = getMainFrameSize()
-		refreshPetCards()
+		if not firstBuild then
+			refreshPetCards()
+		end
 		updateAllGrids()
 	end
 

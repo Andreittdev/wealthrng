@@ -48,7 +48,7 @@ function TokenShopKeeper.Spawn(stall)
 		billboard.Name = "KeeperLabel"
 		billboard.Size = UDim2.new(0, 140, 0, 36)
 		billboard.StudsOffset = Vector3.new(0, 1.6, 0)
-		billboard.AlwaysOnTop = true
+		billboard.AlwaysOnTop = false
 		billboard.MaxDistance = 60
 		billboard.LightInfluence = 0
 		billboard.Adornee = head

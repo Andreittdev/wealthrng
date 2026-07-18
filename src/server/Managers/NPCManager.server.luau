@@ -303,6 +303,13 @@ local function spawnNPCForPlayer(player, pendingDelay)
 		return
 	end
 
+	-- Rezervam slotul IMEDIAT, inainte de orice yield -- altfel guard-ul de
+	-- mai sus (activeTrades[player]) nu se seteaza decat mult mai tarziu (dupa
+	-- task.wait + MoveToFinished, ~10-16s), lasand o fereastra in care doua
+	-- apeluri concurente (ex: watchStandForClaim + spawn-ul de la join) trec
+	-- amandoua de guard si creeaza doi NPC pentru acelasi jucator, unul orfan.
+	activeTrades[player] = {Pending = true}
+
 	local npc = npcTemplate:Clone()
 	npc.Name = npcData.DisplayName
 	npc.Parent = workspace
@@ -363,6 +370,14 @@ local function spawnNPCForPlayer(player, pendingDelay)
 
 	moveNPCTo(npc, npcSpotPosition)
 
+	if not player.Parent then
+		-- Jucatorul a plecat cat timp NPC-ul se deplasa -- curatam si iesim,
+		-- ca sa nu ramana un NPC orfan in Workspace pentru totdeauna.
+		npc:Destroy()
+		activeTrades[player] = nil
+		return
+	end
+
 	local vipLuck = player:GetAttribute("IsVIP") and Economy.VIP.Luck or 0
 	local starterPackLuck = player:GetAttribute("HasStarterPack") and Economy.StarterPack.LuckBonus or 0
 	local rebirthLuck = getRebirthBonuses(player).Luck
@@ -380,6 +395,18 @@ local function spawnNPCForPlayer(player, pendingDelay)
 		}
 
 		showTradeEvent:FireClient(player, offer)
+	else
+		-- CreateOffer nu a putut genera nicio oferta (ex: categorie goala) --
+		-- eliberam slotul si reincercam mai tarziu, in loc sa lasam ciclul de
+		-- trade al jucatorului blocat definitiv (fara NPC, fara reincercare).
+		npc:Destroy()
+		activeTrades[player] = nil
+
+		task.delay(5, function()
+			if player.Parent then
+				spawnNPCForPlayer(player, getSpawnDelay(player))
+			end
+		end)
 	end
 end
 local function handleOpenPetCrate(player)
@@ -398,7 +425,13 @@ local function handleOpenPetCrate(player)
 	)
 end
 
-local function handleBuy(player, clientOffer)
+local buyInProgress = {}
+
+-- getMaxInventory face un yield (UserOwnsGamePassAsync) inainte sa taxeze --
+-- fara guard-ul asta, doua BuyItem trase foarte rapid pot ambele trece de
+-- verificarile de mai jos in acel interval si taxa jucatorul de doua ori
+-- pentru un singur item.
+local function doHandleBuy(player, clientOffer)
 	local trade = activeTrades[player]
 	if not trade then return end
 
@@ -480,6 +513,21 @@ local function handleBuy(player, clientOffer)
 	spawnNPCForPlayer(player, getSpawnDelay(player))
 end
 
+local function handleBuy(player, clientOffer)
+	if buyInProgress[player] then
+		return
+	end
+
+	buyInProgress[player] = true
+
+	local ok, err = pcall(doHandleBuy, player, clientOffer)
+	if not ok then
+		warn("NPCManager: handleBuy error for " .. player.Name .. ": " .. tostring(err))
+	end
+
+	buyInProgress[player] = nil
+end
+
 local function handleSkip(player)
 	removeNPC(player)
 
@@ -541,6 +589,7 @@ end
 
 local function onPlayerRemoving(player)
 	removeNPC(player)
+	buyInProgress[player] = nil
 	DataManager.SaveData(player)
 end
 

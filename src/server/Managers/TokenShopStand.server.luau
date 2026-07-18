@@ -22,11 +22,6 @@ local STALL_POSITION = Vector3.new(-36.116424560546875, 5.8, 683.343505859375)
 -- (X negativ), deci il rotim cu fata spre Est (+X), catre strada.
 local ROTATION_Y_DEGREES = 90
 
--- Marimea textului de pe firma (BillboardGui). Offset-ul se comporta ca o
--- dimensiune in lume (creste cand esti aproape) -- 260x70 a iesit gigantic
--- de aproape de stand; 90x24 se potriveste cu placa fizica (8x2.2 studs).
-local SIGN_TEXT_SIZE = UDim2.new(0, 90, 0, 24)
-
 -- Aceeasi textura "bloxy" folosita pe strada/trotuare/iarba (TownMapBuilder),
 -- tentata auriu -- ca standul sa arate mai premium si sa se lege vizual de
 -- restul hartii.
@@ -43,6 +38,63 @@ local function addGridTexture(part, color, tileStuds)
 	texture.StudsPerTileV = tileStuds or 2
 	texture.Parent = part
 end
+
+-- SurfaceGui, LIPIT direct pe fata piesei -- NU BillboardGui (acelasi fix
+-- ca la standurile de Leaderboard/Egg Shop -- BillboardGui parea "taiat"/
+-- plutind in functie de unghi, indiferent cat ajustam StudsOffset).
+-- Pe toate cele 4 fete laterale, ca sa fie garantat vizibil din orice
+-- directie te apropii, fara sa fim nevoiti sa calculam exact orientarea
+-- dupa rotatia standului.
+local function addSignSurface(part, face, text)
+	local existing = part:FindFirstChild("TokenShopSignSurface" .. face.Name)
+	if existing then
+		existing:Destroy()
+	end
+
+	local surfaceGui = Instance.new("SurfaceGui")
+	surfaceGui.Name = "TokenShopSignSurface" .. face.Name
+	surfaceGui.Face = face
+	surfaceGui.Adornee = part
+	surfaceGui.AlwaysOnTop = false
+	surfaceGui.LightInfluence = 0
+	surfaceGui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	surfaceGui.PixelsPerStud = 50
+	surfaceGui.Parent = part
+
+	local contentFrame = Instance.new("Frame")
+	contentFrame.Name = "Content"
+	contentFrame.Size = UDim2.new(1, 0, 1, 0)
+	contentFrame.BackgroundTransparency = 1
+	contentFrame.Parent = surfaceGui
+
+	-- UIPadding NU functioneaza pus direct pe un SurfaceGui (nu e GuiObject)
+	-- -- trebuie un Frame intermediar.
+	local padding = Instance.new("UIPadding")
+	padding.PaddingTop = UDim.new(0.08, 0)
+	padding.PaddingBottom = UDim.new(0.08, 0)
+	padding.PaddingLeft = UDim.new(0.06, 0)
+	padding.PaddingRight = UDim.new(0.06, 0)
+	padding.Parent = contentFrame
+
+	-- Text inchis, gros, pe fundal galben aprins -- alb pe galben e aproape
+	-- ilizibil (contrast slab); negru/maro inchis cu contur deschis e
+	-- combinatia clasica, foarte lizibila, pentru panouri galbene.
+	local signLabel = Instance.new("TextLabel")
+	signLabel.Size = UDim2.new(1, 0, 1, 0)
+	signLabel.BackgroundTransparency = 1
+	signLabel.Text = text
+	signLabel.TextColor3 = Color3.fromRGB(30, 20, 10)
+	signLabel.TextStrokeColor3 = Color3.fromRGB(255, 241, 168)
+	signLabel.TextStrokeTransparency = 0.4
+	signLabel.Font = Enum.Font.FredokaOne
+	signLabel.TextScaled = true
+	signLabel.TextWrapped = true
+	signLabel.Parent = contentFrame
+
+	return signLabel
+end
+
+local SIGN_FACES = {Enum.NormalId.Front, Enum.NormalId.Back, Enum.NormalId.Left, Enum.NormalId.Right}
 
 local stall = Workspace:FindFirstChild("TokenShopStall")
 
@@ -121,36 +173,9 @@ if not stall then
 	sign.Position = STALL_POSITION + Vector3.new(0, 7.4, -2.9)
 	sign.Parent = stall
 
-	-- Un SurfaceGui e "lipit" de fata placii -- din orice unghi in afara de
-	-- perpendicular pe ea, textul se deformeaza in perspectiva si devine greu
-	-- de citit (asta a ramas problema chiar si dupa ce am reparat fata/contrastul).
-	-- Un BillboardGui insa se roteste mereu spre camera, deci textul ramane
-	-- mereu drept si lizibil, indiferent din ce unghi se uita jucatorul.
-	local signBillboard = Instance.new("BillboardGui")
-	signBillboard.Name = "SignBillboard"
-	signBillboard.Size = SIGN_TEXT_SIZE
-	signBillboard.StudsOffset = Vector3.new(0, 0, 0.4)
-	signBillboard.AlwaysOnTop = true
-	signBillboard.MaxDistance = 100
-	signBillboard.LightInfluence = 0
-	signBillboard.Adornee = sign
-	signBillboard.Parent = sign
-
-	-- Text inchis, gros, FARA emoji, pe fundal galben aprins -- alb pe galben
-	-- e aproape ilizibil (contrast slab); negru/maro inchis cu contur deschis
-	-- e combinatia clasica, foarte lizibila, pentru panouri galbene. Font
-	-- FredokaOne (rotunjit, blocat) in loc de Bangers (comic/inclinat) --
-	-- mult mai usor de citit la distanta.
-	local signLabel = Instance.new("TextLabel")
-	signLabel.Size = UDim2.new(1, 0, 1, 0)
-	signLabel.BackgroundTransparency = 1
-	signLabel.Text = "TOKEN SHOP"
-	signLabel.TextColor3 = Color3.fromRGB(30, 20, 10)
-	signLabel.TextStrokeColor3 = Color3.fromRGB(255, 241, 168)
-	signLabel.TextStrokeTransparency = 0.4
-	signLabel.Font = Enum.Font.FredokaOne
-	signLabel.TextScaled = true
-	signLabel.Parent = signBillboard
+	for _, face in ipairs(SIGN_FACES) do
+		addSignSurface(sign, face, "TOKEN SHOP")
+	end
 
 	local desk = Instance.new("Part")
 	desk.Name = "Desk"
@@ -174,47 +199,19 @@ if not stall then
 	stall.PrimaryPart = base
 end
 
--- Self-heal: daca standul a fost deja creat intr-o sesiune anterioara (inainte
--- de fix-urile de mai sus), stergem orice SurfaceGui vechi (deformat in
--- perspectiva) si punem/actualizam BillboardGui-ul, ca sa nu fie nevoie sa
--- stergi manual modelul din Workspace pentru ca fix-ul sa se aplice.
+-- Self-heal: daca standul a fost deja creat intr-o sesiune anterioara
+-- (inainte de fix-ul de mai sus), stergem orice BillboardGui vechi (ramas
+-- gigantic/plutind/taiat in functie de unghi) si punem SurfaceGui-urile noi,
+-- ca sa nu fie nevoie sa stergi manual modelul din Workspace.
 local sign = stall:FindFirstChild("Sign")
 if sign then
-	local oldSignGui = sign:FindFirstChildOfClass("SurfaceGui")
-	if oldSignGui then
-		oldSignGui:Destroy()
+	local oldBillboard = sign:FindFirstChildOfClass("BillboardGui")
+	if oldBillboard then
+		oldBillboard:Destroy()
 	end
 
-	local signBillboard = sign:FindFirstChild("SignBillboard")
-	if not signBillboard then
-		signBillboard = Instance.new("BillboardGui")
-		signBillboard.Name = "SignBillboard"
-		signBillboard.StudsOffset = Vector3.new(0, 0, 0.4)
-		signBillboard.AlwaysOnTop = true
-		signBillboard.MaxDistance = 100
-		signBillboard.LightInfluence = 0
-		signBillboard.Adornee = sign
-		signBillboard.Parent = sign
-
-		local signLabel = Instance.new("TextLabel")
-		signLabel.Size = UDim2.new(1, 0, 1, 0)
-		signLabel.BackgroundTransparency = 1
-		signLabel.Font = Enum.Font.FredokaOne
-		signLabel.TextScaled = true
-		signLabel.Parent = signBillboard
-	end
-
-	-- Actualizam marimea de fiecare data (nu doar la creare), ca sa se aplice
-	-- si peste un BillboardGui vechi, ramas gigantic de la o sesiune anterioara.
-	signBillboard.Size = SIGN_TEXT_SIZE
-
-	local signLabel = signBillboard:FindFirstChildOfClass("TextLabel")
-	if signLabel then
-		signLabel.Text = "TOKEN SHOP"
-		signLabel.TextColor3 = Color3.fromRGB(30, 20, 10)
-		signLabel.TextStrokeColor3 = Color3.fromRGB(255, 241, 168)
-		signLabel.TextStrokeTransparency = 0.4
-		signLabel.Font = Enum.Font.FredokaOne
+	for _, face in ipairs(SIGN_FACES) do
+		addSignSurface(sign, face, "TOKEN SHOP")
 	end
 end
 

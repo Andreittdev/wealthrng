@@ -23,7 +23,7 @@ local function createVIPTag(character)
 	billboard.Name = "VIPTag"
 	billboard.Size = UDim2.new(0, 120, 0, 35)
 	billboard.StudsOffset = Vector3.new(0, 2.7, 0)
-	billboard.AlwaysOnTop = true
+	billboard.AlwaysOnTop = false
 	billboard.Parent = head
 
 	local label = Instance.new("TextLabel")

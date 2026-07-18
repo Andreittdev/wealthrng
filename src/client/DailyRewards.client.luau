@@ -544,19 +544,25 @@ local ICON_BUILDERS = {
 	SpecificPet = buildExclusivePetIcon
 }
 
-local function createDayIcon(parent, dayConfig, iconScale, centerY)
+local function createDayIcon(parent, dayConfig, iconScale, centerYScale)
 	-- Containerul e acum ancorat/pozitionat din centrul lui (0.5,0.5), nu din
 	-- coltul stanga-sus -- asta face ca un UIScale aplicat pe el sa creasca
 	-- simetric in jurul centrului (fara sa "sara" spre dreapta, cum se
-	-- intampla cand AnchorPoint ramane (0,0)). centerY e configurabil (nu mai
-	-- fix la 42) -- cu iconScale mai mare, iconita creste in jos SI in sus
-	-- din centrul ei, deci centrul trebuie mutat mai jos ca sa nu se suprapuna
-	-- peste eticheta "DAY X" de sus.
+	-- intampla cand AnchorPoint ramane (0,0)). centerYScale e configurabil
+	-- (nu mai fix la 42) -- cu iconScale mai mare, iconita creste in jos SI in
+	-- sus din centrul ei, deci centrul trebuie mutat mai jos ca sa nu se
+	-- suprapuna peste eticheta "DAY X" de sus.
+	--
+	-- Scale (nu Offset) -- pozitia trebuie sa fie un procent din inaltimea
+	-- REALA a celulei-parinte, recalculat automat de Roblox la orice resize
+	-- (rotire telefon / trecere peste pragul mobil) fara cod suplimentar --
+	-- inainte era un Offset in pixeli, "inghetat" la inaltimea celulei din
+	-- momentul construirii, care ramanea gresit dupa un resize ulterior.
 	local container = Instance.new("Frame")
 	container.Name = "IconPreview"
 	container.BackgroundTransparency = 1
 	container.AnchorPoint = Vector2.new(0.5, 0.5)
-	container.Position = UDim2.new(0.5, 0, 0, centerY or 42)
+	container.Position = UDim2.new(0.5, 0, centerYScale or 0.42, 0)
 	container.Size = UDim2.new(0, 48, 0, 48)
 	container.ZIndex = 23
 	container.Parent = parent
@@ -676,15 +682,16 @@ local function buildDayContents(cell, dayNumber, dayConfig, opts)
 	dayLabel.ZIndex = 23
 	dayLabel.Parent = cell
 
-	-- IconCenterY separat de dayLabelSize -- cu iconita marita (iconScale),
-	-- centrul ei trebuie mutat mai jos ca sa nu se suprapuna peste eticheta
-	-- "DAY X" de sus (iconita creste simetric in ambele directii din centru).
-	createDayIcon(cell, dayConfig, opts.IconScale, opts.IconCenterY)
+	-- IconCenterYScale separat de dayLabelSize -- cu iconita marita
+	-- (iconScale), centrul ei trebuie mutat mai jos ca sa nu se suprapuna
+	-- peste eticheta "DAY X" de sus (iconita creste simetric in ambele
+	-- directii din centru).
+	createDayIcon(cell, dayConfig, opts.IconScale, opts.IconCenterYScale)
 
 	local descLabel = Instance.new("TextLabel")
 	descLabel.BackgroundTransparency = 1
-	descLabel.Position = UDim2.new(0, 4, 0, opts.DescTop)
-	descLabel.Size = UDim2.new(1, -8, 0, opts.DescSize)
+	descLabel.Position = UDim2.new(0, 4, opts.DescTopScale, 0)
+	descLabel.Size = UDim2.new(1, -8, opts.DescSizeScale, 0)
 	descLabel.Text = dayConfig.Description or ""
 	descLabel.TextColor3 = TEXT_LIGHT
 	descLabel.TextWrapped = true
@@ -734,7 +741,7 @@ local function buildDayContents(cell, dayNumber, dayConfig, opts)
 	checkContainer.Name = "CheckShape"
 	checkContainer.BackgroundTransparency = 1
 	checkContainer.AnchorPoint = Vector2.new(0.5, 0.5)
-	checkContainer.Position = UDim2.new(0.5, 0, 0, opts.IconCenterY)
+	checkContainer.Position = UDim2.new(0.5, 0, opts.IconCenterYScale, 0)
 	checkContainer.Size = UDim2.new(0, 60, 0, 60)
 	checkContainer.ZIndex = 26
 	checkContainer.Parent = checkmark
@@ -784,28 +791,21 @@ for dayNumber = 1, 6 do
 	cell.ZIndex = 22
 	cell.Parent = smallGridHolder
 
-	-- IconCenterY/DescTop/DescSize erau pixeli ficsi (85/128/40), calculati
-	-- pentru celula mare de PC (~165px inalta) -- pe telefon, celula e mult
-	-- mai scunda, deci iconita si descrierea iesteau pe sub/langa celula,
-	-- suprapunandu-se cu celula de dedesubt (de-aia arata neclar). Acum
-	-- procente din inaltimea REALA a celulei (setata deja de
-	-- updateDaysGridLayout, care ruleaza inaintea acestei bucle).
-	local cellHeight = smallGrid.CellSize.Y.Offset
-
-	-- IconScale/DayLabelSize/DescTextSize/CheckScale NU sunt proportionale cu
-	-- celula (spre deosebire de IconCenterY/DescTop/DescSize, calculate mai
-	-- sus din cellHeight) -- sunt constante fixe. Foloseam aceeasi valoare
-	-- mica (tunata pentru celula ingusta de mobil) si pe PC, unde celula e
-	-- mult mai mare -- acolo iconitele/textul ajungeau sa para mult mai mici
-	-- decat inainte. Le separam pe device.
+	-- IconCenterYScale/DescTopScale/DescSizeScale sunt procente Scale (nu mai
+	-- pixeli Offset pre-calculati) din inaltimea celulei -- Roblox le
+	-- recalculeaza automat de fiecare data cand celula e redimensionata
+	-- (rotire telefon / trecere peste pragul mobil cat panoul e deschis), fara
+	-- sa mai fie nevoie sa reconstruim continutul celulei la fiecare resize.
+	-- IconScale/DayLabelSize/DescTextSize/CheckScale raman constante fixe,
+	-- separate pe device (nu proportionale cu celula).
 	local isMobileDay = computeIsMobile()
 
 	buildDayContents(cell, dayNumber, dayConfig, {
 		IconScale = isMobileDay and 0.7 or 1.7,
-		IconCenterY = math.floor(cellHeight * 0.50),
+		IconCenterYScale = 0.50,
 		DayLabelSize = isMobileDay and 15 or 22,
-		DescTop = math.floor(cellHeight * 0.80),
-		DescSize = math.floor(cellHeight * 0.24),
+		DescTopScale = 0.80,
+		DescSizeScale = 0.24,
 		DescTextSize = isMobileDay and 12 or 19,
 		CheckScale = isMobileDay and 0.65 or 1.35
 	})
@@ -820,20 +820,16 @@ do
 	local dayNumber = 7
 	local dayConfig = Economy.DailyRewards.Days[dayNumber]
 
-	-- IconCenterY/DescTop/DescSize erau pixeli ficsi, calculati pentru
-	-- day7Card-ul mare de PC (~338px inalt) -- pe un telefon (landscape),
-	-- cardul e mult mai scund, si descrierea iesea pe sub marginea cardului.
-	-- Acum sunt procente din inaltimea REALA a cardului (deja setata de
-	-- updateDaysGridLayout, care ruleaza inaintea acestui bloc).
-	local day7Height = day7Card.Size.Y.Offset
+	-- Scale (nu Offset) -- vezi comentariul de la bucla zilelor 1-6 mai sus;
+	-- acelasi motiv, aplicat aici pentru day7Card.
 	local isMobileDay7 = computeIsMobile()
 
 	buildDayContents(day7Card, dayNumber, dayConfig, {
 		IconScale = isMobileDay7 and 1.8 or 2.3,
-		IconCenterY = math.floor(day7Height * 0.41),
+		IconCenterYScale = 0.41,
 		DayLabelSize = isMobileDay7 and 22 or 30,
-		DescTop = math.floor(day7Height * 0.72),
-		DescSize = math.floor(day7Height * 0.18),
+		DescTopScale = 0.72,
+		DescSizeScale = 0.18,
 		DescTextSize = isMobileDay7 and 18 or 24,
 		CheckScale = isMobileDay7 and 1.4 or 1.8
 	})

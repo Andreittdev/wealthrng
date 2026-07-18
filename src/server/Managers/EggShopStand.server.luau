@@ -13,10 +13,6 @@ local NEW_POSITION = Vector3.new(36.57196807861328, 5.8, 649.1923828125)
 -- centrul strazii/trotuar.
 local ROTATION_Y_DEGREES = 90
 
--- Aceeasi marime calibrata ca la firma de Rebirth Shop -- 260x70 iesise
--- gigantic de aproape; 90x24 se potriveste pentru un panou obisnuit.
-local SIGN_TEXT_SIZE = UDim2.new(0, 90, 0, 24)
-
 local petShop = Workspace:WaitForChild("PetShop")
 local trigger = petShop:WaitForChild("EggShopTrigger")
 
@@ -31,38 +27,67 @@ local signBoard = petShop:FindFirstChild("Sign", true)
 -- afecteaza doar structura fizica (nu are cum sa "roteasca" textul in sine).
 petShop:PivotTo(CFrame.new(NEW_POSITION) * CFrame.Angles(0, math.rad(ROTATION_Y_DEGREES), 0))
 
--- Firma cu "EGG SHOP", montata direct pe panoul negru (nu pe trigger, care
--- doar plutea deasupra lui). BillboardGui, nu SurfaceGui, ca sa ramana mereu
--- drept si lizibil indiferent de unghi (acelasi fix ca la Rebirth Token Shop).
+-- Firma cu "EGG SHOP", LIPITA direct pe panoul negru -- SurfaceGui, nu
+-- BillboardGui (acelasi fix ca la standurile de Leaderboard: BillboardGui
+-- plutea/parea "taiat" in functie de unghi, indiferent cat ajustam
+-- StudsOffset -- SurfaceGui se lipeste garantat de suprafata reala a piesei).
+-- Pe toate cele 4 fete laterale (nu stim exact orientarea lui signBoard,
+-- PetShop nefiind sincronizat prin Rojo) -- garantat vizibil din orice
+-- directie te apropii.
 local billboardParent = signBoard or trigger
 
-local existingBillboard = billboardParent:FindFirstChild("EggShopSignBillboard")
-if existingBillboard then
-	existingBillboard:Destroy()
+for _, oldName in ipairs({"EggShopSignBillboard"}) do
+	local existing = billboardParent:FindFirstChild(oldName)
+	if existing then
+		existing:Destroy()
+	end
 end
 
-local signBillboard = Instance.new("BillboardGui")
-signBillboard.Name = "EggShopSignBillboard"
-signBillboard.Size = SIGN_TEXT_SIZE
-signBillboard.StudsOffset = Vector3.new(0, 0, 0)
-signBillboard.AlwaysOnTop = true
-signBillboard.MaxDistance = 100
-signBillboard.LightInfluence = 0
-signBillboard.Adornee = billboardParent
-signBillboard.Parent = billboardParent
+for _, face in ipairs({Enum.NormalId.Front, Enum.NormalId.Back, Enum.NormalId.Left, Enum.NormalId.Right}) do
+	local existingSurface = billboardParent:FindFirstChild("EggShopSignSurface" .. face.Name)
+	if existingSurface then
+		existingSurface:Destroy()
+	end
 
--- Panoul e negru, nu galben ca la Rebirth Shop -- text deschis (alb/auriu)
--- cu contur inchis, nu invers, altfel textul devine invizibil pe fundal negru.
-local signLabel = Instance.new("TextLabel")
-signLabel.Size = UDim2.new(1, 0, 1, 0)
-signLabel.BackgroundTransparency = 1
-signLabel.Text = "EGG SHOP"
-signLabel.TextColor3 = Color3.fromRGB(255, 236, 179)
-signLabel.TextStrokeColor3 = Color3.fromRGB(20, 14, 8)
-signLabel.TextStrokeTransparency = 0.2
-signLabel.Font = Enum.Font.FredokaOne
-signLabel.TextScaled = true
-signLabel.Parent = signBillboard
+	local signSurface = Instance.new("SurfaceGui")
+	signSurface.Name = "EggShopSignSurface" .. face.Name
+	signSurface.Face = face
+	signSurface.Adornee = billboardParent
+	signSurface.AlwaysOnTop = false
+	signSurface.LightInfluence = 0
+	signSurface.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	signSurface.PixelsPerStud = 50
+	signSurface.Parent = billboardParent
+
+	-- UIPadding NU functioneaza pus direct pe un SurfaceGui (nu e GuiObject)
+	-- -- trebuie un Frame intermediar.
+	local contentFrame = Instance.new("Frame")
+	contentFrame.Name = "Content"
+	contentFrame.Size = UDim2.new(1, 0, 1, 0)
+	contentFrame.BackgroundTransparency = 1
+	contentFrame.Parent = signSurface
+
+	local padding = Instance.new("UIPadding")
+	padding.PaddingTop = UDim.new(0.08, 0)
+	padding.PaddingBottom = UDim.new(0.08, 0)
+	padding.PaddingLeft = UDim.new(0.06, 0)
+	padding.PaddingRight = UDim.new(0.06, 0)
+	padding.Parent = contentFrame
+
+	-- Panoul e negru, nu galben ca la Rebirth Shop -- text deschis (alb/auriu)
+	-- cu contur inchis, nu invers, altfel textul devine invizibil pe fundal negru.
+	local signLabel = Instance.new("TextLabel")
+	signLabel.Size = UDim2.new(1, 0, 1, 0)
+	signLabel.BackgroundTransparency = 1
+	signLabel.Text = "EGG SHOP"
+	signLabel.TextColor3 = Color3.fromRGB(255, 236, 179)
+	signLabel.TextStrokeColor3 = Color3.fromRGB(20, 14, 8)
+	signLabel.TextStrokeTransparency = 0.2
+	signLabel.Font = Enum.Font.FredokaOne
+	signLabel.TextScaled = true
+	signLabel.TextWrapped = true
+	signLabel.Parent = contentFrame
+end
 
 -- NPC langa stand, fara text deasupra (doar cel de la Token Shop are badge).
 -- Pozitie fixa, primita direct de la jucator (coordonatele HumanoidRootPart

@@ -453,12 +453,22 @@ local function updateResponsiveLayout()
 	mobileLabel.Visible = isMobile
 end
 
+local viewportConnection = nil
+
 local function bindCamera()
 	updateResponsiveLayout()
 
+	-- Deconectam handler-ul vechi inainte sa conectam unul nou -- altfel
+	-- fiecare schimbare de CurrentCamera adauga inca o conexiune, fara sa o
+	-- scoata pe cea veche.
+	if viewportConnection then
+		viewportConnection:Disconnect()
+		viewportConnection = nil
+	end
+
 	local camera = workspace.CurrentCamera
 	if camera then
-		camera:GetPropertyChangedSignal("ViewportSize"):Connect(updateResponsiveLayout)
+		viewportConnection = camera:GetPropertyChangedSignal("ViewportSize"):Connect(updateResponsiveLayout)
 	end
 end
 

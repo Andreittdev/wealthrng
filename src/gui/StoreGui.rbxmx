@@ -470,7 +470,7 @@ storeGui:GetPropertyChangedSignal("Enabled"):Connect(function()
 end)
 
 refreshStore()]]></ProtectedString>
-				<bool name="Disabled">false</bool>
+				<bool name="Disabled">true</bool>
 				<Content name="LinkedSource"><null></null></Content>
 				<token name="RunContext">0</token>
 				<string name="ScriptGuid">{0E1DAA5A-E440-4D92-BAB6-64AABD4CC420}</string>
@@ -868,7 +868,7 @@ button.Activated:Connect(function()
 		mainFrame.Visible = false
 	end
 end)]]></ProtectedString>
-							<bool name="Disabled">false</bool>
+							<bool name="Disabled">true</bool>
 							<Content name="LinkedSource"><null></null></Content>
 							<token name="RunContext">0</token>
 							<string name="ScriptGuid">{9E674F81-FECB-4B6F-A715-3D62A8F66890}</string>
@@ -1338,7 +1338,7 @@ MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(purchasePlaye
 		setOwned()
 	end
 end)]]></ProtectedString>
-							<bool name="Disabled">false</bool>
+							<bool name="Disabled">true</bool>
 							<Content name="LinkedSource"><null></null></Content>
 							<token name="RunContext">0</token>
 							<string name="ScriptGuid">{DF284C6E-F700-4732-ABF1-D73038203D2F}</string>
@@ -1963,7 +1963,7 @@ MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(purchasePlaye
 		setOwned()
 	end
 end)]]></ProtectedString>
-							<bool name="Disabled">false</bool>
+							<bool name="Disabled">true</bool>
 							<Content name="LinkedSource"><null></null></Content>
 							<token name="RunContext">0</token>
 							<string name="ScriptGuid">{2FF3E206-B89A-4B2D-A158-F24FB69AC851}</string>
@@ -2679,7 +2679,7 @@ MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(purchasePlaye
 		setOwned()
 	end
 end)]]></ProtectedString>
-							<bool name="Disabled">false</bool>
+							<bool name="Disabled">true</bool>
 							<Content name="LinkedSource"><null></null></Content>
 							<token name="RunContext">0</token>
 							<string name="ScriptGuid">{5A0C1120-F1FB-4B1B-A1B6-5F4C3B0A2A17}</string>
@@ -3297,7 +3297,7 @@ MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(purchasePlaye
 		setOwned()
 	end
 end)]]></ProtectedString>
-							<bool name="Disabled">false</bool>
+							<bool name="Disabled">true</bool>
 							<Content name="LinkedSource"><null></null></Content>
 							<token name="RunContext">0</token>
 							<string name="ScriptGuid">{6B1D2231-F2FC-5C2B-B2C7-6F5D4C1B3B27}</string>

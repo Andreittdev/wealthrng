@@ -96,8 +96,11 @@ if not stall then
 	local signBillboard = Instance.new("BillboardGui")
 	signBillboard.Name = "SignBillboard"
 	signBillboard.Size = UDim2.new(0, 78, 0, 24)
-	signBillboard.StudsOffset = Vector3.new(0, CYLINDER_HEIGHT / 2 + 2, 0)
-	signBillboard.AlwaysOnTop = true
+	-- +3.5 (nu +2) -- de la firma sta prea aproape de cartea/decorul de pe
+	-- disc, se suprapunea partial cu ele (vizibil dupa ce AlwaysOnTop a
+	-- devenit false si textul a inceput sa respecte profunzimea reala).
+	signBillboard.StudsOffset = Vector3.new(0, CYLINDER_HEIGHT / 2 + 3.5, 0)
+	signBillboard.AlwaysOnTop = false
 	signBillboard.MaxDistance = 100
 	signBillboard.LightInfluence = 0
 	signBillboard.Adornee = pillar

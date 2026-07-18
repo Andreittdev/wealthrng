@@ -41,13 +41,37 @@ end
 
 function DataManager.LoadData(player)
 	local data
+	local success = false
 
-	local success, err = pcall(function()
-		data = playerDataStore:GetAsync(player.UserId)
-	end)
+	-- 3 incercari cu backoff -- un singur GetAsync esuat (hiccup tranzitoriu
+	-- de DataStore) altfel trata un jucator VECHI ca fiind cont nou (data
+	-- ramanea nil -> getDefaultData()), iar la iesire SaveData suprascria
+	-- salvarea lui reala cu datele default, pierzand-o definitiv.
+	for attempt = 1, 3 do
+		local ok, result = pcall(function()
+			return playerDataStore:GetAsync(player.UserId)
+		end)
+
+		if ok then
+			data = result
+			success = true
+			break
+		end
+
+		warn("Failed to load data for " .. player.Name .. " (attempt " .. attempt .. "/3): " .. tostring(result))
+		if attempt < 3 then
+			task.wait(2)
+		end
+	end
 
 	if not success then
-		warn("Failed to load data for " .. player.Name .. ": " .. err)
+		-- Toate incercarile au esuat -- nu stim daca jucatorul e nou sau nu.
+		-- Il lasam sa joace cu date default (mai bine decat sa-l blocam),
+		-- dar marcam esecul ca atribut pe Instance-ul Player (dispare automat
+		-- cand pleaca, fara sa mai tinem noi vreun tabel manual) ca sa
+		-- SaveData sa STIE sa NU suprascrie salvarea lui reala la iesire.
+		player:SetAttribute("DataLoadFailed", true)
+		warn("DataManager: nu am putut incarca datele pentru " .. player.Name .. " dupa 3 incercari -- salvarea va fi sarita in aceasta sesiune ca sa nu-i stergem contul real")
 	end
 
 	if not data then
@@ -79,6 +103,11 @@ function DataManager.LoadData(player)
 end
 
 function DataManager.SaveData(player)
+	if player:GetAttribute("DataLoadFailed") then
+		warn("DataManager: sar salvarea pentru " .. player.Name .. " -- datele lui nu s-au incarcat cu succes in aceasta sesiune")
+		return
+	end
+
 	local leaderstats = player:FindFirstChild("leaderstats")
 	local inventory = player:FindFirstChild("Inventory")
 	local standLevel = player:FindFirstChild("StandLevel")
@@ -194,12 +223,19 @@ function DataManager.SaveData(player)
 		end
 	end
 
-	local success, err = pcall(function()
-		playerDataStore:SetAsync(player.UserId, dataToSave)
-	end)
+	for attempt = 1, 3 do
+		local ok, err = pcall(function()
+			playerDataStore:SetAsync(player.UserId, dataToSave)
+		end)
 
-	if not success then
-		warn("Failed to save data for " .. player.Name .. ": " .. err)
+		if ok then
+			return
+		end
+
+		warn("Failed to save data for " .. player.Name .. " (attempt " .. attempt .. "/3): " .. tostring(err))
+		if attempt < 3 then
+			task.wait(2)
+		end
 	end
 end
 
@@ -254,7 +290,12 @@ function DataManager.ApplyData(player, data)
 
 		money:GetPropertyChangedSignal("Value"):Connect(function()
 			local delta = money.Value - lastMoney
-			if delta > 0 then
+			-- SuppressCashEarnedTracking -- setat temporar de BankManager in
+			-- jurul unei retrageri, ca sa NU numaram ca "bani castigati" bani
+			-- pe care jucatorul ii avea deja si doar ii muta inapoi din
+			-- banca (altfel depune+retrage in bucla umfla CashEarned la
+			-- infinit, gratis, pe clasamentul global).
+			if delta > 0 and not player:GetAttribute("SuppressCashEarnedTracking") then
 				cashEarned.Value += delta
 				CashLeaderboardStore.QueueUpdate(player)
 			end
