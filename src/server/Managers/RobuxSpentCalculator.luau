@@ -26,6 +26,8 @@ local KNOWN_PASS_IDS = {
 	Economy.SpeedPass.GamePassId,
 	Economy.AutoSellPass.GamePassId,
 	Economy.StarterPack.GamePassId,
+	Economy.AutoBuyPass.GamePassId,
+	Economy.AutoRebirthPass.GamePassId,
 	1898198234, -- VIP (vezi VIPManager.server.luau)
 	1899734044 -- Inventory (vezi NPCManager.server.luau)
 }
@@ -58,6 +60,10 @@ local function getGamepassTotal(player)
 	local total = 0
 
 	for _, passId in ipairs(KNOWN_PASS_IDS) do
+		if passId == 0 then
+			continue
+		end
+
 		local owns = false
 
 		local ok, result = pcall(function()

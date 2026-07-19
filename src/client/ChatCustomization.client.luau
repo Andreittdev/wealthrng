@@ -9,6 +9,16 @@ local Economy = require(modulesFolder:WaitForChild("EconomyConfig"))
 -- Galben, la fel ca eticheta "VIP" de deasupra capului (VIPManager).
 local VIP_COLOR = Color3.fromRGB(255, 215, 60)
 
+-- Tag-uri de rank Top 100 -- atributele sunt setate de
+-- LeaderboardRankTracker.server.luau (nil daca esti in afara Top 100 la
+-- clasamentul respectiv). Culori distincte per clasament, sa nu se confunde
+-- intre ele.
+local RANK_BOARDS = {
+	{Attribute = "CashRank", Label = "Cash", Color = Color3.fromRGB(90, 230, 130)},
+	{Attribute = "TimeRank", Label = "Time", Color = Color3.fromRGB(90, 200, 255)},
+	{Attribute = "RobuxRank", Label = "Robux", Color = Color3.fromRGB(255, 160, 60)}
+}
+
 -- Titlu -> {Nume afisat, Culoare} construit din Economy.TokenShop.Items
 -- (ChatColor-ul fiecarui titlu e definit acolo), ca sa nu tinem doua surse
 -- de adevar pentru aceleasi date.
@@ -23,12 +33,18 @@ local function toHex(color)
 	return string.format("#%02X%02X%02X", color.R * 255, color.G * 255, color.B * 255)
 end
 
--- Ambele etichete pot aparea deodata (VIP + un titlu echipat) -- VIP mereu
--- primul (mai valoros, e platit), apoi titlul. Culoarea textului din chat
--- e data de PRIMA eticheta (cea mai valoroasa) -- daca ai VIP, chatul e
--- galben, indiferent ce titlu ai echipat pe langa el.
+-- Ordine ceruta explicit: rank-urile de leaderboard (Top 100) primele,
+-- apoi VIP, apoi titlul echipat -- toate pot aparea deodata. Culoarea
+-- textului din chat e data de PRIMA eticheta prezenta.
 local function getTagsForPlayer(player)
 	local tags = {}
+
+	for _, board in ipairs(RANK_BOARDS) do
+		local rank = player:GetAttribute(board.Attribute)
+		if rank then
+			table.insert(tags, {Name = board.Label .. " #" .. rank, Color = board.Color})
+		end
+	end
 
 	if player:GetAttribute("IsVIP") == true then
 		table.insert(tags, {Name = "VIP", Color = VIP_COLOR})

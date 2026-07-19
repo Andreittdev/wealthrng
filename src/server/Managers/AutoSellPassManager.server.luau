@@ -18,24 +18,35 @@ local function playerHasAutoSellPass(player)
 	return success and result
 end
 
--- HasAutoSellPass = detine gamepass-ul REAL sau a primit perk-ul cadou
--- (GiftedAutoSellPass, persistat de DataManager) -- vezi comentariul din
--- SpeedPassManager.server.luau pentru motivul recalcularii pe schimbare, nu
--- doar o data la join.
+-- OwnsAutoSellPass = detine gamepass-ul REAL sau a primit perk-ul cadou
+-- (GiftedAutoSellPass, persistat de DataManager) -- NU tine cont de
+-- AutoSellPassEnabled (folosit doar ca sa stim cand sa aratam toggle-ul din
+-- Settings).
+-- HasAutoSellPass = OwnsAutoSellPass SI AutoSellPassEnabled (implicit true)
+-- -- vezi comentariul din VIPManager.server.luau pentru motivul recalcularii
+-- pe schimbare, nu doar o data la join.
 local function recompute(player)
 	local real = player:GetAttribute("RealAutoSellPass") == true
 	local gifted = player:GetAttribute("GiftedAutoSellPass") == true
-	player:SetAttribute("HasAutoSellPass", real or gifted)
+	local owns = real or gifted
+	local enabled = player:GetAttribute("AutoSellPassEnabled") ~= false
+
+	player:SetAttribute("OwnsAutoSellPass", owns)
+	player:SetAttribute("HasAutoSellPass", owns and enabled)
 end
 
 Players.PlayerAdded:Connect(function(player)
 	player:SetAttribute("RealAutoSellPass", false)
+	player:SetAttribute("OwnsAutoSellPass", false)
 	player:SetAttribute("HasAutoSellPass", false)
 
 	player:GetAttributeChangedSignal("RealAutoSellPass"):Connect(function()
 		recompute(player)
 	end)
 	player:GetAttributeChangedSignal("GiftedAutoSellPass"):Connect(function()
+		recompute(player)
+	end)
+	player:GetAttributeChangedSignal("AutoSellPassEnabled"):Connect(function()
 		recompute(player)
 	end)
 

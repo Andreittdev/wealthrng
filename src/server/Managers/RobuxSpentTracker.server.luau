@@ -14,6 +14,8 @@ local KNOWN_PASS_IDS = {
 	Economy.SpeedPass.GamePassId,
 	Economy.AutoSellPass.GamePassId,
 	Economy.StarterPack.GamePassId,
+	Economy.AutoBuyPass.GamePassId,
+	Economy.AutoRebirthPass.GamePassId,
 	1898198234, -- VIP (vezi VIPManager.server.luau)
 	1899734044 -- Inventory (vezi NPCManager.server.luau)
 }

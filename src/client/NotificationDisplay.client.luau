@@ -141,4 +141,12 @@ local function showToast(message)
 	end)
 end
 
-showNotificationEvent.OnClientEvent:Connect(showToast)
+-- NotificationsEnabled -- setare din Settings, implicit activata (atribut
+-- lipsa/nil inseamna "arata"). Doar cine chiar le dezactiveaza explicit nu
+-- le mai vede.
+showNotificationEvent.OnClientEvent:Connect(function(message)
+	if player:GetAttribute("NotificationsEnabled") == false then
+		return
+	end
+	showToast(message)
+end)

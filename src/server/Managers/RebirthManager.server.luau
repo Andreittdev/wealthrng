@@ -1,3 +1,4 @@
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local modulesFolder = ReplicatedStorage:WaitForChild("Modules")
@@ -148,3 +149,63 @@ local function doRebirth(player)
 end
 
 requestRebirthEvent.OnServerEvent:Connect(doRebirth)
+
+-- ================= Auto Rebirth Pass =================
+-- Cumpararea pass-ului = consimtamant explicit sa se sara complet peste
+-- dialogul de confirmare (obligatoriu altfel, vezi RebirthShop.client.luau) --
+-- de indata ce jucatorul e eligibil (Stand 5 + bani suficienti), rebirth-ul
+-- se declanseaza singur. Poate fi oprit temporar din Settings
+-- (AutoRebirthEnabled, implicit true), ex: daca vrei sa acumulezi bani peste
+-- prag ca sa cumperi ceva din Token Shop inainte sa se resetize totul.
+local function isAutoRebirthActive(player)
+	if not player:GetAttribute("HasAutoRebirthPass") then
+		return false
+	end
+
+	return player:GetAttribute("AutoRebirthEnabled") ~= false
+end
+
+local function maybeAutoRebirth(player)
+	if not isAutoRebirthActive(player) then
+		return
+	end
+
+	local ok = canRebirth(player)
+	if ok then
+		doRebirth(player)
+	end
+end
+
+local function watchAutoRebirth(player)
+	local leaderstats = player:WaitForChild("leaderstats", 10)
+	local money = leaderstats and leaderstats:WaitForChild("Money", 10)
+	local standLevel = player:WaitForChild("StandLevel", 10)
+
+	if not money or not standLevel then
+		return
+	end
+
+	money:GetPropertyChangedSignal("Value"):Connect(function()
+		maybeAutoRebirth(player)
+	end)
+
+	standLevel:GetPropertyChangedSignal("Value"):Connect(function()
+		maybeAutoRebirth(player)
+	end)
+
+	player:GetAttributeChangedSignal("HasAutoRebirthPass"):Connect(function()
+		maybeAutoRebirth(player)
+	end)
+
+	player:GetAttributeChangedSignal("AutoRebirthEnabled"):Connect(function()
+		maybeAutoRebirth(player)
+	end)
+end
+
+Players.PlayerAdded:Connect(function(player)
+	task.spawn(watchAutoRebirth, player)
+end)
+
+for _, player in ipairs(Players:GetPlayers()) do
+	task.spawn(watchAutoRebirth, player)
+end

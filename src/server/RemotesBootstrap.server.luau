@@ -78,16 +78,18 @@ local REMOTE_EVENTS = {
 	"ShowTrade",
 	"SkipTrade",
 	"TokenPurchaseResult",
+	"UpdateSettings",
 	"UpdateStandLevel",
 	"UpgradeStand",
 	"WithdrawMoney"
 }
 
--- Doar astea 2 folosesc InvokeServer/OnServerInvoke in tot codul -- restul
+-- Doar astea 3 folosesc InvokeServer/OnServerInvoke in tot codul -- restul
 -- sunt toate RemoteEvent (FireServer/OnServerEvent).
 local REMOTE_FUNCTIONS = {
 	"GetBankData",
-	"GetMarketData"
+	"GetMarketData",
+	"GetPerkBreakdown"
 }
 
 for _, name in ipairs(REMOTE_EVENTS) do

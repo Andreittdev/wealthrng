@@ -131,6 +131,14 @@ function MarketManager.GetMultiplier(category)
 	return MarketManager.GetCategoryMultiplier(category)
 end
 
+-- Procentul BRUT (poate fi negativ) -- folosit de Auto Sell Pass ca sa
+-- decida daca o categorie e chiar "pe plus" (>= +1%) inainte sa vanda
+-- automat un item din ea, nu doar multiplicatorul (1 + percent/100).
+function MarketManager.GetCategoryPercent(category)
+	local data = MarketManager.CategoryData[category]
+	return data and data.Percent or 0
+end
+
 function MarketManager.GetTrend(category)
 	local data = MarketManager.CategoryData[category]
 	return data and data.Trend or "Stable"

@@ -60,11 +60,18 @@ end
 -- live" (cazul Inventory Pass -- vezi NPCManager.server.luau, care il
 -- verifica la fel, live, fara attribute). Starter Pack scos intentionat --
 -- nu apare in Shop (are propriul flow separat, StarterPackShop.client.luau).
+-- Attribute e folosit DOAR pentru badge-ul "OWNED". Auto Sell e singurul
+-- dintre pass-urile "clasice" cu toggle propriu -- foloseste OwnsAutoSellPass
+-- (proprietatea reala), nu HasAutoSellPass (care poate fi oprit temporar din
+-- Settings), altfel un jucator care il opreste ar vedea magazinul spunandu-i
+-- ca nu-l mai detine deloc.
 local GAME_PASSES = {
 	{Name = "VIP", Id = 1898198234, Attribute = "IsVIP", Icon = "rbxassetid://74375751325744"},
 	{Name = "More NPC Speed", Id = Economy.SpeedPass.GamePassId, Attribute = "HasSpeedPass", Icon = "rbxassetid://111045527678748"},
-	{Name = "Auto Sell", Id = Economy.AutoSellPass.GamePassId, Attribute = "HasAutoSellPass", Emoji = "💰"},
-	{Name = "+100 Inventory Space", Id = 1899734044, Attribute = nil, Icon = "rbxassetid://71016405354553"}
+	{Name = "Auto Sell", Id = Economy.AutoSellPass.GamePassId, Attribute = "OwnsAutoSellPass", Emoji = "💰"},
+	{Name = "+100 Inventory Space", Id = 1899734044, Attribute = nil, Icon = "rbxassetid://71016405354553"},
+	{Name = "Auto Buy", Id = Economy.AutoBuyPass.GamePassId, Attribute = "HasAutoBuyPass", Emoji = "🤖"},
+	{Name = "Auto Rebirth", Id = Economy.AutoRebirthPass.GamePassId, Attribute = "HasAutoRebirthPass", Emoji = "♻️"}
 }
 
 local function computeIsMobile()

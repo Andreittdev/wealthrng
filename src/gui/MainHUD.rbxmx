@@ -358,6 +358,19 @@ for i, row in ipairs(rowsInOrder) do
 				if child.Name ~= "StoreButton" then
 					text.Size = UDim2.new(1, 0, 0.25, 0)
 					text.Position = UDim2.new(0, 0, 0.68, 0)
+
+					-- "PROFILE" (7 litere -- mai lung decat "PETS"/"SHOP") pe
+					-- mobil umplea toata latimea butonului, atingand marginile.
+					-- Cutia mai ingusta (82% din latime, centrata) forteaza
+					-- TextScaled sa micsoreze fontul mai mult, lasand margine
+					-- vizibila pe ambele parti -- problema era MARIMEA
+					-- textului, nu pozitia (incercarile anterioare de a-l muta
+					-- stanga/dreapta nu rezolvau nimic, fiindca cutia ramanea
+					-- 100% din latime oricum).
+					if child.Name == "SettingsButton" and isMobile then
+						text.Size = UDim2.new(0.82, 0, 0.25, 0)
+						text.Position = UDim2.new(0.09, 0, 0.68, 0)
+					end
 				end
 			end
 		end
@@ -2342,7 +2355,7 @@ end)]]></ProtectedString>
 					</Item>
 					<Item class="ImageLabel" referent="RBXSETTINGSBTN0000006">
 						<Properties>
-							<Content name="Image"><url>rbxassetid://89239979467275</url></Content>
+							<Content name="Image"><url>rbxassetid://118602525834378</url></Content>
 							<Color3 name="ImageColor3">
 								<R>1</R>
 								<G>1</G>
@@ -2451,7 +2464,7 @@ end)]]></ProtectedString>
 							<int name="MaxVisibleGraphemes">-1</int>
 							<string name="OpenTypeFeatures"></string>
 							<bool name="RichText">false</bool>
-							<string name="Text">SETTINGS</string>
+							<string name="Text">PROFILE</string>
 							<Color3 name="TextColor3">
 								<R>1</R>
 								<G>1</G>

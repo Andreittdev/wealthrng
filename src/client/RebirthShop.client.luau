@@ -550,6 +550,91 @@ addHoverPop(toggleButton)
 -- doua mesaje daca jucatorul apasa repetat.
 local showMissingReasonUntil = 0
 
+-- Rebirth-ul reseteaza Money/Stand Level/Inventory, deci un click gresit e
+-- costisitor -- aratam MEREU o confirmare Da/Anuleaza inainte de FireServer
+-- (nu mai e optionala din Settings -- cerut explicit).
+local function showRebirthConfirmation(onConfirm)
+	local confirmOverlay = Instance.new("Frame")
+	confirmOverlay.Name = "RebirthConfirmOverlay"
+	confirmOverlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	confirmOverlay.BackgroundTransparency = 0.4
+	confirmOverlay.Size = UDim2.new(1, 0, 1, 0)
+	confirmOverlay.ZIndex = 50
+	-- Active=true -- un Frame simplu NU blocheaza click-urile catre ce e in
+	-- spate implicit (doar butoanele fac asta), deci fara asta butonul X al
+	-- panoului principal ramanea clickabil PRIN acest overlay.
+	confirmOverlay.Active = true
+	-- Parentat in "overlay" (nu in screenGui direct) -- ca sa dispara automat
+	-- cand panoul principal se inchide (overlay.Visible = false in setOpen).
+	-- Inainte era frate cu panoul, nu copil, deci ramanea pe ecran, clickabil,
+	-- chiar si dupa ce jucatorul "inchidea" Rebirth Shop-ul.
+	confirmOverlay.Parent = overlay
+
+	local confirmCard = Instance.new("Frame")
+	confirmCard.AnchorPoint = Vector2.new(0.5, 0.5)
+	confirmCard.Position = UDim2.new(0.5, 0, 0.5, 0)
+	confirmCard.Size = UDim2.new(0, 340, 0, 180)
+	confirmCard.BackgroundColor3 = PURPLE_DEEP
+	confirmCard.ZIndex = 51
+	confirmCard.Parent = confirmOverlay
+
+	Instance.new("UICorner", confirmCard).CornerRadius = UDim.new(0, 16)
+
+	local confirmStroke = Instance.new("UIStroke")
+	confirmStroke.Color = PURPLE_LIGHT
+	confirmStroke.Thickness = 3
+	confirmStroke.Parent = confirmCard
+
+	local confirmText = Instance.new("TextLabel")
+	confirmText.BackgroundTransparency = 1
+	confirmText.Position = UDim2.new(0, 16, 0, 16)
+	confirmText.Size = UDim2.new(1, -32, 0, 90)
+	confirmText.Text = "Rebirth resets your Money, Stand Level, and Inventory. Are you sure?"
+	confirmText.TextColor3 = TEXT_LIGHT
+	confirmText.TextWrapped = true
+	confirmText.Font = FONT_BODY
+	confirmText.TextScaled = true
+	confirmText.ZIndex = 52
+	confirmText.Parent = confirmCard
+
+	local yesButton = Instance.new("TextButton")
+	yesButton.AnchorPoint = Vector2.new(0, 1)
+	yesButton.Position = UDim2.new(0, 16, 1, -16)
+	yesButton.Size = UDim2.new(0.45, -8, 0, 44)
+	yesButton.AutoButtonColor = false
+	yesButton.BackgroundColor3 = GREEN_OK
+	yesButton.Text = "Yes, Rebirth"
+	yesButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	yesButton.Font = FONT_DISPLAY
+	yesButton.TextScaled = true
+	yesButton.ZIndex = 52
+	yesButton.Parent = confirmCard
+	Instance.new("UICorner", yesButton).CornerRadius = UDim.new(0.2, 0)
+
+	local noButton = Instance.new("TextButton")
+	noButton.AnchorPoint = Vector2.new(1, 1)
+	noButton.Position = UDim2.new(1, -16, 1, -16)
+	noButton.Size = UDim2.new(0.45, -8, 0, 44)
+	noButton.AutoButtonColor = false
+	noButton.BackgroundColor3 = RED_MISSING
+	noButton.Text = "Cancel"
+	noButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	noButton.Font = FONT_DISPLAY
+	noButton.TextScaled = true
+	noButton.ZIndex = 52
+	noButton.Parent = confirmCard
+	Instance.new("UICorner", noButton).CornerRadius = UDim.new(0.2, 0)
+
+	yesButton.Activated:Connect(function()
+		confirmOverlay:Destroy()
+		onConfirm()
+	end)
+
+	noButton.Activated:Connect(function()
+		confirmOverlay:Destroy()
+	end)
+end
+
 rebirthButton.Activated:Connect(function()
 	if not isEligible then
 		rebirthButton.Text = missingLevel and "Not enough Stand Level" or "Not enough Money"
@@ -566,7 +651,12 @@ rebirthButton.Activated:Connect(function()
 		return
 	end
 
-	requestRebirthEvent:FireServer()
+	-- Confirmarea e OBLIGATORIE, nu mai e optionala din Settings -- cerut
+	-- explicit, rebirth-ul trebuie sa ceara mereu confirmare, indiferent de
+	-- orice.
+	showRebirthConfirmation(function()
+		requestRebirthEvent:FireServer()
+	end)
 end)
 
 rebirthResultEvent.OnClientEvent:Connect(function(data)

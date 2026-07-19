@@ -97,7 +97,32 @@ local function hasAlreadyRedeemed(player, codeKey)
 	return player:GetAttribute("CodeRedeemed_" .. codeKey) == true
 end
 
+-- Asteapta pana cand DataManager a terminat de aplicat datele salvate (acelasi
+-- tipar ca StarterPackManager.server.luau) -- fara asta, un client putea
+-- trimite RedeemCode chiar la join, INAINTE ca CodeRedeemed_<COD> sa fi fost
+-- restaurat din salvarea reala (LoadData/ApplyData pot dura cateva secunde),
+-- iar hasAlreadyRedeemed vedea atributul ca nefolosit (nil) desi codul era
+-- deja folosit intr-o sesiune anterioara -- redare gratuita, repetabila la
+-- fiecare rejoin.
+local function waitForDataApplied(player)
+	if player:GetAttribute("DataApplied") then
+		return
+	end
+
+	local changedSignal = player:GetAttributeChangedSignal("DataApplied")
+
+	while player.Parent and not player:GetAttribute("DataApplied") do
+		changedSignal:Wait()
+	end
+end
+
 local function doRedeem(player, rawInput)
+	waitForDataApplied(player)
+
+	if not player.Parent then
+		return
+	end
+
 	local codeKey = normalizeCode(rawInput)
 
 	if not codeKey then

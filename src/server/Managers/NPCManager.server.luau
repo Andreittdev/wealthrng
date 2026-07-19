@@ -38,20 +38,35 @@ local npcTemplate = npcFolder:WaitForChild("TestNPC")
 
 local activeTrades = {}
 
+-- Forward-declarate -- handleBuy/handleSkip sunt definite mai jos in fisier,
+-- dar spawnNPCForPlayer (definit MAI SUS) trebuie sa le poata apela direct
+-- (Auto Buy Pass, acceptare/respingere automata) dintr-un task.delay a carui
+-- inchidere (closure) ruleaza mult dupa ce ambele au fost deja asignate --
+-- fara declararea asta, numele ar rezolva la globale inexistente (nil) in
+-- acel punct din fisier, nu la variabilele locale de mai jos.
+local handleBuy
+local handleSkip
+
 -- NPC-urile pornesc din portalul cel mai APROAPE de standul jucatorului (Nord
 -- sau Sud), nu mereu din acelasi -- altfel jucatorii cu stand langa Sud ar
 -- astepta mult mai mult decat cei langa Nord, nedrept intre cei 6 jucatori.
--- Cautate o singura data la pornire; daca un portal nu exista (harta veche,
--- fara TownMap), cadem pe o pozitie aproximativa, ca sa nu crape.
+-- Cautate o singura data la pornire, cu WaitForChild (NU FindFirstChild) --
+-- TownMapBuilder.server.luau construieste harta ASINCRON, in cateva secunde,
+-- iar ordinea de rulare intre scripturi de server NU e garantata. Cu
+-- FindFirstChild (verificare instant), NPCManager verifica aproape mereu
+-- INAINTE ca harta sa fie gata, cazand pe fallback la FIECARE pornire de
+-- server, nu doar la o harta veche/lipsa cum anticipa comentariul original.
+-- Cu WaitForChild + plafon, asteptam efectiv constructia hartii; fallback-ul
+-- ramane doar pentru cazul cu adevarat exceptional (nimic dupa 30s).
 local function findPortalPosition(name, fallback)
-	local townMap = workspace:FindFirstChild("TownMap")
-	local portalPanel = townMap and townMap:FindFirstChild(name)
+	local townMap = workspace:WaitForChild("TownMap", 30)
+	local portalPanel = townMap and townMap:WaitForChild(name, 10)
 
 	if portalPanel then
 		return portalPanel.Position
 	end
 
-	warn("NPCManager: Workspace.TownMap." .. name .. " nu a fost gasit -- folosesc o pozitie aproximativa.")
+	warn("NPCManager: Workspace.TownMap." .. name .. " nu a fost gasit dupa asteptare -- folosesc o pozitie aproximativa.")
 	return fallback
 end
 
@@ -399,6 +414,71 @@ local function spawnNPCForPlayer(player, pendingDelay)
 		}
 
 		showTradeEvent:FireClient(player, offer)
+
+		-- Auto Buy Pass: accepta automat oferta, la scurt timp dupa ce
+		-- apare (nu instant -- ca sa simta ca "jocul a dat click pentru tine",
+		-- nu un multiplicator suplimentar de bani). Verificam din nou, dupa
+		-- delay, ca trade-ul curent sa fie INCA acelasi (jucatorul putea sa
+		-- dea click manual mai repede, sa dea skip, sau sa plece) -- altfel
+		-- am accepta accidental o oferta noua, aparuta intre timp.
+		--
+		-- Filtrele pe raritate (AutoBuyFilter<Rarity>, implicit toate true)
+		-- decid daca oferta se ACCEPTA sau se SKIP-eaza automat -- fara sa
+		-- dam skip explicit cand o raritate e dezactivata, oferta ar ramane
+		-- blocata pe ecran la nesfarsit (nimic n-ar mai avansa ciclul).
+		--
+		-- AutoBuyPassEnabled e comutatorul MASTER (implicit true) -- daca e
+		-- oprit, ne intoarcem complet la manual (nici accept, nici skip
+		-- automat) -- diferit de un filtru de raritate dezactivat, care tot
+		-- avanseaza ciclul singur (skip).
+		-- Verificarea de OWNERSHIP ramane in afara (ieftina, rar se schimba) --
+		-- doar ca sa nu programam un task.delay degeaba pentru jucatorii fara
+		-- Auto Buy Pass deloc. Filtrul de raritate SI comutatorul master
+		-- (AutoBuyPassEnabled) se citesc din nou, PROASPAT, in interiorul
+		-- closure-ului, la momentul acceptarii -- nu o data, inainte de delay.
+		-- BUG anterior: erau citite o singura data AICI, inainte de delay; daca
+		-- jucatorul oprea filtrul (sau tot Auto Buy) chiar in fereastra de
+		-- Economy.AutoBuyPass.AcceptDelay (0.75s), codul cumpara oricum,
+		-- folosind valoarea veche -- inconsistent cu verificarea de bani, care
+		-- era deja corect citita live.
+		if player:GetAttribute("HasAutoBuyPass") then
+			task.delay(Economy.AutoBuyPass.AcceptDelay, function()
+				local currentTrade = activeTrades[player]
+				if not (player.Parent and currentTrade and currentTrade.Offer == offer) then
+					return
+				end
+
+				-- Daca s-a oprit tot Auto Buy Pass in acest interval, ne
+				-- intoarcem complet la manual (nici accept, nici skip automat)
+				-- -- lasam oferta asa cum e, exact ca la comutatorul master
+				-- oprit de la inceput.
+				if not (player:GetAttribute("HasAutoBuyPass") and player:GetAttribute("AutoBuyPassEnabled") ~= false) then
+					return
+				end
+
+				local rarityFilterAttribute = "AutoBuyFilter" .. tostring(offer.Rarity)
+				local rarityEnabled = player:GetAttribute(rarityFilterAttribute) ~= false
+
+				-- Verificam banii INAINTE sa incercam cumpararea -- altfel
+				-- handleBuy ar arata doar "Not enough money" si ar lasa
+				-- oferta blocata pe ecran (jucatorul nu mai e acolo sa dea
+				-- Skip manual, cu Auto Buy activat). Fara bani suficienti,
+				-- trecem direct la urmatorul NPC, ca ciclul sa nu se opreasca.
+				local hasEnoughMoney = false
+				local leaderstats = player:FindFirstChild("leaderstats")
+				local money = leaderstats and leaderstats:FindFirstChild("Money")
+
+				if money then
+					hasEnoughMoney = money.Value >= (tonumber(offer.BuyPrice) or 0)
+				end
+
+				if rarityEnabled and hasEnoughMoney then
+					handleBuy(player, {ItemId = offer.ItemId})
+				else
+					handleSkip(player)
+				end
+			end)
+		end
 	else
 		-- CreateOffer nu a putut genera nicio oferta (ex: categorie goala) --
 		-- eliberam slotul si reincercam mai tarziu, in loc sa lasam ciclul de
@@ -453,34 +533,47 @@ local function doHandleBuy(player, clientOffer)
 	local maxInventory = getMaxInventory(player)
 
 	if #inventory:GetChildren() >= maxInventory then
-		-- Auto-Sell Pass: nu blocheaza cumpararea, vinde automat cel mai
-		-- vechi item ca sa faca loc -- e o plasa de siguranta ("nu mai
-		-- raman blocat"), NU un auto-sell instant la fiecare cumparare (asta
-		-- ar fi facut Inventory Pass-ul complet inutil pentru cine are si
-		-- Auto-Sell -- inventarul n-ar mai avea nevoie de sloturi deloc).
+		-- Auto-Sell Pass: nu blocheaza cumpararea -- e o plasa de siguranta
+		-- ("nu mai raman blocat"), declansata DOAR cand inventarul e plin
+		-- (nu la fiecare cumparare). Vinde cel mai vechi item, dar DOAR daca
+		-- (a) filtrul pe CATEGORIA lui e activat (AutoSellFilter<Categorie>,
+		-- implicit toate true) SI (b) piata pentru acea categorie e chiar pe
+		-- plus (>= +1%) -- cerut explicit: nu vindem automat pe pierdere doar
+		-- ca sa facem loc. Daca niciun item nu indeplineste conditiile
+		-- (toate categoriile din inventar sunt pe minus sau dezactivate),
+		-- ramanem blocati normal ("Inventory Full"), fara sa fortam o vanzare
+		-- proasta.
 		local autoSold = false
 
 		if player:GetAttribute("HasAutoSellPass") then
-			local oldestItem = nil
-			local oldestTime = math.huge
+			local bestItem = nil
+			local bestTime = math.huge
 
 			for _, child in ipairs(inventory:GetChildren()) do
-				local purchaseTime = child:FindFirstChild("PurchaseTime")
-				local timeValue = purchaseTime and purchaseTime.Value or 0
+				local categoryValue = child:FindFirstChild("Category")
+				local category = categoryValue and categoryValue.Value
 
-				if timeValue < oldestTime then
-					oldestTime = timeValue
-					oldestItem = child
+				local categoryEnabled = category and player:GetAttribute("AutoSellFilter" .. category) ~= false
+				local categoryPercent = category and MarketManager.GetCategoryPercent(category) or 0
+
+				if categoryEnabled and categoryPercent >= 1 then
+					local purchaseTime = child:FindFirstChild("PurchaseTime")
+					local timeValue = purchaseTime and purchaseTime.Value or 0
+
+					if timeValue < bestTime then
+						bestTime = timeValue
+						bestItem = child
+					end
 				end
 			end
 
-			if oldestItem then
-				local oldestName = oldestItem:FindFirstChild("ItemName")
-				local oldestNameText = oldestName and oldestName.Value or "item"
+			if bestItem then
+				local bestName = bestItem:FindFirstChild("ItemName")
+				local bestNameText = bestName and bestName.Value or "item"
 
-				if SellManager.SellItem(player, oldestItem) then
+				if SellManager.SellItem(player, bestItem) then
 					autoSold = true
-					showNotificationEvent:FireClient(player, "🔄 Auto-Sold " .. oldestNameText .. " to make room")
+					showNotificationEvent:FireClient(player, "🔄 Auto-Sold " .. bestNameText .. " to make room")
 				end
 			end
 		end
@@ -517,7 +610,7 @@ local function doHandleBuy(player, clientOffer)
 	spawnNPCForPlayer(player, getSpawnDelay(player))
 end
 
-local function handleBuy(player, clientOffer)
+handleBuy = function(player, clientOffer)
 	if buyInProgress[player] then
 		return
 	end
@@ -532,11 +625,19 @@ local function handleBuy(player, clientOffer)
 	buyInProgress[player] = nil
 end
 
-local function handleSkip(player)
+handleSkip = function(player)
 	removeNPC(player)
 
 	-- Skip ramane putin mai lent decat buy, ca penalizare naturala.
 	spawnNPCForPlayer(player, getSpawnDelay(player) + 2)
+end
+
+-- Cerut explicit: jucatorul trebuie sa vada efectiv profitul la vanzare (nu
+-- doar un mesaj generic "Sold item") -- inainte, profitul era doar printat
+-- in consola serverului, niciodata trimis la client.
+local function formatSellNotification(itemName, sellPrice, profit)
+	local profitText = profit >= 0 and ("+$" .. profit) or ("-$" .. math.abs(profit))
+	return "💰 Sold " .. itemName .. " for $" .. sellPrice .. " (" .. profitText .. ")"
 end
 
 local function handleSellFirstItem(player)
@@ -550,10 +651,10 @@ local function handleSellFirstItem(player)
 		return
 	end
 
-	local success = SellManager.SellItem(player, firstItem)
+	local success, sellPrice, profit, itemName = SellManager.SellItem(player, firstItem)
 
 	if success then
-		showNotificationEvent:FireClient(player, "💰 Sold item successfully")
+		showNotificationEvent:FireClient(player, formatSellNotification(itemName, sellPrice, profit))
 		sendInventory(player)
 		StandDisplayManager.UpdateStand(player)
 	end
@@ -570,10 +671,10 @@ local function handleSellSelectedItem(player, itemId)
 		return
 	end
 
-	local success = SellManager.SellItem(player, item)
+	local success, sellPrice, profit, itemName = SellManager.SellItem(player, item)
 
 	if success then
-		showNotificationEvent:FireClient(player, "💰 Sold selected item")
+		showNotificationEvent:FireClient(player, formatSellNotification(itemName, sellPrice, profit))
 		sendInventory(player)
 		StandDisplayManager.UpdateStand(player)
 	end

@@ -10,9 +10,16 @@ local CosmeticManager = require(script.Parent:WaitForChild("CosmeticManager"))
 
 local SellManager = {}
 
+-- BuyPrice/BaseValue/MinSell/MaxSell/PurchaseTime sunt salvate ca IntValue
+-- (InventoryManager.createInt), NU NumberValue -- sunt clase SURORI in
+-- Roblox (ambele mostenesc din ValueBase, dar niciuna din cealalta), deci
+-- IntValue:IsA("NumberValue") e mereu false. Verificarea veche (doar
+-- NumberValue) cadea mereu pe branch-ul de default -- bug vechi, invizibil
+-- pana acum (pretul de vanzare era mereu 0 pe sub, mascat de mesajul generic
+-- "Sold item successfully" care nu arata suma).
 local function getNumberValue(folder, name, default)
 	local value = folder:FindFirstChild(name)
-	if value and value:IsA("NumberValue") then
+	if value and (value:IsA("NumberValue") or value:IsA("IntValue")) then
 		return value.Value
 	end
 	return default
@@ -81,6 +88,13 @@ function SellManager.CalculateSellPrice(player, itemFolder)
 		marketMultiplier = MarketManager.GetCategoryMultiplier(category)
 	end
 
+	-- Piata NEGATIVA pentru categoria asta chiar acum (marketMultiplier < 1,
+	-- pretul de baza a scazut) -- niciun bonus de Sell% sau multiplicator de
+	-- bani (VIP/Friend Boost/cosmetice) nu mai compenseaza pierderea. Cerut
+	-- explicit: cand piata scade, jucatorul chiar simte pierderea, perks-urile
+	-- nu o anuleaza -- il vinde pe minus, si asta e.
+	local isMarketNegative = marketMultiplier < 1
+
 	local standSellBonus = getStandSellBonus(player)
 	local cosmeticBonuses = CosmeticManager.GetBonuses(player)
 	local petBonuses = PetManager.GetBonuses(player)
@@ -101,13 +115,26 @@ function SellManager.CalculateSellPrice(player, itemFolder)
 	local totalSellBonus = standSellBonus + cosmeticSellBonus + petSellBonus + rebirthSellBonus
 	totalSellBonus = math.clamp(totalSellBonus, 0, Economy.Caps.Sell)
 
+	if isMarketNegative then
+		totalSellBonus = 0
+		moneyMultiplier = 1
+	end
+
 	local rawPrice = baseValue
 	rawPrice *= marketMultiplier
 	rawPrice *= (1 + totalSellBonus / 100)
 
 	local finalPrice = math.floor(rawPrice)
 
-	finalPrice = math.clamp(finalPrice, minSell, maxSell)
+	if isMarketNegative then
+		-- NU aplicam podeaua de MinSell aici -- MinSell e de obicei peste
+		-- BuyPrice, deci ar anula exact pierderea pe care piata negativa
+		-- trebuie s-o produca. Ramane doar plafonul de MaxSell (irelevant
+		-- oricum, pretul e deja sub baseValue).
+		finalPrice = math.min(finalPrice, maxSell)
+	else
+		finalPrice = math.clamp(finalPrice, minSell, maxSell)
+	end
 
 	-- moneyMultiplier (VIP, cosmetice) se aplica DUPA clamp-ul per-item, nu
 	-- inainte -- altfel bonusul se pierde in mare parte in clamp-ul de
@@ -140,6 +167,7 @@ function SellManager.SellItem(player, itemFolder)
 		return false
 	end
 
+	local itemName = getStringValue(itemFolder, "ItemName", "Item")
 	local buyPrice = getNumberValue(itemFolder, "BuyPrice", 0)
 	local sellPrice = SellManager.CalculateSellPrice(player, itemFolder)
 	local profit = sellPrice - buyPrice
@@ -154,7 +182,7 @@ function SellManager.SellItem(player, itemFolder)
 
 	itemFolder:Destroy()
 
-	return true
+	return true, sellPrice, profit, itemName
 end
 
 return SellManager

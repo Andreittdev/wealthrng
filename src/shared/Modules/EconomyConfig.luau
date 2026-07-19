@@ -3,6 +3,23 @@ local Economy = {}
 -- ============================
 -- NPC OFFERS (Buy Low Sell High)
 -- ============================
+-- Ordinea canonica a raritatilor de ITEME (NU peturi -- alea au in plus si
+-- Secret, care NU exista la iteme). Itemele chiar au Mythic (Collectibles/
+-- Luxury/Shoes.luau) -- si e ofertat real de NPC (Mythic=2 la unul din
+-- tipurile din NPCDatabase.luau), deci trebuia inclus aici, altfel
+-- AutoBuyFilterMythic n-ar fi existat niciodata, iar fallback-ul
+-- "nil ~= false" ar fi lasat itemele Mythic mereu auto-acceptate, fara ca
+-- jucatorul sa poata opri asta din Settings.
+-- Folosita de filtrul Auto Buy Pass (AutoBuyFilter<Rarity>) cat si de UI-ul
+-- din Settings, ca lista de raritati sa existe intr-un singur loc.
+Economy.ItemRarities = {"Common", "Rare", "Epic", "Legendary", "Mythic"}
+
+-- Categoriile de iteme (acelasi 5 folosite si de MarketManager.luau) --
+-- Auto Sell Pass filtreaza pe CATEGORIE, nu pe raritate (cerut explicit):
+-- vinde automat un item doar daca piata categoriei lui e chiar pe plus
+-- (>= +1%, vezi NPCManager.server.luau), nu doar pe baza raritatii.
+Economy.ItemCategories = {"Clothing", "Shoes", "Electronics", "Luxury", "Collectibles"}
+
 Economy.NPCPriceRanges = {
 	Common = {Min = 50, Max = 150},
 	Rare = {Min = 200, Max = 500},
@@ -62,9 +79,45 @@ Economy.SpeedPass = {
 -- ============================
 -- AUTO-SELL PASS (gamepass)
 -- ============================
+-- Plasa de siguranta (vinde cel mai vechi item cand inventarul e plin) --
+-- DAR doar daca (a) filtrul pe CATEGORIA lui e activat (AutoSellFilter
+-- <Categorie>, implicit toate true) SI (b) piata pentru acea categorie e
+-- chiar pe plus (>= +1%, vezi NPCManager.server.luau) -- cerut explicit: nu
+-- vindem automat pe pierdere doar ca sa facem loc.
 Economy.AutoSellPass = {
 	GamePassId = 1906256722,
 	Price = 139 -- Robux
+}
+
+-- ============================
+-- AUTO BUY PASS (gamepass)
+-- ============================
+-- Accepta automat fiecare oferta NPC, la scurt timp dupa ce apare -- elimina
+-- nevoia de click manual la FIECARE tranzactie, care era singurul bottleneck
+-- ramas la endgame (5 rebirth-uri + toate gamepass-urile + peturi Mythic tot
+-- cereau click constant, ~54h non-stop pana la 100M -- nerealist ca obiectiv
+-- "real" pentru jucatori). NU schimba niciun procent de bonus (Sell/Luck/
+-- Speed/MoneyMultiplier raman neatinse) -- doar reduce timpul real de joc
+-- ACTIV necesar, nu rata teoretica de $/tranzactie.
+Economy.AutoBuyPass = {
+	GamePassId = 1918767319,
+	Price = 199, -- Robux (doar text afisat in UI; pretul real e cel setat in Creator Dashboard)
+	AcceptDelay = 0.75 -- secunde intre aparitia ofertei si acceptarea automata
+}
+
+-- ============================
+-- AUTO REBIRTH PASS (gamepass)
+-- ============================
+-- De indata ce esti eligibil (Stand Level 5 + bani suficienti), rebirth-ul
+-- se declanseaza SINGUR, fara dialogul de confirmare (cumpararea pass-ului
+-- e considerata consimtamant explicit -- vezi RebirthManager.server.luau).
+-- Poate fi oprit temporar din Settings (AutoRebirthEnabled, implicit true
+-- pentru cine detine pass-ul) -- util daca vrei sa acumulezi bani peste
+-- prag inainte sa se intample rebirth-ul (ex: sa cumperi ceva din Token
+-- Shop cu banii aia).
+Economy.AutoRebirthPass = {
+	GamePassId = 1919343327,
+	Price = 99 -- Robux (doar text afisat in UI; pretul real e cel setat in Creator Dashboard)
 }
 
 -- ============================

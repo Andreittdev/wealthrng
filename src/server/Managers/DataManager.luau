@@ -41,7 +41,24 @@ local function getDefaultData()
         GiftedVIP = false,
         GiftedSpeedPass = false,
         GiftedAutoSellPass = false,
-        GiftedInventoryPass = false
+        GiftedInventoryPass = false,
+        NotificationsEnabled = true,
+        MusicVolume = 0.5,
+        SFXVolume = 0.5,
+        LowGraphicsMode = false,
+        AutoRebirthEnabled = true,
+        AutoBuyFilterCommon = true,
+        AutoBuyFilterRare = true,
+        AutoBuyFilterEpic = true,
+        AutoBuyFilterLegendary = true,
+        AutoBuyFilterMythic = true,
+        AutoSellPassEnabled = true,
+        AutoBuyPassEnabled = true,
+        AutoSellFilterClothing = true,
+        AutoSellFilterShoes = true,
+        AutoSellFilterElectronics = true,
+        AutoSellFilterLuxury = true,
+        AutoSellFilterCollectibles = true
 	}
 end
 
@@ -111,6 +128,55 @@ function DataManager.LoadData(player)
 	data.GiftedAutoSellPass = data.GiftedAutoSellPass or false
 	data.GiftedInventoryPass = data.GiftedInventoryPass or false
 
+	-- "or true" ar fi un bug aici -- daca jucatorul a dezactivat explicit
+	-- (false), "false or true" da mereu true, ignorandu-i alegerea. Verificam
+	-- nil separat, ca implicit sa fie true DOAR cand nu exista deloc salvat.
+	if data.NotificationsEnabled == nil then
+		data.NotificationsEnabled = true
+	end
+	if data.AutoRebirthEnabled == nil then
+		data.AutoRebirthEnabled = true
+	end
+	if data.AutoBuyFilterCommon == nil then
+		data.AutoBuyFilterCommon = true
+	end
+	if data.AutoBuyFilterRare == nil then
+		data.AutoBuyFilterRare = true
+	end
+	if data.AutoBuyFilterEpic == nil then
+		data.AutoBuyFilterEpic = true
+	end
+	if data.AutoBuyFilterLegendary == nil then
+		data.AutoBuyFilterLegendary = true
+	end
+	if data.AutoBuyFilterMythic == nil then
+		data.AutoBuyFilterMythic = true
+	end
+	if data.AutoSellPassEnabled == nil then
+		data.AutoSellPassEnabled = true
+	end
+	if data.AutoBuyPassEnabled == nil then
+		data.AutoBuyPassEnabled = true
+	end
+	if data.AutoSellFilterClothing == nil then
+		data.AutoSellFilterClothing = true
+	end
+	if data.AutoSellFilterShoes == nil then
+		data.AutoSellFilterShoes = true
+	end
+	if data.AutoSellFilterElectronics == nil then
+		data.AutoSellFilterElectronics = true
+	end
+	if data.AutoSellFilterLuxury == nil then
+		data.AutoSellFilterLuxury = true
+	end
+	if data.AutoSellFilterCollectibles == nil then
+		data.AutoSellFilterCollectibles = true
+	end
+	data.MusicVolume = data.MusicVolume or 0.5
+	data.SFXVolume = data.SFXVolume or 0.5
+	data.LowGraphicsMode = data.LowGraphicsMode or false
+
 	return data
 end
 
@@ -170,7 +236,27 @@ function DataManager.SaveData(player)
         GiftedVIP = player:GetAttribute("GiftedVIP") == true,
         GiftedSpeedPass = player:GetAttribute("GiftedSpeedPass") == true,
         GiftedAutoSellPass = player:GetAttribute("GiftedAutoSellPass") == true,
-        GiftedInventoryPass = player:GetAttribute("GiftedInventoryPass") == true
+        GiftedInventoryPass = player:GetAttribute("GiftedInventoryPass") == true,
+        -- ~= false (nu == true) -- implicit ramane true cand atributul inca
+        -- nu exista (jucator nou/nesalvat inca), respectand totusi o
+        -- dezactivare explicita.
+        NotificationsEnabled = player:GetAttribute("NotificationsEnabled") ~= false,
+        AutoRebirthEnabled = player:GetAttribute("AutoRebirthEnabled") ~= false,
+        AutoBuyFilterCommon = player:GetAttribute("AutoBuyFilterCommon") ~= false,
+        AutoBuyFilterRare = player:GetAttribute("AutoBuyFilterRare") ~= false,
+        AutoBuyFilterEpic = player:GetAttribute("AutoBuyFilterEpic") ~= false,
+        AutoBuyFilterLegendary = player:GetAttribute("AutoBuyFilterLegendary") ~= false,
+        AutoBuyFilterMythic = player:GetAttribute("AutoBuyFilterMythic") ~= false,
+        AutoSellPassEnabled = player:GetAttribute("AutoSellPassEnabled") ~= false,
+        AutoBuyPassEnabled = player:GetAttribute("AutoBuyPassEnabled") ~= false,
+        AutoSellFilterClothing = player:GetAttribute("AutoSellFilterClothing") ~= false,
+        AutoSellFilterShoes = player:GetAttribute("AutoSellFilterShoes") ~= false,
+        AutoSellFilterElectronics = player:GetAttribute("AutoSellFilterElectronics") ~= false,
+        AutoSellFilterLuxury = player:GetAttribute("AutoSellFilterLuxury") ~= false,
+        AutoSellFilterCollectibles = player:GetAttribute("AutoSellFilterCollectibles") ~= false,
+        MusicVolume = player:GetAttribute("MusicVolume") or 0.5,
+        SFXVolume = player:GetAttribute("SFXVolume") or 0.5,
+        LowGraphicsMode = player:GetAttribute("LowGraphicsMode") == true
 	}
 
 	for _, item in ipairs(inventory:GetChildren()) do
@@ -415,6 +501,26 @@ function DataManager.ApplyData(player, data)
 	player:SetAttribute("GiftedSpeedPass", data.GiftedSpeedPass == true)
 	player:SetAttribute("GiftedAutoSellPass", data.GiftedAutoSellPass == true)
 	player:SetAttribute("GiftedInventoryPass", data.GiftedInventoryPass == true)
+
+	-- ~= false -- vezi comentariul din SaveData: implicit true, respectand o
+	-- dezactivare explicita salvata anterior.
+	player:SetAttribute("NotificationsEnabled", data.NotificationsEnabled ~= false)
+	player:SetAttribute("AutoRebirthEnabled", data.AutoRebirthEnabled ~= false)
+	player:SetAttribute("AutoBuyFilterCommon", data.AutoBuyFilterCommon ~= false)
+	player:SetAttribute("AutoBuyFilterRare", data.AutoBuyFilterRare ~= false)
+	player:SetAttribute("AutoBuyFilterEpic", data.AutoBuyFilterEpic ~= false)
+	player:SetAttribute("AutoBuyFilterLegendary", data.AutoBuyFilterLegendary ~= false)
+	player:SetAttribute("AutoBuyFilterMythic", data.AutoBuyFilterMythic ~= false)
+	player:SetAttribute("AutoSellPassEnabled", data.AutoSellPassEnabled ~= false)
+	player:SetAttribute("AutoBuyPassEnabled", data.AutoBuyPassEnabled ~= false)
+	player:SetAttribute("AutoSellFilterClothing", data.AutoSellFilterClothing ~= false)
+	player:SetAttribute("AutoSellFilterShoes", data.AutoSellFilterShoes ~= false)
+	player:SetAttribute("AutoSellFilterElectronics", data.AutoSellFilterElectronics ~= false)
+	player:SetAttribute("AutoSellFilterLuxury", data.AutoSellFilterLuxury ~= false)
+	player:SetAttribute("AutoSellFilterCollectibles", data.AutoSellFilterCollectibles ~= false)
+	player:SetAttribute("MusicVolume", data.MusicVolume or 0.5)
+	player:SetAttribute("SFXVolume", data.SFXVolume or 0.5)
+	player:SetAttribute("LowGraphicsMode", data.LowGraphicsMode == true)
 
 	local bankMoney = player:FindFirstChild("BankMoney")
 	if not bankMoney then
