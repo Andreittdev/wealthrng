@@ -862,9 +862,16 @@ local function setShopModalOpen(open)
 	player:SetAttribute("ShopModalOpen", open)
 end
 
-player:GetAttributeChangedSignal("ShopModalOpen"):Connect(function()
-	toggleButton.Visible = not player:GetAttribute("ShopModalOpen")
-end)
+-- SideStackCollapsed -- comutatorul "<"/">" din SideStackToggle.client.luau,
+-- ascunde/arata TOATA stiva (Starter Pack/Rebirth/Daily Rewards/Settings)
+-- deodata, ca la jocurile mari. Se combina cu ShopModalOpen (nu doar il
+-- inlocuieste) -- butonul ramane ascuns daca ORICARE din cele doua e activ.
+local function updateToggleVisibility()
+	toggleButton.Visible = not player:GetAttribute("ShopModalOpen") and not player:GetAttribute("SideStackCollapsed")
+end
+
+player:GetAttributeChangedSignal("ShopModalOpen"):Connect(updateToggleVisibility)
+player:GetAttributeChangedSignal("SideStackCollapsed"):Connect(updateToggleVisibility)
 
 -- ================= Behaviour (declarat aici ca sa fie vizibil din applyState) ====
 

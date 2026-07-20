@@ -128,17 +128,17 @@ local EGG_DATA = {
 			"King of Kicks — 39.9%",
 			"Hype Dragon — 30%",
 			"Diamond Emperor — 20%",
-			"Billionaire Beast — 10%",
+			"B Beast — 10%",
 			"SECRET — 0.1%"
 		}
 	},
 	{
 		Type = "Mythic",
 		DisplayName = "Mythic Egg",
-		Price = 2500000,
+		Price = 2000000,
 		Color = Color3.fromRGB(255, 70, 105),
 		Pets = {
-			"Market Titan — 39.5%",
+			"Market — 39.5%",
 			"Golden Mogul — 30%",
 			"Fortune Dragon — 20%",
 			"CEO X — 10%",

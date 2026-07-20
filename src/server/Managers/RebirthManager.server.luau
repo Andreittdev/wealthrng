@@ -90,7 +90,7 @@ local function maybeGrantExclusivePet(player, tokens)
 
 	showNotificationEvent:FireClient(
 		player,
-		"🔥 " .. Economy.Rebirth.TokensForExclusivePet .. " Rebirth Tokens! You unlocked " .. petData.DisplayName .. "!"
+		"🎉 " .. Economy.Rebirth.TokensForExclusivePet .. " Rebirth Tokens! You unlocked " .. petData.DisplayName .. "!"
 	)
 
 	print(player.Name .. " unlocked the exclusive Rebirth pet: " .. petData.DisplayName)

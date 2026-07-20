@@ -149,17 +149,29 @@ Economy.Rebirth = {
 	-- cerut). Pragurile 2-5 sunt scalate proportional (x1.9318) fata de
 	-- valorile vechi (calibrate pt. 40/50/60/70/80 min), ca ritmul relativ
 	-- dintre rebirth-uri sa ramana acelasi, doar cu punctul de start mutat.
+	-- Recalibrat cand MaxSell per item a devenit dinamic (Economy.GetMaxSell,
+	-- fara plafon practic) -- inainte, plafonul vechi (1.33x) taia orice Sell%
+	-- peste ~33%, deci Stand(max 25%) + Rebirth cumulativ abia incepea sa fie
+	-- afectat de la rebirth 3+ (35%) in sus. Pragurile 3-5 sunt marite exact cu
+	-- cat creste pretul mediu de vanzare la Sell%-ul cumulativ tipic al acelui
+	-- rebirth (35/42/49%), ca timpii reali (~1h30/1h la rebirth 1) sa ramana
+	-- neschimbati. Rebirth 1-2 raman identice -- Sell%-ul lor (25/30%) era deja
+	-- sub vechiul plafon, deci formula noua nu le afecteaza deloc.
 	RequiredMoneyByRebirth = {
 		[1] = 425000,
 		[2] = 695000,
-		[3] = 1025000,
-		[4] = 1370000,
-		[5] = 1760000
+		[3] = 1040000,
+		[4] = 1460000,
+		[5] = 1970000
 	},
 
 	-- Pentru rebirth 6+ (neclibrat inca), crestem pragul cu un pas fix (scalat
-	-- proportional cu restul curbei).
-	RequiredMoneyStepAfter5 = 350000,
+	-- proportional cu restul curbei). Marit cu ~20% fata de valoarea veche --
+	-- Sell%-ul cumulativ trece de 33% tot mai mult la fiecare rebirth dupa 5
+	-- (59%, 69%, 79%...), deci excesul fata de sistemul vechi creste constant;
+	-- 20% e o prima estimare, de verificat empiric (un pas FIX nu compenseaza
+	-- perfect o crestere care ea insasi accelereaza).
+	RequiredMoneyStepAfter5 = 420000,
 
 	-- Perks-urile PROPRII fiecarui rebirth (nu identice) -- amestec de
 	-- Sell/Luck/Speed, nu doar Sell, ca sa nu se plafoneze la jucatorii VIP
@@ -437,6 +449,21 @@ Economy.Market = {
 
 	AntiAbuseHoldTime = 900     -- 15 minute
 }
+
+-- Plafonul de vanzare per item, calculat DIRECT din cap-urile hard deja
+-- existente (Sell% maxim + deviatia maxima de piata), nu dintr-un multiplicator
+-- ales pe ghicite si calibrat pe build-ul curent. Rezultatul: niciun jucator,
+-- indiferent cate Rebirth-uri/Peturi/Stand-uri mai vin in viitor, nu poate
+-- atinge acest plafon decat daca depaseste ambele cap-uri simultan -- ceea ce
+-- e imposibil, pentru ca ele SUNT limitele absolute definite mai sus. Nu mai
+-- trebuie recalibrat manual niciodata, decat daca Economy.Caps.Sell sau
+-- Economy.Market.MaxPriceDeviation se schimba (caz in care se ajusteaza singur).
+function Economy.GetMaxSell(baseValue)
+	baseValue = baseValue or 0
+	local maxMarketMultiplier = 1 + (Economy.Market.MaxPriceDeviation / 100)
+	local maxSellMultiplier = 1 + (Economy.Caps.Sell / 100)
+	return math.floor(baseValue * maxMarketMultiplier * maxSellMultiplier)
+end
 
 -- ============================
 -- PREMIUM EGG (Developer Product, cumparabil oricand -- NU gamepass)

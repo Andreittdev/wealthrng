@@ -309,16 +309,43 @@ resetInfoLabel.TextSize = 14
 resetInfoLabel.ZIndex = 22
 resetInfoLabel.Parent = card
 
+-- Grup orizontal (text + iconita, in ordinea asta) -- UIListLayout centreaza
+-- grupul ca intreg, iar AutomaticSize.X pe label face ca iconita sa se
+-- lipeasca mereu chiar dupa numar, indiferent cate cifre are.
+local tokenRow = Instance.new("Frame")
+tokenRow.BackgroundTransparency = 1
+tokenRow.Position = UDim2.new(0, 24, 0, 328)
+tokenRow.Size = UDim2.new(1, -48, 0, 26)
+tokenRow.ZIndex = 22
+tokenRow.Parent = card
+
+local tokenRowLayout = Instance.new("UIListLayout")
+tokenRowLayout.FillDirection = Enum.FillDirection.Horizontal
+tokenRowLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+tokenRowLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+tokenRowLayout.Padding = UDim.new(0, 2)
+tokenRowLayout.SortOrder = Enum.SortOrder.LayoutOrder
+tokenRowLayout.Parent = tokenRow
+
 local tokenLabel = Instance.new("TextLabel")
 tokenLabel.BackgroundTransparency = 1
-tokenLabel.Position = UDim2.new(0, 24, 0, 328)
-tokenLabel.Size = UDim2.new(1, -48, 0, 26)
-tokenLabel.Text = "🔥 Rebirth Tokens: 0"
+tokenLabel.AutomaticSize = Enum.AutomaticSize.X
+tokenLabel.Size = UDim2.new(0, 0, 1, 0)
+tokenLabel.LayoutOrder = 1
+tokenLabel.Text = "Rebirth Tokens: 0"
 tokenLabel.TextColor3 = TEXT_LIGHT
 tokenLabel.Font = FONT_BODY
-tokenLabel.TextScaled = true
+tokenLabel.TextSize = 20
 tokenLabel.ZIndex = 22
-tokenLabel.Parent = card
+tokenLabel.Parent = tokenRow
+
+local tokenIcon = Instance.new("ImageLabel")
+tokenIcon.BackgroundTransparency = 1
+tokenIcon.Size = UDim2.new(0, 22, 0, 22)
+tokenIcon.LayoutOrder = 2
+tokenIcon.Image = "rbxassetid://73268562302125"
+tokenIcon.ZIndex = 22
+tokenIcon.Parent = tokenRow
 
 -- ---- Buton Rebirth ----
 
@@ -391,7 +418,7 @@ local function refreshState()
 	local nextPerks = Economy.Rebirth.GetPerks(rebirths + 1)
 	perksLabel.Text = "+" .. nextPerks.Sell .. "% Sell   +" .. nextPerks.Luck .. "% Luck   +" .. nextPerks.Speed .. "% Speed"
 
-	tokenLabel.Text = "🔥 Rebirth Tokens: " .. tokens
+	tokenLabel.Text = "Rebirth Tokens: " .. tokens
 
 	toggleSubtitle.Text = "Rebirths: " .. rebirths
 
@@ -504,9 +531,16 @@ local function setShopModalOpen(open)
 	player:SetAttribute("ShopModalOpen", open)
 end
 
-player:GetAttributeChangedSignal("ShopModalOpen"):Connect(function()
-	toggleButton.Visible = not player:GetAttribute("ShopModalOpen")
-end)
+-- SideStackCollapsed -- comutatorul "<"/">" din SideStackToggle.client.luau,
+-- ascunde/arata TOATA stiva (Starter Pack/Rebirth/Daily Rewards/Settings)
+-- deodata, ca la jocurile mari. Se combina cu ShopModalOpen (nu doar il
+-- inlocuieste) -- butonul ramane ascuns daca ORICARE din cele doua e activ.
+local function updateToggleVisibility()
+	toggleButton.Visible = not player:GetAttribute("ShopModalOpen") and not player:GetAttribute("SideStackCollapsed")
+end
+
+player:GetAttributeChangedSignal("ShopModalOpen"):Connect(updateToggleVisibility)
+player:GetAttributeChangedSignal("SideStackCollapsed"):Connect(updateToggleVisibility)
 
 -- ================= Behaviour =================
 

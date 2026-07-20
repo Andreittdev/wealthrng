@@ -28,6 +28,25 @@ local VALID_EGGS = {
 	Mythic = true
 }
 
+-- Pity: dupa atatea oua deschise LA RAND fara Secret (per tip de ou, per
+-- jucator), urmatorul e garantat Secret, indiferent de rezultatul rulat
+-- normal -- plafoneaza cazul de ghinion extrem, fara sa schimbe sansa reala
+-- (0.1%/0.5%) pentru cine are noroc mai devreme. Doar Legendary si Mythic au
+-- Secret -- celelalte oua nu au nevoie de pity.
+-- Praguri = exact media reala (1/sansa) -- Legendary (0.1% -> 1000),
+-- Mythic (0.5% -> 200). La 2x media (~13.5% dintre jucatori afectati) tot
+-- insemna sute de ore in cel mai rau caz, prea mult ca sa rezolve cu adevarat
+-- plangerea initiala -- la 1x media, pity-ul prinde ~50% dintre jucatori
+-- (jumatate au noroc mai devreme), dar plafonul chiar simte a "rezolvat".
+local PITY_THRESHOLDS = {
+	Legendary = 1000,
+	Mythic = 200
+}
+
+local function getPityAttributeName(eggType)
+	return "PityCount" .. eggType
+end
+
 local function sanitizeId(text)
 	text = tostring(text or "Pet")
 	text = text:gsub("[^%w_]", "")
@@ -129,9 +148,38 @@ local function normalizePetData(rawPet)
 	}
 end
 
-local function rollPetFromEgg(eggData)
+local function findSecretPet(eggData)
+	for _, rawPet in ipairs(eggData.Pets) do
+		if rawPet.Rarity == "Secret" then
+			return normalizePetData(rawPet)
+		end
+	end
+
+	return nil
+end
+
+local function rollPetFromEgg(eggData, player, eggType)
 	if not eggData or type(eggData.Pets) ~= "table" then
 		return nil
+	end
+
+	local pityThreshold = eggType and PITY_THRESHOLDS[eggType]
+	local pityAttribute = eggType and getPityAttributeName(eggType)
+
+	-- Daca acesta ar fi ATINS pragul de pity (inca nu s-a intamplat un
+	-- Secret in ultimele pityThreshold-1 oua), fortam Secret-ul direct,
+	-- inainte sa mai rulam sansa normala.
+	if pityThreshold and player then
+		local attemptsSinceSecret = player:GetAttribute(pityAttribute) or 0
+
+		if attemptsSinceSecret + 1 >= pityThreshold then
+			local secretPet = findSecretPet(eggData)
+
+			if secretPet then
+				player:SetAttribute(pityAttribute, 0)
+				return secretPet
+			end
+		end
 	end
 
 	local totalChance = 0
@@ -151,17 +199,31 @@ local function rollPetFromEgg(eggData)
 
 	local roll = math.random() * totalChance
 	local currentChance = 0
+	local rolledPet = nil
 
 	for _, rawPet in ipairs(eggData.Pets) do
 		local chance = tonumber(rawPet.Chance) or 0
 		currentChance += chance
 
 		if roll <= currentChance then
-			return normalizePetData(rawPet)
+			rolledPet = normalizePetData(rawPet)
+			break
 		end
 	end
 
-	return normalizePetData(eggData.Pets[#eggData.Pets])
+	if not rolledPet then
+		rolledPet = normalizePetData(eggData.Pets[#eggData.Pets])
+	end
+
+	if pityThreshold and player then
+		if rolledPet.Rarity == "Secret" then
+			player:SetAttribute(pityAttribute, 0)
+		else
+			player:SetAttribute(pityAttribute, (player:GetAttribute(pityAttribute) or 0) + 1)
+		end
+	end
+
+	return rolledPet
 end
 
 local function playerAlreadyOwnsPet(player, petId)
@@ -330,7 +392,7 @@ function PetManager.OpenEgg(player, eggType, hatchCount)
 	local results = {}
 
 	for _ = 1, hatchCount do
-		local rolledPet = rollPetFromEgg(eggData)
+		local rolledPet = rollPetFromEgg(eggData, player, eggType)
 
 		if rolledPet then
 			local result = processRolledPet(player, rolledPet)

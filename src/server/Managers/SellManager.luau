@@ -76,7 +76,11 @@ function SellManager.CalculateSellPrice(player, itemFolder)
 	local buyPrice = getNumberValue(itemFolder, "BuyPrice", 0)
 	local baseValue = getNumberValue(itemFolder, "BaseValue", buyPrice)
 	local minSell = getNumberValue(itemFolder, "MinSell", math.floor(baseValue * 0.75))
-	local maxSell = getNumberValue(itemFolder, "MaxSell", math.floor(baseValue * 1.5))
+
+	-- Calculat direct din cap-urile hard (Sell%/market), nu citit dintr-un
+	-- atribut static -- vezi Economy.GetMaxSell. Evita si un vector de exploit
+	-- teoretic (un atribut MaxSell manipulat client-side nu ar mai avea efect).
+	local maxSell = Economy.GetMaxSell(baseValue)
 	local category = getStringValue(itemFolder, "Category", "Misc")
 	local purchaseTime = getNumberValue(itemFolder, "PurchaseTime", 0)
 

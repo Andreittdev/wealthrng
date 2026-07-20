@@ -5,6 +5,7 @@ local modulesFolder = ReplicatedStorage:WaitForChild("Modules")
 local ItemDatabase = require(modulesFolder:WaitForChild("ItemDatabase"))
 local NPCDatabase = require(modulesFolder:WaitForChild("NPCDatabase"))
 local MarketManager = require(modulesFolder:WaitForChild("MarketManager"))
+local Economy = require(modulesFolder:WaitForChild("EconomyConfig"))
 
 local TradeManager = {}
 
@@ -63,9 +64,9 @@ local function getItemsByCategoryAndRarity(category, rarity)
 	return result
 end
 
-local function getRandomItemForNPC(npcData, luckBonus)
+local function getRandomItemForNPC(npcData, luckBonus, forceRarity)
 	local category = chooseWeighted(npcData.CategoryWeights or {}, 0)
-	local rarity = chooseWeighted(npcData.RarityWeights or {}, luckBonus)
+	local rarity = forceRarity or chooseWeighted(npcData.RarityWeights or {}, luckBonus)
 
 	if not category or not rarity then
 		return nil, nil
@@ -92,7 +93,11 @@ local function getRandomItemForNPC(npcData, luckBonus)
 	return chosen.Id, chosen.Data
 end
 
-function TradeManager.CreateOffer(npcType, luckBonus)
+-- forceRarity (optional) -- folosit pentru primele oferte ale unui jucator
+-- nou (inainte sa termine tutorialul), ca sa fie garantat un item Common,
+-- accesibil cu cei 1000$ de start, nu ceva scump pe care nu si-l poate
+-- permite din prima tranzactie.
+function TradeManager.CreateOffer(npcType, luckBonus, forceRarity)
 	luckBonus = luckBonus or 0
 
 	local npcData = NPCDatabase.Types[npcType]
@@ -102,7 +107,7 @@ function TradeManager.CreateOffer(npcType, luckBonus)
 		return nil
 	end
 
-	local itemId, item = getRandomItemForNPC(npcData, luckBonus)
+	local itemId, item = getRandomItemForNPC(npcData, luckBonus, forceRarity)
 
 	if not item then
 		warn("No item found for NPC: " .. tostring(npcType))
@@ -133,7 +138,7 @@ function TradeManager.CreateOffer(npcType, luckBonus)
 		BaseValue = item.ExpectedValue or item.BaseValue or item.BuyPrice or 0,
 
 		MinSell = item.MinSell,
-		MaxSell = item.MaxSell,
+		MaxSell = Economy.GetMaxSell(item.ExpectedValue or item.BaseValue or item.BuyPrice or 0),
 
 		Rarity = item.Rarity or "Common",
 		Category = item.Category or "Misc",

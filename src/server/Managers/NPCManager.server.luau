@@ -18,6 +18,7 @@ local Economy = require(modulesFolder:WaitForChild("EconomyConfig"))
 local PetManager = require(script.Parent:WaitForChild("PetManager"))
 
 local showTradeEvent = remotesFolder:WaitForChild("ShowTrade")
+local hideTradeEvent = remotesFolder:WaitForChild("HideTrade")
 local buyItemEvent = remotesFolder:WaitForChild("BuyItem")
 local skipTradeEvent = remotesFolder:WaitForChild("SkipTrade")
 local sellFirstItemEvent = remotesFolder:WaitForChild("SellFirstItem")
@@ -287,6 +288,13 @@ local function moveNPCTo(npc, destination)
 	humanoid.MoveToFinished:Wait()
 end
 
+-- Punct central pentru buy SI skip, manual SAU automat (Auto Buy Pass) --
+-- clientul isi ascunde singur chenarul de oferta DOAR cand el insusi apasa
+-- Buy/Skip (vezi TradeGui.rbxmx). Cand Auto Buy Pass cumpara/sare peste
+-- automat, direct de pe server (fara niciun click de la client), clientul nu
+-- avea de unde sa stie sa ascunda chenarul -- ramanea vizibil, aratand
+-- oferta veche, deja cumparata/sarita, pana aparea urmatoarea (la cateva
+-- secunde distanta). HideTrade rezolva asta pentru AMBELE cazuri deodata.
 local function removeNPC(player)
 	local trade = activeTrades[player]
 
@@ -295,6 +303,7 @@ local function removeNPC(player)
 	end
 
 	activeTrades[player] = nil
+	hideTradeEvent:FireClient(player)
 end
 
 local function spawnNPCForPlayer(player, pendingDelay)
@@ -405,7 +414,11 @@ local function spawnNPCForPlayer(player, pendingDelay)
 	local totalLuck = bonuses.Luck + cosmeticBonuses.NpcLuck + petBonuses.NpcLuck + vipLuck + starterPackLuck + rebirthLuck + titleLuck
 	totalLuck = math.clamp(totalLuck, 0, Economy.Caps.Luck)
 
-	local offer = TradeManager.CreateOffer(npcType, totalLuck)
+	-- Cat timp jucatorul nu a terminat tutorialul (primele oferte, imediat
+	-- dupa join), fortam Common -- are doar cei 1000$ de start, nu vrem ca
+	-- prima oferta sa fie ceva scump pe care nu si-l poate cumpara.
+	local forceRarity = player:GetAttribute("TutorialCompleted") == false and "Common" or nil
+	local offer = TradeManager.CreateOffer(npcType, totalLuck, forceRarity)
 
 	if offer then
 		activeTrades[player] = {

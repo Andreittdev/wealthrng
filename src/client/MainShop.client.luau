@@ -68,9 +68,9 @@ end
 local GAME_PASSES = {
 	{Name = "VIP", Id = 1898198234, Attribute = "IsVIP", Icon = "rbxassetid://74375751325744"},
 	{Name = "More NPC Speed", Id = Economy.SpeedPass.GamePassId, Attribute = "HasSpeedPass", Icon = "rbxassetid://111045527678748"},
-	{Name = "Auto Sell", Id = Economy.AutoSellPass.GamePassId, Attribute = "OwnsAutoSellPass", Emoji = "💰"},
+	{Name = "Auto Sell", Id = Economy.AutoSellPass.GamePassId, Attribute = "OwnsAutoSellPass", Icon = "rbxassetid://90788671280233"},
 	{Name = "+100 Inventory Space", Id = 1899734044, Attribute = nil, Icon = "rbxassetid://71016405354553"},
-	{Name = "Auto Buy", Id = Economy.AutoBuyPass.GamePassId, Attribute = "HasAutoBuyPass", Emoji = "🤖"},
+	{Name = "Auto Buy", Id = Economy.AutoBuyPass.GamePassId, Attribute = "HasAutoBuyPass", Icon = "rbxassetid://87364006551417"},
 	{Name = "Auto Rebirth", Id = Economy.AutoRebirthPass.GamePassId, Attribute = "HasAutoRebirthPass", Emoji = "♻️"}
 }
 
@@ -460,7 +460,7 @@ local function buildEggsTab()
 	buildRow({
 		Name = "Premium Egg",
 		LayoutOrder = 1,
-		IconEmoji = "🥚",
+		IconAsset = "rbxassetid://104309601579573",
 		PriceText = Economy.PremiumEgg.RobuxPrice .. " R$",
 		OnClick = function()
 			MarketplaceService:PromptProductPurchase(player, Economy.PremiumEgg.ProductId)

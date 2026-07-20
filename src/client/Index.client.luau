@@ -6,6 +6,7 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 local modulesFolder = ReplicatedStorage:WaitForChild("Modules")
+local Economy = require(modulesFolder:WaitForChild("EconomyConfig"))
 local PetDatabase = require(modulesFolder:WaitForChild("PetDatabase"))
 local Clothing = require(modulesFolder:WaitForChild("Clothing"))
 local Shoes = require(modulesFolder:WaitForChild("Shoes"))
@@ -549,7 +550,7 @@ local function buildIndexContent()
 			table.insert(itemGridHolders, {Holder = gridHolder, Rarity = rarity})
 
 			for itemOrder, itemData in ipairs(itemsByRarity[rarity]) do
-				local subtitleText = itemData.Category .. "\n" .. formatMoney(itemData.MinSell) .. " - " .. formatMoney(itemData.MaxSell)
+				local subtitleText = itemData.Category .. "\n" .. formatMoney(itemData.MinSell) .. " - " .. formatMoney(Economy.GetMaxSell(itemData.ExpectedValue))
 				createEntryCard(gridHolder, itemOrder, itemData.ItemName or itemData.Name, rarity, subtitleText, itemData.Icon, isItemDiscovered(itemData.ItemKey))
 			end
 		end
@@ -583,7 +584,7 @@ local function refreshItemCards()
 		end
 
 		for itemOrder, itemData in ipairs(itemsByRarity[entry.Rarity]) do
-			local subtitleText = itemData.Category .. "\n" .. formatMoney(itemData.MinSell) .. " - " .. formatMoney(itemData.MaxSell)
+			local subtitleText = itemData.Category .. "\n" .. formatMoney(itemData.MinSell) .. " - " .. formatMoney(Economy.GetMaxSell(itemData.ExpectedValue))
 			createEntryCard(entry.Holder, itemOrder, itemData.ItemName or itemData.Name, entry.Rarity, subtitleText, itemData.Icon, isItemDiscovered(itemData.ItemKey))
 		end
 	end

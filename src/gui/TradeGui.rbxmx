@@ -41,6 +41,7 @@ local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local buyItem = remotes:WaitForChild("BuyItem")
 local skipItem = remotes:WaitForChild("SkipTrade")
 local showTrade = remotes:WaitForChild("ShowTrade")
+local hideTrade = remotes:WaitForChild("HideTrade")
 
 -- TouchEnabled singur nu e de incredere (poate fi false pe telefon in
 -- anumite ferestre/Studio) -- verificam si dimensiunea reala a ecranului,
@@ -298,6 +299,17 @@ end)
 
 skipButton.Activated:Connect(function()
 	skipItem:FireServer()
+	tradeFrame.Visible = false
+	currentItem = nil
+end)
+
+-- Ascunde chenarul cand tranzactia se incheie de pe SERVER, fara niciun
+-- click de aici (Auto Buy Pass, acceptare/respingere automata) -- fara asta,
+-- chenarul ramanea vizibil cu oferta veche, deja cumparata/sarita, pana
+-- aparea urmatoarea (cateva secunde mai tarziu). Inofensiv si la un click
+-- manual (clientul deja s-a ascuns singur mai sus -- primeste comanda din
+-- nou, degeaba, dar fara niciun efect vizibil).
+hideTrade.OnClientEvent:Connect(function()
 	tradeFrame.Visible = false
 	currentItem = nil
 end)]]></ProtectedString>

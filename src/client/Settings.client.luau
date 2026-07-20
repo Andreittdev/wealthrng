@@ -652,6 +652,13 @@ end
 
 -- Ascuns cat timp orice alt panou modal e deschis (acelasi flag comun ca
 -- Starter Pack/Rebirth/Daily Rewards/Token Shop/Store/Index/Pets).
-player:GetAttributeChangedSignal("ShopModalOpen"):Connect(function()
-	gearButton.Visible = not player:GetAttribute("ShopModalOpen")
-end)
+-- SideStackCollapsed -- comutatorul "<"/">" din SideStackToggle.client.luau,
+-- ascunde/arata TOATA stiva (Starter Pack/Rebirth/Daily Rewards/Settings)
+-- deodata, ca la jocurile mari. Se combina cu ShopModalOpen (nu doar il
+-- inlocuieste) -- butonul ramane ascuns daca ORICARE din cele doua e activ.
+local function updateGearVisibility()
+	gearButton.Visible = not player:GetAttribute("ShopModalOpen") and not player:GetAttribute("SideStackCollapsed")
+end
+
+player:GetAttributeChangedSignal("ShopModalOpen"):Connect(updateGearVisibility)
+player:GetAttributeChangedSignal("SideStackCollapsed"):Connect(updateGearVisibility)

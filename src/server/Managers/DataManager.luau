@@ -58,7 +58,10 @@ local function getDefaultData()
         AutoSellFilterShoes = true,
         AutoSellFilterElectronics = true,
         AutoSellFilterLuxury = true,
-        AutoSellFilterCollectibles = true
+        AutoSellFilterCollectibles = true,
+        PityCountLegendary = 0,
+        PityCountMythic = 0,
+        TutorialCompleted = false
 	}
 end
 
@@ -173,6 +176,17 @@ function DataManager.LoadData(player)
 	if data.AutoSellFilterCollectibles == nil then
 		data.AutoSellFilterCollectibles = true
 	end
+	data.PityCountLegendary = data.PityCountLegendary or 0
+	data.PityCountMythic = data.PityCountMythic or 0
+
+	-- Implicit TRUE cand lipseste -- inseamna un jucator VECHI, salvat
+	-- inainte sa existe acest camp, care deja stie sa joace. Un jucator chiar
+	-- nou nu ajunge niciodata aici cu nil, pentru ca getDefaultData() de mai
+	-- sus ii seteaza deja explicit false.
+	if data.TutorialCompleted == nil then
+		data.TutorialCompleted = true
+	end
+
 	data.MusicVolume = data.MusicVolume or 0.5
 	data.SFXVolume = data.SFXVolume or 0.5
 	data.LowGraphicsMode = data.LowGraphicsMode or false
@@ -254,6 +268,9 @@ function DataManager.SaveData(player)
         AutoSellFilterElectronics = player:GetAttribute("AutoSellFilterElectronics") ~= false,
         AutoSellFilterLuxury = player:GetAttribute("AutoSellFilterLuxury") ~= false,
         AutoSellFilterCollectibles = player:GetAttribute("AutoSellFilterCollectibles") ~= false,
+        PityCountLegendary = player:GetAttribute("PityCountLegendary") or 0,
+        PityCountMythic = player:GetAttribute("PityCountMythic") or 0,
+        TutorialCompleted = player:GetAttribute("TutorialCompleted") == true,
         MusicVolume = player:GetAttribute("MusicVolume") or 0.5,
         SFXVolume = player:GetAttribute("SFXVolume") or 0.5,
         LowGraphicsMode = player:GetAttribute("LowGraphicsMode") == true
@@ -518,6 +535,9 @@ function DataManager.ApplyData(player, data)
 	player:SetAttribute("AutoSellFilterElectronics", data.AutoSellFilterElectronics ~= false)
 	player:SetAttribute("AutoSellFilterLuxury", data.AutoSellFilterLuxury ~= false)
 	player:SetAttribute("AutoSellFilterCollectibles", data.AutoSellFilterCollectibles ~= false)
+	player:SetAttribute("PityCountLegendary", data.PityCountLegendary or 0)
+	player:SetAttribute("PityCountMythic", data.PityCountMythic or 0)
+	player:SetAttribute("TutorialCompleted", data.TutorialCompleted == true)
 	player:SetAttribute("MusicVolume", data.MusicVolume or 0.5)
 	player:SetAttribute("SFXVolume", data.SFXVolume or 0.5)
 	player:SetAttribute("LowGraphicsMode", data.LowGraphicsMode == true)

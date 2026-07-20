@@ -142,7 +142,7 @@ local titleLabel = Instance.new("TextLabel")
 titleLabel.BackgroundTransparency = 1
 titleLabel.Position = UDim2.new(0, 20, 0, 14)
 titleLabel.Size = UDim2.new(1, -80, 0, 40)
-titleLabel.Text = "🔥 REBIRTH TOKEN SHOP"
+titleLabel.Text = "REBIRTH TOKEN SHOP"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.TextStrokeColor3 = OUTLINE_DARK
 titleLabel.TextStrokeTransparency = 0
@@ -181,17 +181,43 @@ balanceStroke.Thickness = 2
 balanceStroke.Transparency = 0.2
 balanceStroke.Parent = balanceFrame
 
+-- Grup orizontal (text + iconita, in ordinea asta) -- UIListLayout centreaza
+-- grupul ca intreg in balanceFrame, iar AutomaticSize.X pe label face ca
+-- iconita sa se lipeasca mereu chiar dupa numar, indiferent cate cifre are
+-- (4 vs 400) -- nu o pozitie fixa, care ar lasa un gol sau s-ar suprapune.
+local balanceContent = Instance.new("Frame")
+balanceContent.BackgroundTransparency = 1
+balanceContent.Size = UDim2.new(1, 0, 1, 0)
+balanceContent.ZIndex = 22
+balanceContent.Parent = balanceFrame
+
+local balanceContentLayout = Instance.new("UIListLayout")
+balanceContentLayout.FillDirection = Enum.FillDirection.Horizontal
+balanceContentLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+balanceContentLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+balanceContentLayout.Padding = UDim.new(0, 2)
+balanceContentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+balanceContentLayout.Parent = balanceContent
+
 local balanceLabel = Instance.new("TextLabel")
 balanceLabel.BackgroundTransparency = 1
-balanceLabel.Size = UDim2.new(1, -20, 1, 0)
-balanceLabel.Position = UDim2.new(0, 10, 0, 0)
-balanceLabel.Text = "🔥 Your Rebirth Tokens: 0"
+balanceLabel.AutomaticSize = Enum.AutomaticSize.X
+balanceLabel.Size = UDim2.new(0, 0, 1, 0)
+balanceLabel.LayoutOrder = 1
+balanceLabel.Text = "Your Rebirth Tokens: 0"
 balanceLabel.TextColor3 = GOLD_ACCENT
 balanceLabel.Font = FONT_DISPLAY
-balanceLabel.TextScaled = true
-balanceLabel.TextXAlignment = Enum.TextXAlignment.Left
+balanceLabel.TextSize = 24
 balanceLabel.ZIndex = 22
-balanceLabel.Parent = balanceFrame
+balanceLabel.Parent = balanceContent
+
+local balanceIcon = Instance.new("ImageLabel")
+balanceIcon.BackgroundTransparency = 1
+balanceIcon.Size = UDim2.new(0, 28, 0, 28)
+balanceIcon.LayoutOrder = 2
+balanceIcon.Image = "rbxassetid://73268562302125"
+balanceIcon.ZIndex = 22
+balanceIcon.Parent = balanceContent
 
 -- ---- Grila de iteme (data-driven, din Economy.TokenShop.Items) ----
 
@@ -554,21 +580,38 @@ local function createItemCard(item, order)
 	costFrame.BackgroundColor3 = BG_DARK
 	costFrame.AnchorPoint = Vector2.new(1, 0)
 	costFrame.Position = UDim2.new(1, -10, 0, 10)
-	costFrame.Size = UDim2.new(0, 54, 0, 20)
+	costFrame.Size = UDim2.new(0, 64, 0, 20)
 	costFrame.ZIndex = 23
 	costFrame.Parent = card
 
 	Instance.new("UICorner", costFrame).CornerRadius = UDim.new(0, 6)
 
+	local costLayout = Instance.new("UIListLayout")
+	costLayout.FillDirection = Enum.FillDirection.Horizontal
+	costLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	costLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+	costLayout.Padding = UDim.new(0, 1)
+	costLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	costLayout.Parent = costFrame
+
 	local costLabel = Instance.new("TextLabel")
 	costLabel.BackgroundTransparency = 1
-	costLabel.Size = UDim2.new(1, 0, 1, 0)
-	costLabel.Text = "🔥" .. item.Cost
+	costLabel.Size = UDim2.new(0, 30, 1, 0)
+	costLabel.LayoutOrder = 1
+	costLabel.Text = tostring(item.Cost)
 	costLabel.TextColor3 = GOLD_ACCENT
 	costLabel.Font = FONT_BODY
 	costLabel.TextScaled = true
 	costLabel.ZIndex = 24
 	costLabel.Parent = costFrame
+
+	local costIcon = Instance.new("ImageLabel")
+	costIcon.BackgroundTransparency = 1
+	costIcon.Size = UDim2.new(0, 16, 0, 16)
+	costIcon.Image = "rbxassetid://73268562302125"
+	costIcon.LayoutOrder = 2
+	costIcon.ZIndex = 24
+	costIcon.Parent = costFrame
 
 	createPremiumIcon(card, item)
 
@@ -600,14 +643,57 @@ local function createItemCard(item, order)
 	buyButton.Position = UDim2.new(0.5, 0, 1, -10)
 	buyButton.Size = UDim2.new(1, -20, 0, 32)
 	buyButton.AutoButtonColor = false
-	buyButton.Text = "BUY"
-	buyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-	buyButton.Font = FONT_DISPLAY
-	buyButton.TextScaled = true
+	buyButton.Text = ""
 	buyButton.ZIndex = 22
 	buyButton.Parent = card
 
 	Instance.new("UICorner", buyButton).CornerRadius = UDim.new(0, 8)
+
+	-- Text-ul butonului nu mai e proprietatea .Text (RichText cu <img> nu se
+	-- randa corect, incercat si respins -- vezi captura primita de la user).
+	-- In loc, iconita e un ImageLabel REAL, separat, aratat DOAR pentru
+	-- starile BUY/NEED (unde chiar apare costul in tokens) -- textul se muta
+	-- la dreapta cand iconita e vizibila, ca sa nu se suprapuna.
+	-- Grup orizontal (text + iconita, in ordinea asta) -- UIListLayout
+	-- centreaza grupul ca intreg in buton, iar AutomaticSize.X pe label face
+	-- ca iconita sa se lipeasca mereu chiar dupa numar. Iconita e ascunsa
+	-- (Visible=false) pentru starile fara cost (EQUIP/EQUIPPED/OWNED) --
+	-- UIListLayout ignora automat copiii invizibili, deci textul se
+	-- recentreaza singur, fara sa mai umblam manual la Size/Position.
+	local buyContent = Instance.new("Frame")
+	buyContent.BackgroundTransparency = 1
+	buyContent.Size = UDim2.new(1, 0, 1, 0)
+	buyContent.ZIndex = 23
+	buyContent.Parent = buyButton
+
+	local buyContentLayout = Instance.new("UIListLayout")
+	buyContentLayout.FillDirection = Enum.FillDirection.Horizontal
+	buyContentLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	buyContentLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+	buyContentLayout.Padding = UDim.new(0, 2)
+	buyContentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	buyContentLayout.Parent = buyContent
+
+	local buyTextLabel = Instance.new("TextLabel")
+	buyTextLabel.BackgroundTransparency = 1
+	buyTextLabel.AutomaticSize = Enum.AutomaticSize.X
+	buyTextLabel.Size = UDim2.new(0, 0, 1, 0)
+	buyTextLabel.LayoutOrder = 1
+	buyTextLabel.Text = "BUY"
+	buyTextLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	buyTextLabel.Font = FONT_DISPLAY
+	buyTextLabel.TextSize = 18
+	buyTextLabel.ZIndex = 23
+	buyTextLabel.Parent = buyContent
+
+	local buyIcon = Instance.new("ImageLabel")
+	buyIcon.BackgroundTransparency = 1
+	buyIcon.Size = UDim2.new(0, 20, 0, 20)
+	buyIcon.LayoutOrder = 2
+	buyIcon.Image = "rbxassetid://73268562302125"
+	buyIcon.Visible = false
+	buyIcon.ZIndex = 23
+	buyIcon.Parent = buyContent
 
 	local isTitleItem = item.Type == "Title"
 
@@ -622,27 +708,32 @@ local function createItemCard(item, order)
 
 			if equipped then
 				buyButton.BackgroundColor3 = GOLD_ACCENT
-				buyButton.Text = "✔ EQUIPPED"
+				buyIcon.Visible = false
+				buyTextLabel.Text = "✔ EQUIPPED"
 			else
 				buyButton.BackgroundColor3 = GREEN_OK
-				buyButton.Text = "EQUIP"
+				buyIcon.Visible = false
+				buyTextLabel.Text = "EQUIP"
 			end
 
 			buyButton.Active = true
 			cardStroke.Transparency = 0
 		elseif owned then
 			buyButton.BackgroundColor3 = BG_DARK
-			buyButton.Text = "✔ OWNED"
+			buyIcon.Visible = false
+			buyTextLabel.Text = "✔ OWNED"
 			buyButton.Active = false
 			cardStroke.Transparency = 0.5
 		elseif getTokens() >= item.Cost then
 			buyButton.BackgroundColor3 = GREEN_OK
-			buyButton.Text = "BUY — 🔥" .. item.Cost
+			buyIcon.Visible = true
+			buyTextLabel.Text = "BUY — " .. item.Cost
 			buyButton.Active = true
 			cardStroke.Transparency = 0
 		else
 			buyButton.BackgroundColor3 = RED_MISSING
-			buyButton.Text = "NEED 🔥" .. item.Cost
+			buyIcon.Visible = true
+			buyTextLabel.Text = "NEED " .. item.Cost
 			buyButton.Active = true
 			cardStroke.Transparency = 0
 		end
@@ -699,7 +790,7 @@ buildShop()
 
 local function refreshBalance()
 	local tokens = getTokens()
-	balanceLabel.Text = "🔥 Your Rebirth Tokens: " .. tokens
+	balanceLabel.Text = "Your Rebirth Tokens: " .. tokens
 end
 
 refreshBalance()
