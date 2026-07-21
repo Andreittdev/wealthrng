@@ -16,6 +16,7 @@ local StandDisplayManager = require(script.Parent:WaitForChild("StandDisplayMana
 local CosmeticManager = require(script.Parent:WaitForChild("CosmeticManager"))
 local Economy = require(modulesFolder:WaitForChild("EconomyConfig"))
 local PetManager = require(script.Parent:WaitForChild("PetManager"))
+local SFXServer = require(script.Parent:WaitForChild("SFXServer"))
 
 local showTradeEvent = remotesFolder:WaitForChild("ShowTrade")
 local hideTradeEvent = remotesFolder:WaitForChild("HideTrade")
@@ -35,7 +36,152 @@ local DEFAULT_MAX_INVENTORY = 50
 local PASS_MAX_INVENTORY = 150
 
 local npcFolder = ServerStorage:WaitForChild("NPCs")
-local npcTemplate = npcFolder:WaitForChild("TestNPC")
+local fallbackNpcTemplate = npcFolder:WaitForChild("TestNPC")
+
+-- Fiecare tip de NPC (vezi NPCDatabase.Types) poate avea propriul model,
+-- pus manual in ServerStorage.NPCs, numit EXACT ca cheia din NPCDatabase
+-- (ex: "StreetDealer", "Sneakerhead", "TechDealer", "LuxuryCollector",
+-- "BlackMarketDealer") -- inainte, toate cele 5 tipuri foloseau acelasi
+-- model placeholder ("TestNPC"), indiferent de persona lor. Daca un tip nu
+-- are inca propriul model, cade pe placeholder, ca restul sa functioneze
+-- normal cat timp adaugi modelele treptat.
+--
+-- Exceptii de nume -- modelul e pus in ServerStorage.NPCs sub numele lui
+-- original (din Toolbox), nu redenumit dupa cheia din NPCDatabase.
+local TEMPLATE_NAME_OVERRIDES = {
+	LuxuryCollector = "Bobux Man",
+	StreetDealer = "Traffic cone guy",
+	Sneakerhead = "Monkey Spawn Kit",
+	TechDealer = "Mr. Robot",
+	BlackMarketDealer = "Gemeral"
+}
+
+-- Culoare de haine (Torso/Membre) per tip de NPC -- pielea ramane aceeasi
+-- (un ton neutru), doar "hainele" difera, ca sa se distinga vizual unul de
+-- altul chiar si fara model 3D custom.
+local NPC_CLOTHING_COLORS = {
+	StreetDealer = Color3.fromRGB(60, 60, 65),
+	Sneakerhead = Color3.fromRGB(230, 120, 30),
+	TechDealer = Color3.fromRGB(35, 65, 90),
+	LuxuryCollector = Color3.fromRGB(40, 35, 20),
+	BlackMarketDealer = Color3.fromRGB(70, 20, 20)
+}
+local SKIN_COLOR = Color3.fromRGB(205, 165, 125)
+local DEFAULT_CLOTHING_COLOR = Color3.fromRGB(90, 90, 100)
+
+-- Rig clasic R6, construit direct din Parts -- niciun asset extern, deci
+-- functioneaza mereu, indiferent ce se intampla cu modelele custom din
+-- Toolbox. Foloseste ca "corp" ori de cate ori un model custom nu are
+-- Humanoid/HumanoidRootPart complet.
+local function createBlockyCharacter(npcType)
+	local clothingColor = NPC_CLOTHING_COLORS[npcType] or DEFAULT_CLOTHING_COLOR
+
+	local model = Instance.new("Model")
+
+	local function makePart(name, size, color, material)
+		local part = Instance.new("Part")
+		part.Name = name
+		part.Size = size
+		part.Color = color
+		part.Material = material or Enum.Material.SmoothPlastic
+		part.TopSurface = Enum.SurfaceType.Smooth
+		part.BottomSurface = Enum.SurfaceType.Smooth
+		part.Parent = model
+		return part
+	end
+
+	local rootPart = makePart("HumanoidRootPart", Vector3.new(2, 2, 1), clothingColor)
+	rootPart.Transparency = 1
+
+	local torso = makePart("Torso", Vector3.new(2, 2, 1), clothingColor)
+	local head = makePart("Head", Vector3.new(2, 1, 1), SKIN_COLOR)
+	Instance.new("SpecialMesh", head).MeshType = Enum.MeshType.Head
+
+	local face = Instance.new("Decal")
+	face.Name = "face"
+	face.Texture = "rbxasset://textures/face.png"
+	face.Face = Enum.NormalId.Front
+	face.Parent = head
+
+	local leftArm = makePart("Left Arm", Vector3.new(1, 2, 1), SKIN_COLOR)
+	local rightArm = makePart("Right Arm", Vector3.new(1, 2, 1), SKIN_COLOR)
+	local leftLeg = makePart("Left Leg", Vector3.new(1, 2, 1), clothingColor)
+	local rightLeg = makePart("Right Leg", Vector3.new(1, 2, 1), clothingColor)
+
+	rootPart.CFrame = CFrame.new(0, 0, 0)
+	torso.CFrame = CFrame.new(0, 0, 0)
+	head.CFrame = CFrame.new(0, 1.5, 0)
+	leftArm.CFrame = CFrame.new(-1.5, 0, 0)
+	rightArm.CFrame = CFrame.new(1.5, 0, 0)
+	leftLeg.CFrame = CFrame.new(-0.5, -2, 0)
+	rightLeg.CFrame = CFrame.new(0.5, -2, 0)
+
+	local function weld(name, part0, part1, c0, c1)
+		local motor = Instance.new("Motor6D")
+		motor.Name = name
+		motor.Part0 = part0
+		motor.Part1 = part1
+		motor.C0 = c0
+		motor.C1 = c1
+		motor.Parent = part0
+		return motor
+	end
+
+	weld("RootJoint", rootPart, torso, CFrame.new(0, 0, 0), CFrame.new(0, 0, 0))
+	weld("Neck", torso, head, CFrame.new(0, 1, 0), CFrame.new(0, -0.5, 0))
+	weld("Left Shoulder", torso, leftArm, CFrame.new(-1, 0.5, 0), CFrame.new(0.5, 0.5, 0))
+	weld("Right Shoulder", torso, rightArm, CFrame.new(1, 0.5, 0), CFrame.new(-0.5, 0.5, 0))
+	weld("Left Hip", torso, leftLeg, CFrame.new(-0.5, -1, 0), CFrame.new(0, 1, 0))
+	weld("Right Hip", torso, rightLeg, CFrame.new(0.5, -1, 0), CFrame.new(0, 1, 0))
+
+	-- Sneakerhead -- adidasi supradimensionati, sudati direct pe picioare
+	-- (WeldConstraint, se misca odata cu ele), tematic pentru personaj.
+	if npcType == "Sneakerhead" then
+		local SHOE_COLOR = Color3.fromRGB(250, 250, 250)
+		local SOLE_COLOR = Color3.fromRGB(230, 60, 40)
+
+		local function makeShoe(legPart)
+			local shoe = makePart("Shoe", Vector3.new(1.7, 0.9, 2.1), SHOE_COLOR)
+			shoe.CFrame = legPart.CFrame * CFrame.new(0, -1.1, -0.35)
+
+			local sole = makePart("Sole", Vector3.new(1.7, 0.3, 2.1), SOLE_COLOR)
+			sole.CFrame = shoe.CFrame * CFrame.new(0, -0.55, 0)
+
+			local shoeWeld = Instance.new("WeldConstraint")
+			shoeWeld.Part0 = legPart
+			shoeWeld.Part1 = shoe
+			shoeWeld.Parent = legPart
+
+			local soleWeld = Instance.new("WeldConstraint")
+			soleWeld.Part0 = shoe
+			soleWeld.Part1 = sole
+			soleWeld.Parent = shoe
+		end
+
+		makeShoe(leftLeg)
+		makeShoe(rightLeg)
+	end
+
+	local humanoid = Instance.new("Humanoid")
+	humanoid.RigType = Enum.HumanoidRigType.R6
+	humanoid.Parent = model
+
+	model.PrimaryPart = rootPart
+
+	return model
+end
+
+local function getNpcTemplate(npcType)
+	local overrideName = TEMPLATE_NAME_OVERRIDES[npcType]
+	if overrideName then
+		local overrideModel = npcFolder:FindFirstChild(overrideName)
+		if overrideModel then
+			return overrideModel
+		end
+	end
+
+	return npcFolder:FindFirstChild(npcType) or fallbackNpcTemplate
+end
 
 local activeTrades = {}
 
@@ -338,9 +484,54 @@ local function spawnNPCForPlayer(player, pendingDelay)
 	-- amandoua de guard si creeaza doi NPC pentru acelasi jucator, unul orfan.
 	activeTrades[player] = {Pending = true}
 
-	local npc = npcTemplate:Clone()
-	npc.Name = npcData.DisplayName
-	npc.Parent = workspace
+	-- BUG gasit: verificam validitatea DUPA ce clonam + WaitForChild(_, 5) --
+	-- template-ul e deja complet incarcat in ServerStorage (nu se repliaza
+	-- ca intre server/client), deci FindFirstChild pe TEMPLATE (nu pe clona)
+	-- e instant, fara nicio asteptare. Inainte, orice tip cu model stricat
+	-- (ex: Street Dealer, 45% sansa sa apara) bloca 5 secunde intregi la
+	-- FIECARE spawn, plus un clone+destroy irosit.
+	local template = getNpcTemplate(npcType)
+	local templateIsValid = template:FindFirstChild("Humanoid") ~= nil
+		and template:FindFirstChild("HumanoidRootPart") ~= nil
+
+	local npc
+
+	if templateIsValid then
+		npc = template:Clone()
+		npc.Name = npcData.DisplayName
+		npc.Parent = workspace
+	else
+		warn("NPCManager: modelul pentru '" .. npcType .. "' (" .. template.Name .. ") nu are Humanoid/HumanoidRootPart -- folosesc rig-ul de rezerva, dar ii grefez accesoriile vizuale (ex: conul de trafic).")
+
+		-- Clonam DOAR accesoriile de pe template (originalul din
+		-- ServerStorage ramane neatins, refolosibil la urmatorul spawn).
+		local salvagedAccessories = {}
+		for _, descendant in ipairs(template:GetDescendants()) do
+			if descendant:IsA("Accessory") then
+				table.insert(salvagedAccessories, descendant:Clone())
+			end
+		end
+
+		-- Rig clasic R6, construit din Parts (vezi createBlockyCharacter) --
+		-- nu mai depinde de niciun model din Toolbox, deci nu poate fi
+		-- niciodata "incomplet". Culoarea hainelor difera per tip de NPC.
+		npc = createBlockyCharacter(npcType)
+		npc.Name = npcData.DisplayName
+		npc.Parent = workspace
+
+		-- Humanoid:AddAccessory suda automat accesoriul in locul corect
+		-- (cap/fata/spate etc., dupa AccessoryType), fara sa calculam noi
+		-- vreun offset manual.
+		for _, accessory in ipairs(salvagedAccessories) do
+			local ok = pcall(function()
+				npc.Humanoid:AddAccessory(accessory)
+			end)
+
+			if not ok then
+				accessory:Destroy()
+			end
+		end
+	end
 
 	local humanoid = npc:WaitForChild("Humanoid")
 	local rootPart = npc:WaitForChild("HumanoidRootPart")
@@ -593,6 +784,7 @@ local function doHandleBuy(player, clientOffer)
 
 		if not autoSold then
 			showNotificationEvent:FireClient(player, "🎒 Inventory Full! Press + to upgrade.")
+			SFXServer.Play(player, "InventoryFull")
 			return
 		end
 	end
@@ -617,6 +809,7 @@ local function doHandleBuy(player, clientOffer)
 	sendInventory(player)
 
 	showNotificationEvent:FireClient(player, "✅ Bought " .. tostring(offer.ItemName) .. " for $" .. tostring(buyPrice))
+	SFXServer.Play(player, "Buy")
 
 	removeNPC(player)
 

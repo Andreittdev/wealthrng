@@ -26,22 +26,12 @@ local GREEN_ON = Color3.fromRGB(90, 230, 130)
 local RED_OFF = Color3.fromRGB(210, 75, 85)
 local CLOSE_RED = Color3.fromRGB(210, 65, 75)
 
--- SoundGroup-uri pentru volum -- create acum, chiar daca inca nu exista
--- muzica/efecte propriu-zise in joc -- orice Sound viitor parentat aici va
--- respecta deja volumul ales de jucator, fara alt cod.
-local musicGroup = SoundService:FindFirstChild("Music")
-if not musicGroup then
-	musicGroup = Instance.new("SoundGroup")
-	musicGroup.Name = "Music"
-	musicGroup.Parent = SoundService
-end
-
-local sfxGroup = SoundService:FindFirstChild("SFX")
-if not sfxGroup then
-	sfxGroup = Instance.new("SoundGroup")
-	sfxGroup.Name = "SFX"
-	sfxGroup.Parent = SoundService
-end
+-- SoundGroup-uri pentru volum -- creare CENTRALIZATA (vezi SoundGroups.luau),
+-- ca sa nu existe risc de cursa intre scripturi separate care creeaza fiecare
+-- propriul grup.
+local SoundGroups = require(script.Parent:WaitForChild("SoundGroups"))
+local musicGroup = SoundGroups.Music
+local sfxGroup = SoundGroups.SFX
 
 local function computeIsMobile()
 	local camera = workspace.CurrentCamera
@@ -470,7 +460,8 @@ local currentSettings = {
 	LowGraphicsMode = player:GetAttribute("LowGraphicsMode") == true,
 	MusicVolume = player:GetAttribute("MusicVolume") or 0.5,
 	SFXVolume = player:GetAttribute("SFXVolume") or 0.5,
-	AutoRebirthEnabled = player:GetAttribute("AutoRebirthEnabled") ~= false
+	AutoRebirthEnabled = player:GetAttribute("AutoRebirthEnabled") ~= false,
+	SellDuplicatesEnabled = player:GetAttribute("SellDuplicatesEnabled") ~= false
 }
 
 musicGroup.Volume = currentSettings.MusicVolume
@@ -581,6 +572,15 @@ buildAutoPassSection(6, "Auto Buy Pass", "AutoBuyPassEnabled", "HasAutoBuyPass",
 currentSettings.AutoSellPassEnabled = player:GetAttribute("AutoSellPassEnabled") ~= false
 buildAutoPassSection(8, "Auto Sell Pass", "AutoSellPassEnabled", "OwnsAutoSellPass", "AutoSellFilter", Economy.ItemCategories)
 
+-- Cand e oprit, duplicatele de peturi din oua NU se mai vand automat pentru
+-- cash -- raman in inventar (util pentru cine strange duplicate pentru un
+-- viitor sistem de fuziune/Golden-Rainbow Pets). Implicit true (comportamentul
+-- de dinainte, neschimbat pentru cine nu atinge setarea asta).
+local _, setSellDuplicatesVisual = createToggle(9, "Sell Duplicates", currentSettings.SellDuplicatesEnabled, function(value)
+	currentSettings.SellDuplicatesEnabled = value
+	pushSettings()
+end)
+
 -- Corectie de cursa: acest script poate rula/citi atributele INAINTE ca
 -- DataManager.ApplyData (alt script, fara ordine garantata fata de acesta)
 -- sa fi apucat sa le seteze din salvarea reala -- fara asta, UI-ul pornea cu
@@ -599,6 +599,12 @@ player:GetAttributeChangedSignal("LowGraphicsMode"):Connect(function()
 	currentSettings.LowGraphicsMode = value
 	setLowGraphicsMode(value)
 	setLowGraphicsVisual(value)
+end)
+
+player:GetAttributeChangedSignal("SellDuplicatesEnabled"):Connect(function()
+	local value = player:GetAttribute("SellDuplicatesEnabled") ~= false
+	currentSettings.SellDuplicatesEnabled = value
+	setSellDuplicatesVisual(value)
 end)
 
 player:GetAttributeChangedSignal("MusicVolume"):Connect(function()

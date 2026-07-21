@@ -5,6 +5,7 @@ local modulesFolder = ReplicatedStorage:WaitForChild("Modules")
 local CodesConfig = require(modulesFolder:WaitForChild("CodesConfig"))
 local DataManager = require(script.Parent:WaitForChild("DataManager"))
 local PetManager = require(script.Parent:WaitForChild("PetManager"))
+local SFXServer = require(script.Parent:WaitForChild("SFXServer"))
 
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local showNotificationEvent = remotes:WaitForChild("ShowNotification")
@@ -154,6 +155,7 @@ local function doRedeem(player, rawInput)
 	DataManager.SaveData(player)
 
 	codeResultEvent:FireClient(player, {Success = true, Code = codeKey})
+	SFXServer.Play(player, "CodeRedeemed")
 	showNotificationEvent:FireClient(player, "🎁 Code redeemed: " .. codeKey .. "!")
 
 	print(player.Name .. " redeemed code: " .. codeKey)

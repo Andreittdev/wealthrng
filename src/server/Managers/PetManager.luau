@@ -299,9 +299,15 @@ local function processRolledPet(player, petData)
 	local isSecret = petData.Rarity == "Secret"
 	local isDuplicate = playerAlreadyOwnsPet(player, petData.PetId)
 
+	-- "Sell Duplicates" din Settings, implicit true (comportamentul de
+	-- dinainte) -- daca jucatorul il opreste explicit, duplicatele NU se mai
+	-- vand automat, raman in inventar (utile pentru un viitor sistem de
+	-- fuziune/Golden-Rainbow Pets).
+	local sellDuplicates = player:GetAttribute("SellDuplicatesEnabled") ~= false
+
 	-- Primul exemplar se păstrează.
 	-- Secret se păstrează mereu.
-	if not isDuplicate or isSecret then
+	if not isDuplicate or isSecret or not sellDuplicates then
 		local savedPet = savePet(player, petData)
 
 		if not savedPet then

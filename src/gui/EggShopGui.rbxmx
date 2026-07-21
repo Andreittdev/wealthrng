@@ -125,10 +125,10 @@ local EGG_DATA = {
 		Price = 500000,
 		Color = Color3.fromRGB(255, 205, 65),
 		Pets = {
-			"King of Kicks — 39.9%",
-			"Hype Dragon — 30%",
-			"Diamond Emperor — 20%",
-			"B Beast — 10%",
+			"B Beast — 39.9%",
+			"Diamond Emperor — 30%",
+			"Hype Dragon — 20%",
+			"King of Kicks — 10%",
 			"SECRET — 0.1%"
 		}
 	},
@@ -139,7 +139,7 @@ local EGG_DATA = {
 		Color = Color3.fromRGB(255, 70, 105),
 		Pets = {
 			"Market — 39.5%",
-			"Golden Mogul — 30%",
+			"Gold — 30%",
 			"Fortune Dragon — 20%",
 			"CEO X — 10%",
 			"SECRET — 0.5%"

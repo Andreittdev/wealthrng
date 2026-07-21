@@ -510,17 +510,16 @@ local function buildRandomPetIcon(container)
 	buildPetFaceIcon(container, PET_PURPLE, false)
 end
 
--- 🔥 Rebirth Token -> moneda cu inel interior si o scanteie sus.
+-- 🔥 Rebirth Token -> aceeasi imagine reala folosita peste tot unde apare
+-- Rebirth Token (Token Shop/Rebirth Shop), nu desenul vechi procedural cu
+-- moneda + inel + scanteie -- consistenta vizuala intre toate locurile.
 local function buildTokenIcon(container)
-	local coin = iconShape(container, 30, 30, 0, 2, FIRE_ORANGE, 23, 0.5)
-	iconOutline(coin, Color3.fromRGB(255, 255, 255), 1.5, 0.4)
-
-	local ring = iconShape(coin, 18, 18, 0, 0, FIRE_ORANGE, 24, 0.5)
-	ring.BackgroundTransparency = 1
-	iconOutline(ring, Color3.fromRGB(255, 255, 255), 1.5, 0.5)
-
-	local spark = iconShape(container, 9, 9, 0, -16, Color3.fromRGB(255, 255, 255), 24, 0.15)
-	spark.Rotation = 45
+	local image = Instance.new("ImageLabel")
+	image.BackgroundTransparency = 1
+	image.Size = UDim2.new(1, 0, 1, 0)
+	image.Image = "rbxassetid://73268562302125"
+	image.ZIndex = 24
+	image.Parent = container
 end
 
 -- 👑 Exclusive Epic Pet -> aceeasi fata de creatura (ca sa se inteleaga tot

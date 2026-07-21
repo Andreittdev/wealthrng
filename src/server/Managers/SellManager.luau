@@ -7,6 +7,7 @@ local Economy = require(modulesFolder:WaitForChild("EconomyConfig"))
 local PetManager = require(script.Parent:WaitForChild("PetManager"))
 
 local CosmeticManager = require(script.Parent:WaitForChild("CosmeticManager"))
+local SFXServer = require(script.Parent:WaitForChild("SFXServer"))
 
 local SellManager = {}
 
@@ -185,6 +186,8 @@ function SellManager.SellItem(player, itemFolder)
 	)
 
 	itemFolder:Destroy()
+
+	SFXServer.Play(player, "Sell")
 
 	return true, sellPrice, profit, itemName
 end

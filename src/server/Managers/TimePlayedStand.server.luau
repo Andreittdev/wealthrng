@@ -3,6 +3,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local TimePlayedStore = require(script.Parent:WaitForChild("TimePlayedStore"))
+local PodiumAvatars = require(script.Parent:WaitForChild("PodiumAvatars"))
 
 -- Al doilea stand de leaderboard, langa cel de "Most Cash Earned"
 -- (LeaderboardStand.server.luau) -- acelasi stil (gard de lemn + tabla
@@ -155,6 +156,7 @@ local podiumConfig = {
 }
 
 local podiumLabels = {}
+local podiumAvatars = {}
 
 for _, config in ipairs(podiumConfig) do
 	local worldPos = podiumRootCFrame:PointToWorldSpace(Vector3.new(config.LocalXOffset, 0, 0))
@@ -168,6 +170,8 @@ for _, config in ipairs(podiumConfig) do
 	)
 
 	podiumPart.CFrame = CFrame.new(podiumPart.Position) * CFrame.Angles(0, math.rad(PODIUM_ROTATION_DEGREES), 0)
+
+	podiumAvatars[config.Rank] = PodiumAvatars.Attach(podiumPart, config.Height, panel.Position)
 
 	local rankLabelsForFace = {}
 
@@ -329,6 +333,8 @@ local function updatePodiums(top)
 		for _, labels in ipairs(faceLabels) do
 			labels.Name.Text = entry and resolveName(entry.UserId) or "-"
 		end
+
+		PodiumAvatars.SetAvatar(podiumAvatars[rank], entry and entry.UserId)
 	end
 end
 

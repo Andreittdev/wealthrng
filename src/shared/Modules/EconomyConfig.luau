@@ -362,6 +362,48 @@ function Economy.TokenShop.GetTitleLuckBonus(player)
 end
 
 -- ============================
+-- PLAYTIME REWARDS (pe SESIUNEA curenta, se reseteaza la fiecare intrare)
+-- ============================
+-- Diferit de Daily Rewards (o data pe zi) sau de TimePlayedStand (leaderboard
+-- lifetime) -- astea recompenseaza cat stai ACUM, in sesiunea curenta.
+-- Pragurile mici (10/20 min) dau bani, ca un impuls rapid -- pragurile mari
+-- (30 min/1h) dau peturi EXCLUSIVE, care nu apar in niciun ou -- calibrate la
+-- nivelul unui pet normal de aceeasi raritate (Epic/Legendary), nu mai
+-- puternice -- "exclusiv" inseamna ca nu-l poti obtine altfel, nu ca e mai
+-- tare, acelasi principiu ca la Daily Rewards ziua 7.
+Economy.PlaytimeRewards = {
+	Milestones = {
+		{Seconds = 600, Type = "Money", Money = 500, Label = "10 minutes"},
+		{Seconds = 1200, Type = "Money", Money = 2000, Label = "20 minutes"},
+		{
+			Seconds = 1800,
+			Type = "Pet",
+			Label = "30 minutes",
+			Pet = {
+				PetId = "ChronosPup",
+				DisplayName = "Chronos Pup",
+				Rarity = "Epic",
+				Image = "",
+				Bonuses = {NpcLuck = 7, SellPrice = 6, NpcSpeed = 3}
+			}
+		},
+		{Seconds = 2700, Type = "Money", Money = 8000, Label = "45 minutes"},
+		{
+			Seconds = 3600,
+			Type = "Pet",
+			Label = "1 hour",
+			Pet = {
+				PetId = "Timekeeper",
+				DisplayName = "Timekeeper",
+				Rarity = "Legendary",
+				Image = "",
+				Bonuses = {NpcLuck = 10, SellPrice = 9, NpcSpeed = 5}
+			}
+		}
+	}
+}
+
+-- ============================
 -- DAILY REWARDS (ciclu de 7 zile, se repeta)
 -- ============================
 -- Zilele cu bani cresc treptat (500 -> 3000) -- suficient de mult ca sa se
@@ -530,7 +572,12 @@ Economy.GiftPasses = {
 	{Id = "GiftVIP", ProductId = 3610553561, Name = "VIP", GrantAttribute = "GiftedVIP"},
 	{Id = "GiftSpeedPass", ProductId = 3610554070, Name = "Speed Pass", GrantAttribute = "GiftedSpeedPass"},
 	{Id = "GiftAutoSellPass", ProductId = 3610554009, Name = "Auto Sell Pass", GrantAttribute = "GiftedAutoSellPass"},
-	{Id = "GiftInventoryPass", ProductId = 3610553662, Name = "Inventory Pass", GrantAttribute = "GiftedInventoryPass"}
+	{Id = "GiftInventoryPass", ProductId = 3610553662, Name = "Inventory Pass", GrantAttribute = "GiftedInventoryPass"},
+	-- ProductId = 0 -- placeholder, la fel ca restul, pana se creeaza manual
+	-- Developer Product-ul in Creator Dashboard. GrantAttribute e citit de
+	-- StarterPackManager.server.luau (checkStarterPack), la fel ca
+	-- "detine gamepass-ul real SAU a primit cadou" pentru celelalte pass-uri.
+	{Id = "GiftStarterPack", ProductId = 3610934032, Name = "Starter Pack", GrantAttribute = "GiftedStarterPack"}
 }
 
 return Economy

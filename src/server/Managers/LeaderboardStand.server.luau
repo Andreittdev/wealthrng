@@ -3,6 +3,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local CashLeaderboardStore = require(script.Parent:WaitForChild("CashLeaderboardStore"))
+local PodiumAvatars = require(script.Parent:WaitForChild("PodiumAvatars"))
 
 -- Pancarda fizica de Leaderboards, stil "gard de lemn + tabla neagra" (cerut
 -- explicit de jucator, dupa o poza de referinta din alt joc). Jucatorii apar
@@ -26,6 +27,34 @@ local groundPosition = Vector3.new(BOARD_X, GROUND_Y, BOARD_Z)
 -- se refac randurile de mai multe ori, nu mai interogam de fiecare data
 -- GetNameFromUserIdAsync pentru acelasi UserId (evita rate-limit-ul).
 local nameCache = {}
+
+-- Aceeasi conventie de abreviere ca restul jocului (MainHUD/EggShop/Bank/
+-- etc.) -- $10224647 devine $10.2M, nu toate cifrele -- cerut explicit,
+-- tabla se citea greu cu numere intregi de 8+ cifre.
+local ABBREVIATIONS = {
+	{1e12, "T"},
+	{1e9, "B"},
+	{1e6, "M"}
+}
+
+local function formatMoney(amount)
+	amount = math.floor(amount or 0)
+
+	for _, entry in ipairs(ABBREVIATIONS) do
+		local threshold, suffix = entry[1], entry[2]
+
+		if amount >= threshold then
+			local rounded = math.floor((amount / threshold) * 10) / 10
+			local text = (rounded == math.floor(rounded))
+				and tostring(math.floor(rounded))
+				or string.format("%.1f", rounded)
+
+			return "$" .. text .. suffix
+		end
+	end
+
+	return "$" .. tostring(amount):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
+end
 
 local function resolveName(userId)
 	if nameCache[userId] then
@@ -171,6 +200,7 @@ local podiumConfig = {
 }
 
 local podiumLabels = {}
+local podiumAvatars = {}
 
 for _, config in ipairs(podiumConfig) do
 	local podiumPart = part(
@@ -180,6 +210,8 @@ for _, config in ipairs(podiumConfig) do
 		config.Color,
 		Enum.Material.Marble
 	)
+
+	podiumAvatars[config.Rank] = PodiumAvatars.Attach(podiumPart, config.Height, panel.Position)
 
 	-- Text DIRECT pe piedestal (SurfaceGui), nu plutind deasupra
 	-- (BillboardGui) -- cerut explicit. Pe toate cele 4 fete laterale --
@@ -347,6 +379,8 @@ local function updatePodiums(top)
 		for _, labels in ipairs(faceLabels) do
 			labels.Name.Text = entry and resolveName(entry.UserId) or "-"
 		end
+
+		PodiumAvatars.SetAvatar(podiumAvatars[rank], entry and entry.UserId)
 	end
 end
 
@@ -362,7 +396,7 @@ local function refreshRows()
 
 	local lines = {}
 	for i, entry in ipairs(top) do
-		table.insert(lines, i .. ". " .. resolveName(entry.UserId) .. " - $" .. tostring(entry.Score))
+		table.insert(lines, i .. ". " .. resolveName(entry.UserId) .. " - " .. formatMoney(entry.Score))
 	end
 
 	setRows(lines)

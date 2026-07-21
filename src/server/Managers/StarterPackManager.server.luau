@@ -62,8 +62,13 @@ local function grantStarterPackRewards(player)
 	print(player.Name .. " redeemed the Starter Pack gamepass")
 end
 
+-- HasStarterPack = detine gamepass-ul REAL SAU l-a primit cadou
+-- (GiftedStarterPack, setat de PremiumPurchaseManager.grantGiftPass) --
+-- acelasi tipar "real SAU cadou" ca VIP/SpeedPass/AutoSellPass/InventoryPass.
 local function checkStarterPack(player)
-	if not playerOwnsStarterPack(player) then
+	local hasStarterPack = playerOwnsStarterPack(player) or player:GetAttribute("GiftedStarterPack") == true
+
+	if not hasStarterPack then
 		player:SetAttribute("HasStarterPack", false)
 		return
 	end
@@ -79,9 +84,21 @@ local function checkStarterPack(player)
 	grantStarterPackRewards(player)
 end
 
-Players.PlayerAdded:Connect(function(player)
+local function setupPlayer(player)
 	task.spawn(checkStarterPack, player)
-end)
+
+	-- Cadoul poate ajunge LIVE, in timpul sesiunii (cineva ii cumpara
+	-- Starter Pack cat jucatorul e deja pe server) -- checkStarterPack de mai
+	-- sus ruleaza doar o data, la apel, deci fara asta recompensa unica
+	-- (bani + pet) nu s-ar acorda pana la urmatorul join.
+	player:GetAttributeChangedSignal("GiftedStarterPack"):Connect(function()
+		if player:GetAttribute("GiftedStarterPack") then
+			task.spawn(checkStarterPack, player)
+		end
+	end)
+end
+
+Players.PlayerAdded:Connect(setupPlayer)
 
 MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, gamePassId, wasPurchased)
 	if not wasPurchased or gamePassId ~= STARTER_PACK_PASS_ID then
@@ -97,5 +114,5 @@ MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, gameP
 end)
 
 for _, player in ipairs(Players:GetPlayers()) do
-	task.spawn(checkStarterPack, player)
+	setupPlayer(player)
 end

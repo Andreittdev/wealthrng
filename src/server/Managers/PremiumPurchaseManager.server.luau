@@ -21,6 +21,7 @@ local Economy = require(modulesFolder:WaitForChild("EconomyConfig"))
 local PetManager = require(script.Parent:WaitForChild("PetManager"))
 local RobuxSpentCalculator = require(script.Parent:WaitForChild("RobuxSpentCalculator"))
 local DataManager = require(script.Parent:WaitForChild("DataManager"))
+local SFXServer = require(script.Parent:WaitForChild("SFXServer"))
 
 -- Tinem minte ce PurchaseId-uri am procesat deja -- Roblox reincearca acelasi
 -- receipt (posibil in sesiuni server diferite) pana cand ProcessReceipt
@@ -280,6 +281,7 @@ MarketplaceService.ProcessReceipt = function(receiptInfo)
 	end
 
 	markPurchaseProcessed(receiptInfo.PurchaseId)
+	SFXServer.Play(player, "Purchase")
 
 	local spendOk = pcall(addDevProductSpend, player, receiptInfo.ProductId)
 	if not spendOk then

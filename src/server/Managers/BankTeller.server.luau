@@ -1,6 +1,9 @@
 local Workspace = game:GetService("Workspace")
 
-local NPC_MODEL_NAME = "Bobux Man"
+-- "Bobux Man" a fost sters din greseala si inlocuit cu un model nou,
+-- "Millionaire" -- acelasi loc, aceeasi logica, doar numele modelului cautat
+-- in Workspace s-a schimbat.
+local NPC_MODEL_NAME = "Millionaire"
 
 -- Animatia default "Wave" din Roblox (aceeasi cu /e wave), pentru rig R15.
 -- Daca modelul e R6 (rig vechi), schimba id-ul cu "rbxassetid://128777973"
@@ -12,6 +15,12 @@ local WAVE_PAUSE_SECONDS = 5
 -- din locul unde vrea sa stea NPC-ul, dupa geamul bancii) -- folosita direct,
 -- fara niciun calcul relativ la banca.
 local TELLER_POSITION = Vector3.new(56.046993255615234, 10.437660217285156, 737.3899536132812)
+
+-- Cerut: rotit + mutat putin mai in spate (departe de strada, spre +X) fata
+-- de pozitia originala a lui Bobux Man -- valori usor de ajustat daca nu
+-- sunt exact cat trebuie.
+local TELLER_ROTATION_OFFSET_DEGREES = 90
+local TELLER_BACK_OFFSET = Vector3.new(2, 0, 0)
 
 -- "Bobux Man" (numele Modelului) apare plutind deasupra capului -- e nametag-ul
 -- implicit al Roblox pentru orice model cu Humanoid (ia automat Model.Name).
@@ -81,11 +90,10 @@ end
 
 local function positionTeller(npc)
 	local npcCFrame = npc:GetPivot()
+	local position = TELLER_POSITION + TELLER_BACK_OFFSET
+	local rotation = npcCFrame.Rotation * CFrame.Angles(0, math.rad(TELLER_ROTATION_OFFSET_DEGREES), 0)
 
-	-- Pastram rotatia cu care a fost pus NPC-ul in Explorer (nu o schimbam
-	-- automat) -- daca sta cu spatele, roteste-l manual in Studio sau
-	-- spune-mi in ce directie sa il intorc.
-	npc:PivotTo(CFrame.new(TELLER_POSITION) * npcCFrame.Rotation)
+	npc:PivotTo(CFrame.new(position) * rotation)
 
 	anchorModel(npc)
 	hideNameTag(npc)

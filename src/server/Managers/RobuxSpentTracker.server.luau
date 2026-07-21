@@ -8,6 +8,7 @@ local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local RobuxSpentCalculator = require(script.Parent:WaitForChild("RobuxSpentCalculator"))
+local SFXServer = require(script.Parent:WaitForChild("SFXServer"))
 local Economy = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("EconomyConfig"))
 
 local KNOWN_PASS_IDS = {
@@ -52,5 +53,6 @@ MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, gameP
 
 	if isKnown then
 		RobuxSpentCalculator.Recompute(player)
+		SFXServer.Play(player, "Purchase")
 	end
 end)

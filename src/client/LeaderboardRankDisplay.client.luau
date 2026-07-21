@@ -23,13 +23,38 @@ local function formatMinutes(totalMinutes)
 	return hours .. "h " .. minutes .. "m"
 end
 
+-- Aceeasi conventie de abreviere ca restul jocului (MainHUD/EggShop/Bank/
+-- etc.) -- $10224647 devine $10.2M, nu toate cifrele.
+local CASH_ABBREVIATIONS = {
+	{1e12, "T"},
+	{1e9, "B"},
+	{1e6, "M"}
+}
+
+local function formatCash(amount)
+	amount = math.floor(amount or 0)
+
+	for _, entry in ipairs(CASH_ABBREVIATIONS) do
+		local threshold, suffix = entry[1], entry[2]
+
+		if amount >= threshold then
+			local rounded = math.floor((amount / threshold) * 10) / 10
+			local text = (rounded == math.floor(rounded))
+				and tostring(math.floor(rounded))
+				or string.format("%.1f", rounded)
+
+			return "$" .. text .. suffix
+		end
+	end
+
+	return "$" .. tostring(amount):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
+end
+
 local BOARDS = {
 	{
 		StandName = "LeaderboardStand",
 		RemoteName = "GetMyCashRank",
-		FormatScore = function(score)
-			return "$" .. tostring(score)
-		end
+		FormatScore = formatCash
 	},
 	{
 		StandName = "TimePlayedStand",

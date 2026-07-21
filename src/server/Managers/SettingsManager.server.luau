@@ -35,6 +35,7 @@ local SIMPLE_BOOLEAN_SETTINGS = {
 	"NotificationsEnabled",
 	"LowGraphicsMode",
 	"AutoRebirthEnabled",
+	"SellDuplicatesEnabled",
 	"AutoBuyFilterCommon",
 	"AutoBuyFilterRare",
 	"AutoBuyFilterEpic",

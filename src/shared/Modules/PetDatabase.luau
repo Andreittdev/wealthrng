@@ -37,10 +37,10 @@ Pets.Eggs = {
 	Legendary = {
 		Price = 500000,
 		Pets = {
-			{Name = "King Of Kicks", Rarity = "Legendary", Chance = 39.9, Luck = 8, Sell = 7, Speed = 4, Image = "rbxassetid://131342079845243"},
-			{Name = "Hype Dragon", Rarity = "Legendary", Chance = 30, Luck = 9, Sell = 8, Speed = 4, Image = "rbxassetid://113560516680662"},
-			{Name = "Diamond Emperor", Rarity = "Legendary", Chance = 20, Luck = 10, Sell = 9, Speed = 5, Image = "rbxassetid://112937280899690"},
-			{Name = "B Beast", Rarity = "Legendary", Chance = 10, Luck = 12, Sell = 10, Speed = 6, Image = "rbxassetid://77761425616150"},
+			{Name = "B Beast", Rarity = "Legendary", Chance = 39.9, Luck = 8, Sell = 7, Speed = 4, Image = "rbxassetid://77761425616150"},
+			{Name = "Diamond Emperor", Rarity = "Legendary", Chance = 30, Luck = 9, Sell = 8, Speed = 4, Image = "rbxassetid://112937280899690"},
+			{Name = "Hype Dragon", Rarity = "Legendary", Chance = 20, Luck = 10, Sell = 9, Speed = 5, Image = "rbxassetid://113560516680662"},
+			{Name = "King Of Kicks", Rarity = "Legendary", Chance = 10, Luck = 12, Sell = 10, Speed = 6, Image = "rbxassetid://131342079845243"},
 			{Name = "THE COLLECTOR", Rarity = "Secret", Chance = 0.1, Luck = 25, Sell = 20, Speed = 10, Image = "rbxassetid://139001462245720"}
 		}
 	},
@@ -49,7 +49,7 @@ Pets.Eggs = {
 		Price = 2000000,
 		Pets = {
 			{Name = "Market", Rarity = "Mythic", Chance = 39.5, Luck = 13, Sell = 11, Speed = 6, Image = "rbxassetid://111004557886325"},
-			{Name = "Golden Mogul", Rarity = "Mythic", Chance = 30, Luck = 14, Sell = 12, Speed = 7},
+			{Name = "Gold", Rarity = "Mythic", Chance = 30, Luck = 14, Sell = 12, Speed = 7, Image = "rbxassetid://72135013759264"},
 			{Name = "Fortune Dragon", Rarity = "Mythic", Chance = 20, Luck = 16, Sell = 14, Speed = 8, Image = "rbxassetid://94055455280858"},
 			{Name = "CEO X", Rarity = "Mythic", Chance = 10, Luck = 18, Sell = 16, Speed = 9, Image = "rbxassetid://84827384554941"},
 			{Name = "Millionaire", Rarity = "Secret", Chance = 0.5, Luck = 30, Sell = 25, Speed = 12, Image = "rbxassetid://119628540326297"}
@@ -120,6 +120,12 @@ end
 for _, day in pairs(Economy.DailyRewards.Days) do
 	if day.Type == "SpecificPet" then
 		registerExclusivePet(day.Pet, "Daily Reward Exclusive")
+	end
+end
+
+for _, milestone in ipairs(Economy.PlaytimeRewards.Milestones) do
+	if milestone.Type == "Pet" then
+		registerExclusivePet(milestone.Pet, "Playtime Reward Exclusive")
 	end
 end
 

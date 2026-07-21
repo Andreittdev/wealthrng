@@ -63,6 +63,7 @@ local REMOTE_EVENTS = {
 	"PetInventoryRequest",
 	"PetInventoryUpdate",
 	"PetOpened",
+	"PlaySound",
 	"RebirthResult",
 	"RedeemCode",
 	"RequestDailyClaim",

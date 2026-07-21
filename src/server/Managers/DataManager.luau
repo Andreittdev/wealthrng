@@ -42,7 +42,9 @@ local function getDefaultData()
         GiftedSpeedPass = false,
         GiftedAutoSellPass = false,
         GiftedInventoryPass = false,
+        GiftedStarterPack = false,
         NotificationsEnabled = true,
+        SellDuplicatesEnabled = true,
         MusicVolume = 0.5,
         SFXVolume = 0.5,
         LowGraphicsMode = false,
@@ -130,12 +132,16 @@ function DataManager.LoadData(player)
 	data.GiftedSpeedPass = data.GiftedSpeedPass or false
 	data.GiftedAutoSellPass = data.GiftedAutoSellPass or false
 	data.GiftedInventoryPass = data.GiftedInventoryPass or false
+	data.GiftedStarterPack = data.GiftedStarterPack or false
 
 	-- "or true" ar fi un bug aici -- daca jucatorul a dezactivat explicit
 	-- (false), "false or true" da mereu true, ignorandu-i alegerea. Verificam
 	-- nil separat, ca implicit sa fie true DOAR cand nu exista deloc salvat.
 	if data.NotificationsEnabled == nil then
 		data.NotificationsEnabled = true
+	end
+	if data.SellDuplicatesEnabled == nil then
+		data.SellDuplicatesEnabled = true
 	end
 	if data.AutoRebirthEnabled == nil then
 		data.AutoRebirthEnabled = true
@@ -251,10 +257,12 @@ function DataManager.SaveData(player)
         GiftedSpeedPass = player:GetAttribute("GiftedSpeedPass") == true,
         GiftedAutoSellPass = player:GetAttribute("GiftedAutoSellPass") == true,
         GiftedInventoryPass = player:GetAttribute("GiftedInventoryPass") == true,
+        GiftedStarterPack = player:GetAttribute("GiftedStarterPack") == true,
         -- ~= false (nu == true) -- implicit ramane true cand atributul inca
         -- nu exista (jucator nou/nesalvat inca), respectand totusi o
         -- dezactivare explicita.
         NotificationsEnabled = player:GetAttribute("NotificationsEnabled") ~= false,
+        SellDuplicatesEnabled = player:GetAttribute("SellDuplicatesEnabled") ~= false,
         AutoRebirthEnabled = player:GetAttribute("AutoRebirthEnabled") ~= false,
         AutoBuyFilterCommon = player:GetAttribute("AutoBuyFilterCommon") ~= false,
         AutoBuyFilterRare = player:GetAttribute("AutoBuyFilterRare") ~= false,
@@ -388,7 +396,7 @@ function DataManager.ApplyData(player, data)
 
 	local money = leaderstats:FindFirstChild("Money")
 	if money then
-		money.Value = data.Money or 500
+		money.Value = data.Money or 1000
 	end
 
 	local cashEarned = leaderstats:FindFirstChild("CashEarned")
@@ -518,10 +526,12 @@ function DataManager.ApplyData(player, data)
 	player:SetAttribute("GiftedSpeedPass", data.GiftedSpeedPass == true)
 	player:SetAttribute("GiftedAutoSellPass", data.GiftedAutoSellPass == true)
 	player:SetAttribute("GiftedInventoryPass", data.GiftedInventoryPass == true)
+	player:SetAttribute("GiftedStarterPack", data.GiftedStarterPack == true)
 
 	-- ~= false -- vezi comentariul din SaveData: implicit true, respectand o
 	-- dezactivare explicita salvata anterior.
 	player:SetAttribute("NotificationsEnabled", data.NotificationsEnabled ~= false)
+	player:SetAttribute("SellDuplicatesEnabled", data.SellDuplicatesEnabled ~= false)
 	player:SetAttribute("AutoRebirthEnabled", data.AutoRebirthEnabled ~= false)
 	player:SetAttribute("AutoBuyFilterCommon", data.AutoBuyFilterCommon ~= false)
 	player:SetAttribute("AutoBuyFilterRare", data.AutoBuyFilterRare ~= false)
