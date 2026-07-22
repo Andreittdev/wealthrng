@@ -35,6 +35,22 @@ local function computeIsMobile()
 	return UserInputService.TouchEnabled or viewport.X < 700 or viewport.Y < 500
 end
 
+-- Pe un telefon cu ecran scund (ex: landscape), 420px ficsi puteau depasi
+-- ecranul real, facand panoul sa para "pe tot ecranul". Plafonam la
+-- inaltimea reala disponibila -- grila deruleaza oricum (ScrollingFrame),
+-- deci continutul ramane accesibil chiar daca panoul e mai mic.
+local function getMobilePanelHeight()
+	local camera = workspace.CurrentCamera
+	local viewport = camera and camera.ViewportSize or Vector2.new(400, 700)
+	return math.min(320, viewport.Y - 60)
+end
+
+-- Calculat O SINGURA DATA, refolosit peste tot mai jos -- pe Desktop
+-- ramane 100% neschimbat (toate valorile "or"); pe mobil, panoul/header/
+-- butonul de close/tile-urile sunt acum mai mici, ca sa nu mai domine tot
+-- ecranul (cerut explicit).
+local isMobile = computeIsMobile()
+
 local mainHud = playerGui:WaitForChild("MainHUD", 30)
 if not mainHud then
 	warn("PlaytimeRewardsDisplay.client.luau: MainHUD nu a aparut in PlayerGui dupa 30s.")
@@ -56,9 +72,7 @@ screenGui.ResetOnSpawn = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = playerGui
 
--- ================= Butonul mic, deasupra Shop =================
-
-local GAP = 8
+-- ================= Butonul mic, in mijlocul ecranului =================
 
 -- Fara fundal/cutie -- doar iconita cadoului, cu countdown-ul scris direct
 -- sub ea (text cu contur negru, ca sa se citeasca pe orice fundal din joc).
@@ -98,23 +112,16 @@ toggleCountdownLabel.TextScaled = true
 toggleCountdownLabel.ZIndex = 2
 toggleCountdownLabel.Parent = toggleButton
 
--- Pozitionat DIRECT deasupra StoreButton (Shop), calculat din pozitia lui
--- REALA pe ecran -- nu coordonate fixe -- ramane corect indiferent de
--- layout (PC/mobil, resize).
--- BUG gasit: latura = latimea butonului Shop facea insigna GIGANTICA (Shop
--- e un dreptunghi lat, nu patrat) -- latura corecta = inaltimea lui,
--- centrata orizontal deasupra Shop-ului.
+-- Cerut: sus, in mijlocul ecranului (centrat orizontal, aproape de partea de
+-- sus, nu chiar in centrul ecranului). Offset-ul de 80px de sus il tine
+-- departe de topbar-ul Roblox (meniu/leaderboard).
 local function repositionToggle()
-	local absPos = storeButton.AbsolutePosition
 	local absSize = storeButton.AbsoluteSize
 	local side = absSize.Y
 
-	-- Centrat deasupra Shop-ului, apoi mutat cu LEFT_SHIFT mai spre stanga
-	-- (cerut explicit).
-	local LEFT_SHIFT = 20
-
+	toggleButton.AnchorPoint = Vector2.new(0.5, 0)
 	toggleButton.Size = UDim2.new(0, side, 0, side)
-	toggleButton.Position = UDim2.new(0, absPos.X + (absSize.X - side) / 2 - LEFT_SHIFT, 0, absPos.Y - side - GAP)
+	toggleButton.Position = UDim2.new(0.5, 0, 0, 2)
 end
 
 repositionToggle()
@@ -140,7 +147,7 @@ local panel = Instance.new("Frame")
 panel.Name = "PlaytimeRewardsPanel"
 panel.AnchorPoint = Vector2.new(0.5, 0.5)
 panel.Position = UDim2.new(0.5, 0, 0.5, 0)
-panel.Size = computeIsMobile() and UDim2.new(0.92, 0, 0, 420) or UDim2.new(0, 560, 0, 360)
+panel.Size = isMobile and UDim2.new(0.72, 0, 0, getMobilePanelHeight()) or UDim2.new(0, 560, 0, 360)
 panel.BackgroundColor3 = BG_DARK
 panel.Visible = false
 panel.ZIndex = 61
@@ -156,7 +163,7 @@ panelStroke.Parent = panel
 -- Header -- gradient albastru, gift + titlu + X, ca in poza de referinta.
 local header = Instance.new("Frame")
 header.Name = "Header"
-header.Size = UDim2.new(1, 0, 0, 56)
+header.Size = UDim2.new(1, 0, 0, isMobile and 42 or 56)
 header.BackgroundColor3 = Color3.fromRGB(70, 190, 235)
 header.ZIndex = 62
 header.Parent = panel
@@ -185,8 +192,8 @@ headerMaskGradient.Parent = headerMask
 
 local headerTitleContainer = Instance.new("Frame")
 headerTitleContainer.BackgroundTransparency = 1
-headerTitleContainer.Size = UDim2.new(1, -110, 1, -12)
-headerTitleContainer.Position = UDim2.new(0, 60, 0, 6)
+headerTitleContainer.Size = UDim2.new(1, isMobile and -85 or -110, 1, -12)
+headerTitleContainer.Position = UDim2.new(0, isMobile and 44 or 60, 0, 6)
 headerTitleContainer.ZIndex = 63
 headerTitleContainer.Parent = header
 
@@ -199,7 +206,7 @@ headerTitleLayout.Parent = headerTitleContainer
 
 local headerIcon = Instance.new("ImageLabel")
 headerIcon.BackgroundTransparency = 1
-headerIcon.Size = UDim2.new(0, 36, 0, 36)
+headerIcon.Size = UDim2.new(0, isMobile and 24 or 36, 0, isMobile and 24 or 36)
 headerIcon.Image = "rbxassetid://116174166971152"
 headerIcon.LayoutOrder = 1
 headerIcon.ZIndex = 63
@@ -220,9 +227,9 @@ headerTitle.ZIndex = 63
 headerTitle.Parent = headerTitleContainer
 
 local closeButton = Instance.new("TextButton")
-closeButton.Size = UDim2.new(0, 40, 0, 40)
+closeButton.Size = UDim2.new(0, isMobile and 30 or 40, 0, isMobile and 30 or 40)
 closeButton.AnchorPoint = Vector2.new(1, 0.5)
-closeButton.Position = UDim2.new(1, -8, 0.5, 0)
+closeButton.Position = UDim2.new(1, isMobile and -6 or -8, 0.5, 0)
 closeButton.BackgroundColor3 = Color3.fromRGB(230, 70, 70)
 closeButton.Text = "✕"
 closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -247,8 +254,8 @@ grid.ZIndex = 62
 grid.Parent = panel
 
 local gridLayout = Instance.new("UIGridLayout")
-gridLayout.CellSize = UDim2.new(0, 120, 0, 120)
-gridLayout.CellPadding = UDim2.new(0, 10, 0, 10)
+gridLayout.CellSize = UDim2.new(0, isMobile and 100 or 140, 0, isMobile and 100 or 140)
+gridLayout.CellPadding = UDim2.new(0, isMobile and 6 or 10, 0, isMobile and 6 or 10)
 gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
 gridLayout.Parent = grid
 
@@ -287,20 +294,34 @@ for i, milestone in ipairs(Economy.PlaytimeRewards.Milestones) do
 
 	local icon, rewardText = rewardIconAndText(milestone)
 
-	local iconLabel = Instance.new("TextLabel")
-	iconLabel.BackgroundTransparency = 1
-	iconLabel.Size = UDim2.new(1, 0, 0, 44)
-	iconLabel.Position = UDim2.new(0, 0, 0, 8)
-	iconLabel.Text = icon
-	iconLabel.Font = FONT_DISPLAY
-	iconLabel.TextScaled = true
-	iconLabel.ZIndex = 63
-	iconLabel.Parent = tile
+	-- Peturile exclusive (Chronos Pup/Timekeeper) au acum imagine reala --
+	-- o folosim in loc de emoji-ul generic "🐾" cand exista.
+	local petImage = milestone.Type == "Pet" and milestone.Pet.Image
+	if petImage and petImage ~= "" then
+		local iconImage = Instance.new("ImageLabel")
+		iconImage.BackgroundTransparency = 1
+		iconImage.Size = UDim2.new(0, isMobile and 56 or 78, 0, isMobile and 56 or 78)
+		iconImage.Position = UDim2.new(0.5, 0, 0, isMobile and 4 or 6)
+		iconImage.AnchorPoint = Vector2.new(0.5, 0)
+		iconImage.Image = petImage
+		iconImage.ZIndex = 63
+		iconImage.Parent = tile
+	else
+		local iconLabel = Instance.new("TextLabel")
+		iconLabel.BackgroundTransparency = 1
+		iconLabel.Size = UDim2.new(1, 0, 0, isMobile and 43 or 60)
+		iconLabel.Position = UDim2.new(0, 0, 0, isMobile and 4 or 6)
+		iconLabel.Text = icon
+		iconLabel.Font = FONT_DISPLAY
+		iconLabel.TextScaled = true
+		iconLabel.ZIndex = 63
+		iconLabel.Parent = tile
+	end
 
 	local rewardLabel = Instance.new("TextLabel")
 	rewardLabel.BackgroundTransparency = 1
-	rewardLabel.Size = UDim2.new(1, -8, 0, 22)
-	rewardLabel.Position = UDim2.new(0, 4, 0, 52)
+	rewardLabel.Size = UDim2.new(1, -8, 0, isMobile and 16 or 22)
+	rewardLabel.Position = UDim2.new(0, 4, 0, isMobile and 61 or 86)
 	rewardLabel.Text = rewardText
 	rewardLabel.TextColor3 = Color3.fromRGB(255, 240, 120)
 	rewardLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
@@ -312,8 +333,8 @@ for i, milestone in ipairs(Economy.PlaytimeRewards.Milestones) do
 
 	local statusLabel = Instance.new("TextLabel")
 	statusLabel.BackgroundTransparency = 1
-	statusLabel.Size = UDim2.new(1, -8, 0, 26)
-	statusLabel.Position = UDim2.new(0, 4, 1, -30)
+	statusLabel.Size = UDim2.new(1, -8, 0, isMobile and 19 or 26)
+	statusLabel.Position = UDim2.new(0, 4, 1, isMobile and -22 or -30)
 	statusLabel.Text = "--:--"
 	statusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 	statusLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)

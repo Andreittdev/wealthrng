@@ -81,6 +81,27 @@ stroke.Thickness = 3
 stroke.Color = Color3.fromRGB(120, 120, 130)
 stroke.Parent = marketFrame
 
+-- Buton de inchidere -- necesar acum ca panoul, cat timp e deschis, ascunde
+-- TOT restul HUD-ului (vezi setMarketOpen mai jos), inclusiv bara de jos in
+-- care sta marketButton -- fara asta, jucatorul n-ar mai avea cum sa inchida
+-- Market-ul (butonul care l-a deschis ar disparea odata cu restul barei).
+local closeButton = Instance.new("TextButton")
+closeButton.Name = "CloseButton"
+closeButton.AnchorPoint = Vector2.new(1, 0)
+closeButton.Position = UDim2.new(1, -10, 0, 10)
+closeButton.Size = UDim2.new(0, 28, 0, 28)
+closeButton.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+closeButton.Text = "✕"
+closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeButton.Font = Enum.Font.FredokaOne
+closeButton.TextScaled = true
+closeButton.ZIndex = 5
+closeButton.Parent = marketFrame
+
+local closeButtonCorner = Instance.new("UICorner")
+closeButtonCorner.CornerRadius = UDim.new(0.5, 0)
+closeButtonCorner.Parent = closeButton
+
 local function createText(parent, name, text, pos, size, textSize, color, align)
 	local label = Instance.new("TextLabel")
 	label.Name = name
@@ -490,12 +511,26 @@ task.spawn(function()
 	end
 end)
 
-marketButton.Activated:Connect(function()
-	marketFrame.Visible = not marketFrame.Visible
+-- Acelasi flag comun (ShopModalOpen) folosit de Starter/Medium/Elite Pack,
+-- Rebirth, Daily Rewards, Settings etc. -- MainHUD.rbxmx asculta deja acest
+-- atribut si ascunde bara de jos/Cash/Friend Boost cand e true. MarketGui
+-- nu il seta pana acum, deci deschiderea Market-ului (mai ales pe telefon,
+-- unde ecranul e mic) lasa tot restul HUD-ului vizibil peste panou.
+local function setMarketOpen(open)
+	marketFrame.Visible = open
+	player:SetAttribute("ShopModalOpen", open)
 
-	if marketFrame.Visible then
+	if open then
 		updateMarketUI()
 	end
+end
+
+closeButton.Activated:Connect(function()
+	setMarketOpen(false)
+end)
+
+marketButton.Activated:Connect(function()
+	setMarketOpen(not marketFrame.Visible)
 end)
 
 marketUpdateEvent.OnClientEvent:Connect(function(newMarket)

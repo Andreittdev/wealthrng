@@ -42,6 +42,19 @@ print("=== About to wait for EggHatchResult ===")
 local eggHatchResultEvent = remotes:WaitForChild("EggHatchResult")
 print("=== EggHatchResult found, continuing ===")
 
+-- openShop e definit mai jos (are nevoie de tot UI-ul deja construit), dar
+-- ne conectam la remote ACUM, cat mai devreme -- altfel, intre asta si
+-- conectarea de la finalul scriptului sta un waitForRealViewport() (poate
+-- dura pana la 3s) + toata constructia UI-ului; daca jucatorul apasa pe
+-- prompt-ul Egg Shop chiar in acea fereastra, RemoteEvent-ul se pierde
+-- definitiv (nu tine coada). Closure-ul de mai jos apeleaza upvalue-ul
+-- "openShop" abia cand evenimentul chiar soseste, mult mai tarziu -- pana
+-- atunci va fi deja asignat.
+local openShop
+openEggShopEvent.OnClientEvent:Connect(function()
+	openShop()
+end)
+
 local PetDatabase = require(ReplicatedStorage.Modules:WaitForChild("PetDatabase"))
 
 -- LuckiestGuy -- deja folosit in alt loc din joc (butonul de Settings), deci
@@ -60,24 +73,62 @@ local function computeIsMobile()
 	return UserInputService.TouchEnabled or viewport.X < 700 or viewport.Y < 500
 end
 
+-- Pe telefon REAL (nu Studio), am vazut Egg Shop-ul aparand uriaș (marimea
+-- fixa de Desktop, 900x560px) -- semn ca "isMobile" s-a "copt" gresit ca
+-- FALSE chiar la pornire, inainte ca Camera sa fi raportat rezolutia reala
+-- a ecranului (ViewportSize poate porni cu o valoare implicita/desktop-like
+-- pentru cateva fractiuni de secunda la cold-start pe unele telefoane) --
+-- si TOT panoul e construit O SINGURA DATA, cu "isMobile" ingropat peste tot
+-- (marimi/fonturi/padding), deci o valoare gresita la acest moment ramane
+-- gresita pentru toata sesiunea. Asteptam pana Camera raporteaza un
+-- ViewportSize real (nenul) inainte sa decidem, ca sa nu se mai "inghete"
+-- gresit pe desktop-size.
+local function waitForRealViewport()
+	local attempts = 0
+
+	while attempts < 30 do
+		local camera = workspace.CurrentCamera
+
+		if camera and camera.ViewportSize.Magnitude > 1 then
+			return
+		end
+
+		task.wait(0.1)
+		attempts += 1
+	end
+end
+
+waitForRealViewport()
+
 local isMobile = computeIsMobile()
 
 -- Marimea panoului principal. Pe PC ramane neschimbata (900x560, fix).
 -- Pe mobil se calculeaza procentual din ecranul real, cu margine vizibila.
+--
+-- INDIFERENT de ramura aleasa mai jos, rezultatul final e mereu limitat
+-- (clamp) la ecranul real curent, minus o marja -- asta garanteaza ca
+-- panoul NU poate niciodata depasi/iesi de pe ecran, chiar daca "isMobile"
+-- ar fi fost detectat gresit la un moment dat (asa a aparut bug-ul "shop
+-- uriaș" pe telefon: ramura Desktop, 900x560px ficsi, fara nicio limitare
+-- fata de ecranul real, mult mai mic pe un telefon).
 local function getMainFrameSize(scaleFactor)
 	scaleFactor = scaleFactor or 1
 
-	if not isMobile then
-		return UDim2.fromOffset(900 * scaleFactor, 560 * scaleFactor)
+	local camera = workspace.CurrentCamera
+	local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+
+	local baseWidth, baseHeight
+
+	if isMobile then
+		baseWidth = viewport.X * 0.85
+		baseHeight = viewport.Y * 0.7
+	else
+		baseWidth = 900
+		baseHeight = 560
 	end
 
-	local camera = workspace.CurrentCamera
-	local viewport = camera and camera.ViewportSize or Vector2.new(400, 700)
-
-	local width = math.min(viewport.X * 0.85, viewport.X - 40) * scaleFactor
-	local height = math.min(viewport.Y * 0.7, viewport.Y - 40) * scaleFactor
-
-	print("[EggShop DEBUG] viewport=", viewport, "isMobile=", isMobile, "-> size=", width, height)
+	local width = math.min(baseWidth, viewport.X - 40) * scaleFactor
+	local height = math.min(baseHeight, viewport.Y - 40) * scaleFactor
 
 	return UDim2.fromOffset(width, height)
 end
@@ -1036,10 +1087,12 @@ sidebar.Position = UDim2.new(0, sideMargin, 0, topMarginY)
 sidebar.Size = UDim2.new(0, sidebarWidth, 1, sizeYOffset)
 sidebar.BackgroundTransparency = 1
 
+local tabPadding = isMobile and 6 or 10
+
 local sidebarList = Instance.new("UIListLayout")
 sidebarList.Parent = sidebar
 sidebarList.FillDirection = Enum.FillDirection.Vertical
-sidebarList.Padding = UDim.new(0, isMobile and 6 or 10)
+sidebarList.Padding = UDim.new(0, tabPadding)
 sidebarList.SortOrder = Enum.SortOrder.LayoutOrder
 
 -- renderEgg e definit mai jos (are nevoie de showInfo, care nu exista inca
@@ -1047,14 +1100,31 @@ sidebarList.SortOrder = Enum.SortOrder.LayoutOrder
 -- scriptului.
 local renderEgg
 
+-- Tinut minte ca sa putem re-randa acelasi ou selectat dupa o rotire de
+-- telefon (vezi handler-ul de ViewportSize, mai jos in fisier) -- setat de
+-- renderEgg insusi, la fiecare apel.
+local currentEggIndex = 1
+
 local sidebarButtons = {}
+
+-- Pe MOBIL, inaltimea fiecarui tab e in SCALE (1/tabCount din sidebar), nu
+-- in pixeli ficsi -- altfel, pe un telefon cu ecran scund (gen landscape),
+-- 5 tab-uri de 52px ficsi + padding depaseau inaltimea reala a sidebar-ului
+-- (care e procentuala din mainFrame), iar Legendary/Mythic ramaneau taiate/
+-- inaccesibile sub marginea panoului. Cu Scale, cele 5 tab-uri UMPLU EXACT
+-- 100% din sidebar, garantat, indiferent cat de mic e ecranul. Pe Desktop
+-- ramane 100% neschimbat -- inaltimea fixa de 58px, ca inainte.
+local tabCount = #EGG_DATA
+local perTabPaddingShare = (tabPadding * (tabCount - 1)) / tabCount
 
 for index, egg in ipairs(EGG_DATA) do
 	local tabButton = Instance.new("TextButton")
 	tabButton.Name = egg.Type .. "Tab"
 	tabButton.Parent = sidebar
 	tabButton.LayoutOrder = index
-	tabButton.Size = UDim2.new(1, 0, 0, isMobile and 52 or 58)
+	tabButton.Size = isMobile
+		and UDim2.new(1, 0, 1 / tabCount, -perTabPaddingShare)
+		or UDim2.new(1, 0, 0, 58)
 	tabButton.BackgroundColor3 = egg.Color
 	tabButton.Text = TIER_LABELS[egg.Type] or egg.Type
 	tabButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1062,8 +1132,22 @@ for index, egg in ipairs(EGG_DATA) do
 	tabButton.TextStrokeTransparency = 0.55
 	tabButton.TextSize = isMobile and 16 or 15
 	tabButton.TextWrapped = true
+	-- Pe mobil, "LEGENDARY" nu incapea la TextSize fix (16px) intr-un tab
+	-- ingust si aparea taiat ("LEGENDAR"). TextScaled micsoreaza automat
+	-- fontul cat sa incapa tot cuvantul -- DOAR pe mobil (desktop ramane
+	-- neschimbat, la TextSize fix 15px, ca inainte).
+	tabButton.TextScaled = isMobile
 	tabButton.Font = PREMIUM_FONT
 	tabButton.AutoButtonColor = true
+
+	if isMobile then
+		-- TextScaled singur umple tot butonul (buton inalt = text urias pe
+		-- BASIC/RARE/EPIC/MYTHIC) -- plafonam marimea maxima, dar tot se
+		-- micsoreaza automat sub acest plafon cand nu incape ("LEGENDARY").
+		local tabTextConstraint = Instance.new("UITextSizeConstraint")
+		tabTextConstraint.MaxTextSize = 16
+		tabTextConstraint.Parent = tabButton
+	end
 
 	addCorner(tabButton, 10)
 	local tabStroke = addStroke(tabButton, Color3.fromRGB(212, 175, 55), 3, 1)
@@ -1311,11 +1395,67 @@ end
 
 local PREMIUM_GOLD = Color3.fromRGB(212, 175, 55)
 
-local cardW = isMobile and 90 or 140
-local cardH = isMobile and 150 or 190
 local cardGap = isMobile and 8 or 14
+local cardW, cardH, mobileButtonHeight, mobileButtonGap
+
+-- Extras intr-o functie (nu doar cod direct la nivelul scriptului) ca sa
+-- poata fi RE-CHEMATA cand jucatorul roteste telefonul cat timp shop-ul e
+-- deschis (vezi handler-ul de ViewportSize, mai jos) -- altfel, cardH ramanea
+-- calculat o singura data, la marimea de dinainte de rotire, si peturile/
+-- butoanele puteau iesi din panou dupa o rotire spre un ecran mai scund.
+local function recomputeMobileCardMetrics()
+	cardW = isMobile and 90 or 140
+	cardH = isMobile and 150 or 190
+	mobileButtonHeight = 40
+	mobileButtonGap = 16
+
+	-- MOBIL (DOAR mobil -- desktop ramane 100% neschimbat, valorile "or" de
+	-- mai jos raman identice): pe un telefon cu ecran scund (ex: landscape),
+	-- cardH=150 + butoanele Hatch/Info (40px) puteau depasi spatiul REAL
+	-- disponibil in contentPanel, impingand peturile/butoanele sub marginea
+	-- panoului (taiate/inaccesibile). Recalculam din inaltimea reala
+	-- disponibila, cu un plafon minim/maxim rezonabil, ca sa incapa GARANTAT.
+	if isMobile then
+		-- NU folosim contentPanel.AbsoluteSize.Y direct -- fiind Scale (1,
+		-- relativ la mainFrame), s-a dovedit nesigur/intarziat. mainFrame.Size
+		-- e insa 100% Offset (fara Scale, vezi getMainFrameSize), deci
+		-- AbsoluteSize-ul lui e mereu instant/corect, indiferent de parinte
+		-- -- calculam manual acelasi rezultat (contentPanel foloseste exact
+		-- aceeasi formula, 1, sizeYOffset, pentru inaltime).
+		local availableHeight = mainFrame.AbsoluteSize.Y + sizeYOffset
+
+		mobileButtonHeight = 26
+		mobileButtonGap = 6
+
+		if availableHeight > 0 then
+			local headerHeight = 66 -- EggName + Price + TopLabel (compactate) + topRowY
+			local reserved = headerHeight + mobileButtonGap + mobileButtonHeight + 6
+			local remaining = availableHeight - reserved
+
+			-- Plafon de jos ridicat la 65 -- sub asta, peturile deveneau
+			-- practic invizibile (imaginea + text ilizibile). Daca spatiul
+			-- chiar nu ajunge (caz extrem), preferam sa lasam peturile
+			-- vizibile chiar daca butoanele ajung usor mai jos, decat sa
+			-- avem un shop inutil (nu se vede ce poti castiga).
+			cardH = math.clamp(remaining, 65, 150)
+		else
+			-- N-am putut masura inaltimea reala (caz extrem) -- preferam o
+			-- valoare mica/sigura in loc de cea originala (150), care e
+			-- exact cea care cauza depasirea ecranului.
+			cardH = 90
+		end
+
+		-- cardW ramane NESCHIMBAT -- pe telefon (mai ales landscape),
+		-- latimea e abundenta, doar inaltimea e limitata. Micsorarea
+		-- proportionala a latimii facea numele peturilor ilizibile
+		-- ("Sneaker Bunny" taiat la "SNEA") fara niciun beneficiu real.
+	end
+end
+
+recomputeMobileCardMetrics()
 
 renderEgg = function(index)
+	currentEggIndex = index
 	local egg = EGG_DATA[index]
 
 	for i, entry in ipairs(sidebarButtons) do
@@ -1337,9 +1477,9 @@ renderEgg = function(index)
 		contentPanel,
 		"EggName",
 		egg.DisplayName,
-		UDim2.new(1, -20, 0, isMobile and 30 or 40),
-		UDim2.new(0, 10, 0, isMobile and 12 or 18),
-		isMobile and 24 or 32,
+		UDim2.new(1, -20, 0, isMobile and 22 or 40),
+		UDim2.new(0, 10, 0, isMobile and 6 or 18),
+		isMobile and 20 or 32,
 		egg.Color,
 		Enum.TextXAlignment.Center
 	)
@@ -1350,9 +1490,9 @@ renderEgg = function(index)
 		contentPanel,
 		"Price",
 		formatMoney(egg.Price),
-		UDim2.new(1, -20, 0, isMobile and 22 or 28),
-		UDim2.new(0, 10, 0, isMobile and 44 or 60),
-		isMobile and 16 or 20,
+		UDim2.new(1, -20, 0, isMobile and 18 or 28),
+		UDim2.new(0, 10, 0, isMobile and 30 or 60),
+		isMobile and 14 or 20,
 		Color3.fromRGB(100, 255, 135),
 		Enum.TextXAlignment.Center
 	)
@@ -1361,14 +1501,14 @@ renderEgg = function(index)
 		contentPanel,
 		"TopLabel",
 		"⭐ TOP PETS",
-		UDim2.new(1, -20, 0, isMobile and 18 or 24),
-		UDim2.new(0, 10, 0, isMobile and 74 or 96),
-		isMobile and 14 or 17,
+		UDim2.new(1, -20, 0, isMobile and 14 or 24),
+		UDim2.new(0, 10, 0, isMobile and 50 or 96),
+		isMobile and 12 or 17,
 		PREMIUM_GOLD,
 		Enum.TextXAlignment.Center
 	)
 
-	local topRowY = isMobile and 98 or 126
+	local topRowY = isMobile and 66 or 126
 
 	local topRow = Instance.new("Frame")
 	topRow.Name = "TopPetsRow"
@@ -1415,7 +1555,12 @@ renderEgg = function(index)
 			img.BackgroundTransparency = 1
 			img.AnchorPoint = Vector2.new(0.5, 0)
 			img.Position = UDim2.new(0.5, 0, 0, 0)
-			img.Size = UDim2.new(1, 0, 0.78, 0)
+			-- Pe mobil, imaginea + numele + sansa sunt in SCALE (procent din
+			-- cardH), nu pixeli ficsi -- altfel, cand cardH se micsoreaza pe
+			-- un ecran scund, inaltimile ficse ale numelui/sansei (18+16px)
+			-- nu mai incapeau in restul de spatiu si se suprapuneau peste
+			-- imagine. Pe Desktop ramane 100% neschimbat (0.78 fix, ca inainte).
+			img.Size = UDim2.new(1, 0, isMobile and 0.68 or 0.78, 0)
 			img.Image = pet.Image or ""
 			img.ScaleType = Enum.ScaleType.Fit
 		end
@@ -1424,32 +1569,38 @@ renderEgg = function(index)
 			mini,
 			"PetName",
 			pet.DisplayName,
-			UDim2.new(1, 0, 0, isMobile and 18 or 22),
-			UDim2.new(0, 0, 0.8, 0),
+			isMobile and UDim2.new(1, 0, 0.16, 0) or UDim2.new(1, 0, 0, 22),
+			isMobile and UDim2.new(0, 0, 0.68, 0) or UDim2.new(0, 0, 0.8, 0),
 			isMobile and 13 or 16,
 			color
 		)
 		petName.TextWrapped = true
+		if isMobile then
+			petName.TextScaled = true
+		end
 
-		createText(
+		local petChance = createText(
 			mini,
 			"PetChance",
 			pet.Chance,
-			UDim2.new(1, 0, 0, isMobile and 16 or 20),
-			UDim2.new(0, 0, 0.91, 0),
+			isMobile and UDim2.new(1, 0, 0.16, 0) or UDim2.new(1, 0, 0, 20),
+			isMobile and UDim2.new(0, 0, 0.84, 0) or UDim2.new(0, 0, 0.91, 0),
 			isMobile and 11 or 14,
 			Color3.fromRGB(200, 200, 210)
 		)
+		if isMobile then
+			petChance.TextScaled = true
+		end
 	end
 
-	local buttonsY = topRowY + cardH + (isMobile and 16 or 22)
+	local buttonsY = topRowY + cardH + (isMobile and mobileButtonGap or 22)
 
 	local buttonsRow = Instance.new("Frame")
 	buttonsRow.Name = "ButtonsRow"
 	buttonsRow.Parent = contentPanel
 	buttonsRow.BackgroundTransparency = 1
 	buttonsRow.Position = UDim2.new(0, 0, 0, buttonsY)
-	buttonsRow.Size = UDim2.new(1, 0, 0, 44)
+	buttonsRow.Size = UDim2.new(1, 0, 0, isMobile and mobileButtonHeight or 44)
 
 	local buttonsList = Instance.new("UIListLayout")
 	buttonsList.Parent = buttonsRow
@@ -1463,11 +1614,11 @@ renderEgg = function(index)
 	infoButton.Name = "InfoButton"
 	infoButton.Parent = buttonsRow
 	infoButton.LayoutOrder = 1
-	infoButton.Size = UDim2.new(0, isMobile and 100 or 130, 0, 40)
+	infoButton.Size = UDim2.new(0, isMobile and 82 or 130, 0, isMobile and mobileButtonHeight or 40)
 	infoButton.BackgroundColor3 = Color3.fromRGB(70, 75, 95)
 	infoButton.Text = "INFO"
 	infoButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-	infoButton.TextSize = isMobile and 14 or 16
+	infoButton.TextSize = isMobile and 12 or 16
 	infoButton.Font = PREMIUM_FONT
 	infoButton.AutoButtonColor = true
 	addCorner(infoButton, 10)
@@ -1480,11 +1631,11 @@ renderEgg = function(index)
 	hatchButton.Name = "HatchButton"
 	hatchButton.Parent = buttonsRow
 	hatchButton.LayoutOrder = 2
-	hatchButton.Size = UDim2.new(0, isMobile and 140 or 190, 0, 40)
+	hatchButton.Size = UDim2.new(0, isMobile and 110 or 190, 0, isMobile and mobileButtonHeight or 40)
 	hatchButton.BackgroundColor3 = PREMIUM_GOLD
 	hatchButton.Text = "HATCH"
 	hatchButton.TextColor3 = Color3.fromRGB(30, 24, 8)
-	hatchButton.TextSize = isMobile and 14 or 16
+	hatchButton.TextSize = isMobile and 12 or 16
 	hatchButton.Font = PREMIUM_FONT
 	hatchButton.AutoButtonColor = true
 	addCorner(hatchButton, 10)
@@ -1500,9 +1651,10 @@ renderEgg(1)
 -- DESCHIDERE / ÎNCHIDERE
 --------------------------------------------------
 
-local function openShop()
+openShop = function()
 print("=== openshop()CALLED ===")
 	overlay.Visible = true
+	player:SetAttribute("ShopModalOpen", true)
 
 	mainFrame.Size = getMainFrameSize(0.88)
 
@@ -1524,15 +1676,25 @@ end
 local function closeShop()
 	infoPopup.Visible = false
 	overlay.Visible = false
+	player:SetAttribute("ShopModalOpen", false)
 end
 
--- Daca jucatorul roteste telefonul cat timp shop-ul e deschis, recalculam marimea.
+-- Daca jucatorul roteste telefonul cat timp shop-ul e deschis, recalculam
+-- marimea SI metricile mobile (cardH/cardW/butoane), apoi re-randam oul
+-- selectat -- altfel ramaneau "inghetate" la marimea de dinainte de rotire
+-- (bug gasit la audit: rotind spre un ecran mai scund, peturile/butoanele
+-- puteau iesi din nou din panou).
 do
 	local camera = workspace.CurrentCamera
 	if camera then
 		camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
 			if overlay.Visible then
 				mainFrame.Size = getMainFrameSize()
+
+				if isMobile then
+					recomputeMobileCardMetrics()
+					renderEgg(currentEggIndex)
+				end
 			end
 		end)
 	end
@@ -1570,7 +1732,6 @@ eggHatchResultEvent.OnClientEvent:Connect(function(data)
 end)
 
 print("=== EggShopClient FULLY LOADED ===")
-openEggShopEvent.OnClientEvent:Connect(openShop)
 closeButton.Activated:Connect(closeShop)
 
 popupClose.Activated:Connect(function()

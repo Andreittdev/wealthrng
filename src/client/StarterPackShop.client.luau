@@ -1,3 +1,11 @@
+-- UN SINGUR slot (buton + card), care trece prin 3 trepte in ACELASI loc pe
+-- ecran -- Starter Pack -> Medium Pack -> Elite Pack -- ca la jocurile mari:
+-- cumperi Starter, in acelasi loc apare Medium; cumperi Medium, apare Elite;
+-- cumperi Elite, slotul dispare de tot (nu mai ramane nimic acolo). Cerut
+-- explicit: NU 3 butoane separate stivuite (asa a fost implementat initial,
+-- in MediumPackShop.client.luau/ElitePackShop.client.luau -- ambele sterse,
+-- inlocuite complet de acest script unic).
+
 local Players = game:GetService("Players")
 local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -10,18 +18,107 @@ local playerGui = player:WaitForChild("PlayerGui")
 local modulesFolder = ReplicatedStorage:WaitForChild("Modules")
 local Economy = require(modulesFolder:WaitForChild("EconomyConfig"))
 
-local STARTER_PACK_PASS_ID = Economy.StarterPack.GamePassId
-local ROBUX_PRICE_TEXT = Economy.StarterPack.RobuxPrice .. " Robux"
-
 -- Font "impact" pentru titluri/butoane, font cartoonish rotunjit pentru text mai mic.
 local FONT_DISPLAY = Enum.Font.Bangers
 local FONT_BODY = Enum.Font.FredokaOne
 
-local GOLD_LIGHT = Color3.fromRGB(255, 226, 130)
-local GOLD_MID = Color3.fromRGB(255, 191, 60)
-local GOLD_DEEP = Color3.fromRGB(198, 138, 18)
-local BRONZE_OUTLINE = Color3.fromRGB(107, 66, 10)
-local TEXT_DARK = Color3.fromRGB(64, 38, 8)
+-- ================= Treptele (Starter -> Medium -> Elite) =================
+-- OwnedAttribute = setat de StarterPackManager/MediumPackManager/
+-- ElitePackManager.server.luau (HasStarterPack/HasMediumPack/HasElitePack).
+-- Prima treapta din lista pentru care jucatorul NU are attribute-ul e cea
+-- activa -- daca le are pe toate, slotul intreg se ascunde.
+local TIERS = {
+	{
+		Key = "Starter",
+		OwnedAttribute = "HasStarterPack",
+		GamePassId = Economy.StarterPack.GamePassId,
+		Title = "STARTER PACK",
+		ToggleRibbon = "LIMITED EDITION",
+		CardRibbon = "LIMITED PACK",
+		BuyText = "GET STARTER PACK",
+		AccentLight = Color3.fromRGB(255, 226, 130),
+		AccentMid = Color3.fromRGB(255, 191, 60),
+		AccentDeep = Color3.fromRGB(198, 138, 18),
+		Outline = Color3.fromRGB(107, 66, 10),
+		TextDark = Color3.fromRGB(64, 38, 8),
+		Perks = {
+			{Icon = "💵", Text = "$" .. Economy.StarterPack.Money .. " Cash"},
+			{Icon = "🐾", Text = "+1 Free Pet"},
+			{
+				Icon = "🍀",
+				Text = "+" .. Economy.StarterPack.LuckBonus .. "% Luck (Forever)",
+				Color = Color3.fromRGB(20, 130, 55)
+			}
+		}
+	},
+	{
+		Key = "Medium",
+		OwnedAttribute = "HasMediumPack",
+		GamePassId = Economy.MediumPack.GamePassId,
+		Title = "MEDIUM PACK",
+		ToggleRibbon = "UPGRADE",
+		CardRibbon = "UPGRADE PACK",
+		BuyText = "GET MEDIUM PACK",
+		AccentLight = Color3.fromRGB(160, 200, 245),
+		AccentMid = Color3.fromRGB(40, 120, 220),
+		AccentDeep = Color3.fromRGB(15, 60, 130),
+		Outline = Color3.fromRGB(10, 30, 65),
+		TextDark = Color3.fromRGB(15, 25, 45),
+		Perks = {
+			{Icon = "💵", Text = "$" .. Economy.MediumPack.Money .. " Cash"},
+			{Icon = "🐾", Text = "+1 Free Pet (Rare Egg)"},
+			{
+				Icon = "🍀",
+				Text = "+" .. Economy.MediumPack.LuckBonus .. "% Luck (Forever)",
+				Color = Color3.fromRGB(20, 90, 170)
+			}
+		}
+	},
+	{
+		Key = "Elite",
+		OwnedAttribute = "HasElitePack",
+		GamePassId = Economy.ElitePack.GamePassId,
+		Title = "ELITE PACK",
+		ToggleRibbon = "UPGRADE",
+		CardRibbon = "FINAL PACK",
+		BuyText = "GET ELITE PACK",
+		AccentLight = Color3.fromRGB(250, 170, 170),
+		AccentMid = Color3.fromRGB(210, 45, 45),
+		AccentDeep = Color3.fromRGB(120, 15, 15),
+		Outline = Color3.fromRGB(60, 8, 8),
+		TextDark = Color3.fromRGB(45, 12, 12),
+		Perks = {
+			{Icon = "💵", Text = "$" .. Economy.ElitePack.Money .. " Cash"},
+			{Icon = "🐾", Text = "+1 Free Pet (Epic Egg)"},
+			{
+				Icon = "🍀",
+				Text = "+" .. Economy.ElitePack.LuckBonus .. "% Luck (Forever)",
+				Color = Color3.fromRGB(150, 20, 20)
+			}
+		}
+	}
+}
+
+local function getActiveTier()
+	for _, tier in ipairs(TIERS) do
+		if player:GetAttribute(tier.OwnedAttribute) ~= true then
+			return tier
+		end
+	end
+	return nil
+end
+
+local function getPassPriceText(passId)
+	local ok, info = pcall(function()
+		return MarketplaceService:GetProductInfo(passId, Enum.InfoType.GamePass)
+	end)
+
+	if ok and info and info.PriceInRobux then
+		return info.PriceInRobux .. " Robux"
+	end
+
+	return "BUY"
+end
 
 -- ================= ScreenGui =================
 
@@ -31,14 +128,13 @@ screenGui.ResetOnSpawn = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = playerGui
 
--- ================= Toggle button (right side, gold) =================
+-- ================= Toggle button (right side, aceeasi pozitie pentru toate treptele) =================
 
 local toggleButton = Instance.new("TextButton")
 toggleButton.Name = "StarterPackButton"
 toggleButton.AnchorPoint = Vector2.new(1, 0.5)
 toggleButton.Position = UDim2.new(1, -16, 0.5, 0)
 toggleButton.Size = UDim2.new(0, 168, 0, 72)
-toggleButton.BackgroundColor3 = GOLD_MID
 toggleButton.AutoButtonColor = false
 toggleButton.ClipsDescendants = true
 toggleButton.Text = ""
@@ -48,21 +144,13 @@ toggleButton.Parent = screenGui
 Instance.new("UICorner", toggleButton).CornerRadius = UDim.new(0.22, 0)
 
 local toggleGradient = Instance.new("UIGradient")
-toggleGradient.Color = ColorSequence.new({
-	ColorSequenceKeypoint.new(0, GOLD_LIGHT),
-	ColorSequenceKeypoint.new(0.35, GOLD_MID),
-	ColorSequenceKeypoint.new(1, GOLD_DEEP),
-})
 toggleGradient.Rotation = 90
 toggleGradient.Parent = toggleButton
 
 local toggleStroke = Instance.new("UIStroke")
-toggleStroke.Color = BRONZE_OUTLINE
 toggleStroke.Thickness = 3
 toggleStroke.Parent = toggleButton
 
--- Banda "LIMITED EDITION", diagonala in coltul din dreapta-sus, ca o funda de cadou
--- (mica, proportionala cu butonul, nu il depaseste).
 local toggleRibbon = Instance.new("TextLabel")
 toggleRibbon.Name = "LimitedRibbon"
 toggleRibbon.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -94,7 +182,6 @@ toggleTitle.Position = UDim2.new(0, 10, 0, 10)
 toggleTitle.Size = UDim2.new(1, -20, 0, 32)
 toggleTitle.Text = "STARTER PACK"
 toggleTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggleTitle.TextStrokeColor3 = BRONZE_OUTLINE
 toggleTitle.TextStrokeTransparency = 0
 toggleTitle.Font = FONT_DISPLAY
 toggleTitle.TextScaled = true
@@ -105,7 +192,7 @@ local togglePrice = Instance.new("TextLabel")
 togglePrice.BackgroundTransparency = 1
 togglePrice.Position = UDim2.new(0, 10, 0, 42)
 togglePrice.Size = UDim2.new(1, -20, 0, 24)
-togglePrice.Text = ROBUX_PRICE_TEXT
+togglePrice.Text = "..."
 togglePrice.TextColor3 = Color3.fromRGB(0, 0, 0)
 togglePrice.Font = FONT_DISPLAY
 togglePrice.TextScaled = true
@@ -124,7 +211,6 @@ mobileLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
 mobileLabel.AnchorPoint = Vector2.new(0.5, 0.5)
 mobileLabel.Text = "STARTER PACK"
 mobileLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-mobileLabel.TextStrokeColor3 = BRONZE_OUTLINE
 mobileLabel.TextStrokeTransparency = 0
 mobileLabel.Font = FONT_DISPLAY
 mobileLabel.TextScaled = true
@@ -158,7 +244,6 @@ card.Name = "Card"
 card.AnchorPoint = Vector2.new(0.5, 0.5)
 card.Position = UDim2.new(0.5, 0, 0.5, 0)
 card.Size = UDim2.new(0, 340, 0, 440)
-card.BackgroundColor3 = GOLD_MID
 card.ClipsDescendants = true
 card.ZIndex = 21
 card.Parent = overlay
@@ -166,21 +251,14 @@ card.Parent = overlay
 Instance.new("UICorner", card).CornerRadius = UDim.new(0, 22)
 
 local cardStroke = Instance.new("UIStroke")
-cardStroke.Color = BRONZE_OUTLINE
 cardStroke.Thickness = 5
 cardStroke.Parent = card
 
 local cardGradient = Instance.new("UIGradient")
-cardGradient.Color = ColorSequence.new({
-	ColorSequenceKeypoint.new(0, GOLD_LIGHT),
-	ColorSequenceKeypoint.new(0.18, Color3.fromRGB(255, 244, 200)), -- luciu, ca o reflexie
-	ColorSequenceKeypoint.new(0.4, GOLD_MID),
-	ColorSequenceKeypoint.new(1, GOLD_DEEP),
-})
 cardGradient.Rotation = 90
 cardGradient.Parent = card
 
--- ---- "LIMITED PACK" ribbon (top-left corner, rosu pe fundal auriu) ----
+-- ---- Ribbon (top-left corner) ----
 
 local ribbon = Instance.new("TextLabel")
 ribbon.Name = "LimitedRibbon"
@@ -202,14 +280,13 @@ ribbonStroke.Color = Color3.fromRGB(100, 12, 20)
 ribbonStroke.Thickness = 2
 ribbonStroke.Parent = ribbon
 
--- ---- Close (X) button, top-right ----
+-- ---- Close (X) button ----
 
 local closeButton = Instance.new("TextButton")
 closeButton.Name = "CloseButton"
 closeButton.AnchorPoint = Vector2.new(1, 0)
 closeButton.Position = UDim2.new(1, -12, 0, 12)
 closeButton.Size = UDim2.new(0, 32, 0, 32)
-closeButton.BackgroundColor3 = BRONZE_OUTLINE
 closeButton.Text = "✕"
 closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 closeButton.Font = FONT_DISPLAY
@@ -227,14 +304,13 @@ titleLabel.Position = UDim2.new(0, 0, 0, 52)
 titleLabel.Size = UDim2.new(1, 0, 0, 48)
 titleLabel.Text = "STARTER PACK"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-titleLabel.TextStrokeColor3 = BRONZE_OUTLINE
 titleLabel.TextStrokeTransparency = 0
 titleLabel.Font = FONT_DISPLAY
 titleLabel.TextScaled = true
 titleLabel.ZIndex = 22
 titleLabel.Parent = card
 
--- ---- Perks list ----
+-- ---- Perks list (rebuilt la fiecare schimbare de treapta) ----
 
 local perksFrame = Instance.new("Frame")
 perksFrame.BackgroundTransparency = 1
@@ -248,7 +324,7 @@ perksLayout.Padding = UDim.new(0, 14)
 perksLayout.SortOrder = Enum.SortOrder.LayoutOrder
 perksLayout.Parent = perksFrame
 
-local function createPerkRow(icon, text, order, color)
+local function createPerkRow(icon, text, order, color, textDark)
 	local row = Instance.new("Frame")
 	row.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 	row.BackgroundTransparency = 0.75
@@ -273,7 +349,7 @@ local function createPerkRow(icon, text, order, color)
 	textLabel.Position = UDim2.new(0, 48, 0, 0)
 	textLabel.Size = UDim2.new(1, -54, 1, 0)
 	textLabel.Text = text
-	textLabel.TextColor3 = color or TEXT_DARK
+	textLabel.TextColor3 = color or textDark
 	textLabel.TextXAlignment = Enum.TextXAlignment.Left
 	textLabel.Font = FONT_BODY
 	textLabel.TextScaled = true
@@ -282,15 +358,6 @@ local function createPerkRow(icon, text, order, color)
 
 	return row
 end
-
-createPerkRow("💵", "$" .. Economy.StarterPack.Money .. " Cash", 1)
-createPerkRow("🐾", "+1 Free Pet", 2)
-createPerkRow(
-	"🍀",
-	"+" .. Economy.StarterPack.LuckBonus .. "% Luck (Forever)",
-	3,
-	Color3.fromRGB(20, 130, 55)
-)
 
 -- ---- Robux price row (above the Buy button) ----
 
@@ -310,7 +377,6 @@ priceLayout.Padding = UDim.new(0, 8)
 priceLayout.SortOrder = Enum.SortOrder.LayoutOrder
 priceLayout.Parent = priceRow
 
--- "Robux logo" stand-in badge (fara un asset id verificat, vezi nota din chat).
 local robuxBadge = Instance.new("Frame")
 robuxBadge.Size = UDim2.new(0, 30, 0, 30)
 robuxBadge.BackgroundColor3 = Color3.fromRGB(50, 190, 90)
@@ -333,7 +399,7 @@ robuxBadgeText.Parent = robuxBadge
 local priceText = Instance.new("TextLabel")
 priceText.BackgroundTransparency = 1
 priceText.Size = UDim2.new(0, 90, 1, 0)
-priceText.Text = ROBUX_PRICE_TEXT
+priceText.Text = "..."
 priceText.TextColor3 = Color3.fromRGB(0, 0, 0)
 priceText.Font = FONT_DISPLAY
 priceText.TextScaled = true
@@ -341,7 +407,7 @@ priceText.LayoutOrder = 2
 priceText.ZIndex = 22
 priceText.Parent = priceRow
 
--- ---- Buy button (verde) ----
+-- ---- Buy button (verde, acelasi pentru toate treptele) ----
 
 local buyButton = Instance.new("TextButton")
 buyButton.Name = "BuyButton"
@@ -388,21 +454,14 @@ local cardScale = Instance.new("UIScale")
 cardScale.Parent = card
 
 local BASE_VIEWPORT_WIDTH = 1200
-local MIN_UI_SCALE = 0.75 -- nu coboram mai mult, ca butoanele sa ramana usor de apasat pe telefon
+local MIN_UI_SCALE = 0.75
 
--- TouchEnabled singur nu e de incredere -- verificam si dimensiunea reala a
--- ecranului (acelasi fix aplicat si la EggShopGui/TokenShop/StoreGui).
 local function computeIsMobile()
 	local camera = workspace.CurrentCamera
 	local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
 	return UserInputService.TouchEnabled or viewport.X < 700 or viewport.Y < 500
 end
 
--- Pe PC, Starter Pack/Rebirth/Daily Rewards se stivuiesc din mijlocul
--- ecranului in jos. Pe telefon (ecran landscape, scund), stiva asta putea
--- iesi de pe ecran sau ajunge peste joystick (vezi Daily Rewards, taiat jos
--- de tot in screenshot) -- pe mobil le mutam intr-un colt compact, sus-
--- dreapta, cu butoane mai mici, in loc sa creasca in jos de la centru.
 local function updateResponsiveLayout()
 	local camera = workspace.CurrentCamera
 	if not camera then
@@ -412,42 +471,25 @@ local function updateResponsiveLayout()
 	local isMobile = computeIsMobile()
 
 	if isMobile then
-		-- Y=8 nu era destul -- se suprapunea cu topbar-ul Roblox (iconitele
-		-- de meniu/chat din stanga-sus), taind textul. Y=48 lasa loc clar dedesubt.
 		toggleButton.AnchorPoint = Vector2.new(1, 0)
 		toggleButton.Position = UDim2.new(1, -8, 0, 48)
 		toggleButton.Size = UDim2.new(0, 112, 0, 42)
 
-		-- MIN_UI_SCALE (0.75) era un scale FIX -- cardul de baza (340x440px)
-		-- la 0.75 ramane 255x330px, mai mare decat inaltimea disponibila pe
-		-- un telefon landscape, deci iesea pe sub marginea ecranului.
-		-- Calculam scale-ul din dimensiunea REALA a ecranului.
 		local fitScale = math.min(
 			(camera.ViewportSize.X * 0.78) / 340,
 			(camera.ViewportSize.Y * 0.70) / 440
 		)
 		cardScale.Scale = math.min(MIN_UI_SCALE, fitScale)
 
-		-- Banda "LIMITED" ramane vizibila si pe mobil (jucatorul trebuie sa
-		-- inteleaga ca e o oferta limitata si acolo), doar mai mica, ca sa
-		-- incapa in coltul din dreapta al butonului compact.
 		toggleRibbon.Size = UDim2.new(0, 52, 0, 10)
 		toggleRibbon.Position = UDim2.new(1, -2, 0, 8)
-		toggleRibbon.Text = "LIMITED"
 	else
 		toggleButton.AnchorPoint = Vector2.new(1, 0.5)
 		toggleButton.Position = UDim2.new(1, -16, 0.5, 0)
 		toggleButton.Size = UDim2.new(0, 168, 0, 72)
 		cardScale.Scale = math.clamp(camera.ViewportSize.X / BASE_VIEWPORT_WIDTH, MIN_UI_SCALE, 1)
-
-		toggleRibbon.Size = UDim2.new(0, 78, 0, 13)
-		toggleRibbon.Position = UDim2.new(1, -6, 0, 12)
-		toggleRibbon.Text = "LIMITED EDITION"
 	end
 
-	-- Continutul de PC (titlu + pret, in pixeli ficsi) nu incape pe butonul
-	-- compact de mobil -- afisam o eticheta simpla in loc. Banda ramane
-	-- vizibila in ambele cazuri (doar redimensionata mai sus).
 	toggleTitle.Visible = not isMobile
 	togglePrice.Visible = not isMobile
 	mobileLabel.Visible = isMobile
@@ -458,9 +500,6 @@ local viewportConnection = nil
 local function bindCamera()
 	updateResponsiveLayout()
 
-	-- Deconectam handler-ul vechi inainte sa conectam unul nou -- altfel
-	-- fiecare schimbare de CurrentCamera adauga inca o conexiune, fara sa o
-	-- scoata pe cea veche.
 	if viewportConnection then
 		viewportConnection:Disconnect()
 		viewportConnection = nil
@@ -475,28 +514,81 @@ end
 bindCamera()
 workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(bindCamera)
 
+-- ================= Constructia cardului/butonului pentru treapta activa =================
+
+local currentTierKey = nil
+local currentPassId = nil
+local priceRequestId = 0
+
+local function rebuildForTier(tier)
+	currentPassId = tier.GamePassId
+
+	toggleButton.BackgroundColor3 = tier.AccentMid
+	toggleGradient.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, tier.AccentLight),
+		ColorSequenceKeypoint.new(0.35, tier.AccentMid),
+		ColorSequenceKeypoint.new(1, tier.AccentDeep),
+	})
+	toggleStroke.Color = tier.Outline
+	toggleRibbon.Text = tier.ToggleRibbon
+	toggleTitle.Text = tier.Title
+	toggleTitle.TextStrokeColor3 = tier.Outline
+	mobileLabel.Text = tier.Title
+	mobileLabel.TextStrokeColor3 = tier.Outline
+
+	card.BackgroundColor3 = tier.AccentMid
+	cardGradient.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, tier.AccentLight),
+		ColorSequenceKeypoint.new(0.18, Color3.fromRGB(255, 244, 200)),
+		ColorSequenceKeypoint.new(0.4, tier.AccentMid),
+		ColorSequenceKeypoint.new(1, tier.AccentDeep),
+	})
+	cardStroke.Color = tier.Outline
+
+	ribbon.Text = tier.CardRibbon
+
+	closeButton.BackgroundColor3 = tier.Outline
+
+	titleLabel.Text = tier.Title
+	titleLabel.TextStrokeColor3 = tier.Outline
+
+	for _, child in ipairs(perksFrame:GetChildren()) do
+		if child:IsA("GuiObject") then
+			child:Destroy()
+		end
+	end
+
+	for order, perk in ipairs(tier.Perks) do
+		createPerkRow(perk.Icon, perk.Text, order, perk.Color, tier.TextDark)
+	end
+
+	buyButton.Text = tier.BuyText
+
+	togglePrice.Text = "..."
+	priceText.Text = "..."
+
+	priceRequestId += 1
+	local requestId = priceRequestId
+
+	task.spawn(function()
+		local priceLabelText = getPassPriceText(tier.GamePassId)
+
+		if requestId ~= priceRequestId then
+			return
+		end
+
+		togglePrice.Text = priceLabelText
+		priceText.Text = priceLabelText
+	end)
+end
+
 -- ================= Coordonare cu celelalte shop-uri =================
--- Un singur flag comun pe player -- cand se deschide ORICE panou (Starter
--- Pack, Rebirth, Daily Rewards, Token Shop), toate butoanele astea de pe
--- ecran se ascund, ca sa nu ramana unul peste altul/langa cardul deschis
--- (asta era problema din screenshot -- "REBIRTH x1" si "...AILY" ramaneau
--- vizibile in spatele cardului de Daily Rewards).
+-- Un singur flag comun pe player -- cand se deschide ORICE panou (Starter/
+-- Medium/Elite Pack, Rebirth, Daily Rewards, Token Shop), toate butoanele
+-- astea de pe ecran se ascund.
 local function setShopModalOpen(open)
 	player:SetAttribute("ShopModalOpen", open)
 end
-
--- SideStackCollapsed -- comutatorul "<"/">" din SideStackToggle.client.luau,
--- ascunde/arata TOATA stiva (Starter Pack/Rebirth/Daily Rewards/Settings)
--- deodata, ca la jocurile mari. Se combina cu ShopModalOpen (nu doar il
--- inlocuieste) -- butonul ramane ascuns daca ORICARE din cele doua e activ.
-local function updateToggleVisibility()
-	toggleButton.Visible = not player:GetAttribute("ShopModalOpen") and not player:GetAttribute("SideStackCollapsed")
-end
-
-player:GetAttributeChangedSignal("ShopModalOpen"):Connect(updateToggleVisibility)
-player:GetAttributeChangedSignal("SideStackCollapsed"):Connect(updateToggleVisibility)
-
--- ================= Behaviour =================
 
 local isOpen = false
 
@@ -520,6 +612,54 @@ local function setOpen(open)
 	end
 end
 
+-- SideStackCollapsed -- comutatorul "<"/">" din SideStackToggle.client.luau.
+local function updateToggleVisibility()
+	toggleButton.Visible = currentTierKey ~= nil
+		and not player:GetAttribute("ShopModalOpen")
+		and not player:GetAttribute("SideStackCollapsed")
+end
+
+-- Recalculeaza treapta activa (Starter/Medium/Elite/niciuna) -- apelat la
+-- start si de fiecare data cand se schimba HasStarterPack/HasMediumPack/
+-- HasElitePack (adica live, in aceeasi sesiune, imediat dupa o achizitie).
+local function refreshTier()
+	local tier = getActiveTier()
+
+	if not tier then
+		currentTierKey = nil
+		if isOpen then
+			setOpen(false)
+		end
+		updateToggleVisibility()
+		return
+	end
+
+	if tier.Key ~= currentTierKey then
+		currentTierKey = tier.Key
+		rebuildForTier(tier)
+
+		-- Daca panoul era deschis si tocmai s-a schimbat treapta pe fundal
+		-- (achizitia s-a terminat cat cardul era deschis), il inchidem --
+		-- continutul de dedesubt tocmai s-a schimbat sub jucator.
+		if isOpen then
+			setOpen(false)
+		end
+	end
+
+	updateToggleVisibility()
+end
+
+refreshTier()
+
+for _, tier in ipairs(TIERS) do
+	player:GetAttributeChangedSignal(tier.OwnedAttribute):Connect(refreshTier)
+end
+
+player:GetAttributeChangedSignal("ShopModalOpen"):Connect(updateToggleVisibility)
+player:GetAttributeChangedSignal("SideStackCollapsed"):Connect(updateToggleVisibility)
+
+-- ================= Behaviour =================
+
 toggleButton.Activated:Connect(function()
 	setOpen(not isOpen)
 end)
@@ -529,11 +669,13 @@ closeButton.Activated:Connect(function()
 end)
 
 buyButton.Activated:Connect(function()
-	MarketplaceService:PromptGamePassPurchase(player, STARTER_PACK_PASS_ID)
+	if currentPassId then
+		MarketplaceService:PromptGamePassPurchase(player, currentPassId)
+	end
 end)
 
 MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(purchasedPlayer, gamePassId, wasPurchased)
-	if purchasedPlayer ~= player or gamePassId ~= STARTER_PACK_PASS_ID then
+	if purchasedPlayer ~= player or gamePassId ~= currentPassId then
 		return
 	end
 

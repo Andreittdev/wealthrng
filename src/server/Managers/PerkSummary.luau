@@ -56,6 +56,8 @@ function PerkSummary.GetBreakdown(player)
 	local isVIP = player:GetAttribute("IsVIP") == true
 	local hasSpeedPass = player:GetAttribute("HasSpeedPass") == true
 	local hasStarterPack = player:GetAttribute("HasStarterPack") == true
+	local hasMediumPack = player:GetAttribute("HasMediumPack") == true
+	local hasElitePack = player:GetAttribute("HasElitePack") == true
 	local friendBoostPercent = player:GetAttribute("FriendBoostPercent") or 0
 
 	local sell = {
@@ -74,10 +76,12 @@ function PerkSummary.GetBreakdown(player)
 		Cosmetic = cosmeticBonuses.NpcLuck or 0,
 		VIP = isVIP and Economy.VIP.Luck or 0,
 		StarterPack = hasStarterPack and Economy.StarterPack.LuckBonus or 0,
+		MediumPack = hasMediumPack and Economy.MediumPack.LuckBonus or 0,
+		ElitePack = hasElitePack and Economy.ElitePack.LuckBonus or 0,
 		Title = Economy.TokenShop.GetTitleLuckBonus(player) or 0
 	}
 	luck.Total = math.clamp(
-		luck.Stand + luck.Rebirth + luck.Pet + luck.Cosmetic + luck.VIP + luck.StarterPack + luck.Title,
+		luck.Stand + luck.Rebirth + luck.Pet + luck.Cosmetic + luck.VIP + luck.StarterPack + luck.MediumPack + luck.ElitePack + luck.Title,
 		0,
 		Economy.Caps.Luck
 	)

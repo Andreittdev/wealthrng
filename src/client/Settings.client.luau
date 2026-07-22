@@ -242,11 +242,33 @@ local function createToggle(order, label, initialValue, onChanged, parent)
 	Instance.new("UICorner", toggleButton).CornerRadius = UDim.new(0.3, 0)
 
 	local state = initialValue
+	local forcedOff = false
+
+	local function applyDisplay()
+		if forcedOff then
+			toggleButton.Text = "OFF"
+			toggleButton.BackgroundColor3 = RED_OFF
+		else
+			toggleButton.Text = state and "ON" or "OFF"
+			toggleButton.BackgroundColor3 = state and GREEN_ON or RED_OFF
+		end
+	end
 
 	local function setVisual(value)
 		state = value
-		toggleButton.Text = value and "ON" or "OFF"
-		toggleButton.BackgroundColor3 = value and GREEN_ON or RED_OFF
+		applyDisplay()
+	end
+
+	-- BUG gasit (raportat de user): filtrele (Common/Rare/Epic/Legendary la
+	-- Auto Buy, categoriile la Auto Sell) ramaneau afisate ON chiar si cand
+	-- pass-ul MASTER era OFF -- pareau active desi nu aveau niciun efect.
+	-- Cerut explicit: cat timp master e OFF, arata-le efectiv OFF (nu doar
+	-- estompate) -- dar fara sa stearga preferinta salvata -- cand master
+	-- reporneste, revin la starea reala (pe care jucatorul o poate schimba
+	-- manual, per categorie, oricand master e ON).
+	local function setForcedOff(value)
+		forcedOff = value
+		applyDisplay()
 	end
 
 	toggleButton.Activated:Connect(function()
@@ -254,7 +276,7 @@ local function createToggle(order, label, initialValue, onChanged, parent)
 		onChanged(state)
 	end)
 
-	return row, setVisual
+	return row, setVisual, setForcedOff
 end
 
 -- ---- Toggle EXPANDABIL (Auto Buy Pass/Auto Sell Pass) -- ON/OFF master in
@@ -517,6 +539,17 @@ player:GetAttributeChangedSignal("HasAutoRebirthPass"):Connect(refreshAutoRebirt
 -- filtre pe raritate (n-are sens, rebirth-ul nu tine de raritatea unui item),
 -- deci ramane randul simplu de mai sus.
 local function buildAutoPassSection(order, label, masterEnabledKey, ownershipAttribute, filterPrefix, filterOptions)
+	local childForceOffSetters = {}
+
+	-- Cat timp pass-ul MASTER e OFF, filtrele copil arata efectiv OFF --
+	-- nu-si schimba valoarea salvata, doar afisarea, cat timp master e oprit.
+	local function updateChildrenForcedOff()
+		local masterEnabled = currentSettings[masterEnabledKey]
+		for _, setForcedOff in ipairs(childForceOffSetters) do
+			setForcedOff(not masterEnabled)
+		end
+	end
+
 	local masterRow, setMasterVisual, childrenContainer = createExpandableToggle(
 		order,
 		label,
@@ -524,6 +557,7 @@ local function buildAutoPassSection(order, label, masterEnabledKey, ownershipAtt
 		function(value)
 			currentSettings[masterEnabledKey] = value
 			pushSettings()
+			updateChildrenForcedOff()
 		end
 	)
 
@@ -531,10 +565,12 @@ local function buildAutoPassSection(order, label, masterEnabledKey, ownershipAtt
 		local settingKey = filterPrefix .. option
 		currentSettings[settingKey] = player:GetAttribute(settingKey) ~= false
 
-		local _, setVisual = createToggle(i, "  " .. option, currentSettings[settingKey], function(value)
+		local _, setVisual, setForcedOff = createToggle(i, "  " .. option, currentSettings[settingKey], function(value)
 			currentSettings[settingKey] = value
 			pushSettings()
 		end, childrenContainer)
+
+		table.insert(childForceOffSetters, setForcedOff)
 
 		player:GetAttributeChangedSignal(settingKey):Connect(function()
 			local value = player:GetAttribute(settingKey) ~= false
@@ -542,6 +578,8 @@ local function buildAutoPassSection(order, label, masterEnabledKey, ownershipAtt
 			setVisual(value)
 		end)
 	end
+
+	updateChildrenForcedOff()
 
 	local function refreshVisibility()
 		local visible = player:GetAttribute(ownershipAttribute) == true
@@ -558,6 +596,7 @@ local function buildAutoPassSection(order, label, masterEnabledKey, ownershipAtt
 		local value = player:GetAttribute(masterEnabledKey) ~= false
 		currentSettings[masterEnabledKey] = value
 		setMasterVisual(value)
+		updateChildrenForcedOff()
 	end)
 end
 

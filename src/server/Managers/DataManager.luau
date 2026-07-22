@@ -33,6 +33,8 @@ local function getDefaultData()
         BoughtTokenItems = {},
         RedeemedCodes = {},
         StarterPackRedeemed = false,
+        MediumPackRedeemed = false,
+        ElitePackRedeemed = false,
         RebirthCount = 0,
         RebirthTokens = 0,
         RebirthPetClaimed = false,
@@ -123,6 +125,8 @@ function DataManager.LoadData(player)
 	data.BoughtTokenItems = data.BoughtTokenItems or {}
 	data.RedeemedCodes = data.RedeemedCodes or {}
 	data.StarterPackRedeemed = data.StarterPackRedeemed or false
+	data.MediumPackRedeemed = data.MediumPackRedeemed or false
+	data.ElitePackRedeemed = data.ElitePackRedeemed or false
 	data.RebirthCount = data.RebirthCount or 0
 	data.RebirthTokens = data.RebirthTokens or 0
 	data.RebirthPetClaimed = data.RebirthPetClaimed or false
@@ -248,6 +252,8 @@ function DataManager.SaveData(player)
         BoughtTokenItems = {},
         RedeemedCodes = {},
         StarterPackRedeemed = player:GetAttribute("StarterPackRedeemed") == true,
+        MediumPackRedeemed = player:GetAttribute("MediumPackRedeemed") == true,
+        ElitePackRedeemed = player:GetAttribute("ElitePackRedeemed") == true,
         RebirthCount = leaderstats:FindFirstChild("Rebirths") and leaderstats.Rebirths.Value or 0,
         RebirthTokens = player:FindFirstChild("RebirthTokens") and player.RebirthTokens.Value or 0,
         RebirthPetClaimed = player:GetAttribute("RebirthPetClaimed") == true,
@@ -488,6 +494,8 @@ function DataManager.ApplyData(player, data)
 	end
 
 	player:SetAttribute("StarterPackRedeemed", data.StarterPackRedeemed == true)
+	player:SetAttribute("MediumPackRedeemed", data.MediumPackRedeemed == true)
+	player:SetAttribute("ElitePackRedeemed", data.ElitePackRedeemed == true)
 	player:SetAttribute("EquippedTitle", data.EquippedTitle or "")
 
 	for _, attributeName in ipairs(data.BoughtTokenItems or {}) do

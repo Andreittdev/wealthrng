@@ -125,10 +125,29 @@ Economy.AutoRebirthPass = {
 -- ============================
 Economy.StarterPack = {
 	GamePassId = 1908301457,
-	RobuxPrice = 2, -- doar text afisat in UI; pretul real e cel setat in Creator Dashboard
 	Money = 2000,
 	PetRarity = "Common",
+	LuckBonus = 1 -- +1%, permanent, cat timp detii gamepass-ul
+}
+
+-- ============================
+-- MEDIUM PACK (gamepass) -- se deblocheaza dupa Starter Pack
+-- ============================
+Economy.MediumPack = {
+	GamePassId = 1925292432,
+	Money = 4000,
+	PetRarity = "Rare",
 	LuckBonus = 2 -- +2%, permanent, cat timp detii gamepass-ul
+}
+
+-- ============================
+-- ELITE PACK (gamepass) -- se deblocheaza dupa Medium Pack
+-- ============================
+Economy.ElitePack = {
+	GamePassId = 1923550425,
+	Money = 7000,
+	PetRarity = "Epic",
+	LuckBonus = 3 -- +3%, permanent, cat timp detii gamepass-ul
 }
 
 -- ============================
@@ -383,7 +402,7 @@ Economy.PlaytimeRewards = {
 				PetId = "ChronosPup",
 				DisplayName = "Chronos Pup",
 				Rarity = "Epic",
-				Image = "",
+				Image = "rbxassetid://129401593969725",
 				Bonuses = {NpcLuck = 7, SellPrice = 6, NpcSpeed = 3}
 			}
 		},
@@ -396,7 +415,7 @@ Economy.PlaytimeRewards = {
 				PetId = "Timekeeper",
 				DisplayName = "Timekeeper",
 				Rarity = "Legendary",
-				Image = "",
+				Image = "rbxassetid://138082890123016",
 				Bonuses = {NpcLuck = 10, SellPrice = 9, NpcSpeed = 5}
 			}
 		}

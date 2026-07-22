@@ -58,20 +58,21 @@ end
 -- cele detinute), dar cele detinute mai arata si "OWNED" sub nume.
 -- Attribute = nil inseamna "nu are attribute dedicat, verificam ownership-ul
 -- live" (cazul Inventory Pass -- vezi NPCManager.server.luau, care il
--- verifica la fel, live, fara attribute). Starter Pack scos intentionat --
--- nu apare in Shop (are propriul flow separat, StarterPackShop.client.luau).
+-- verifica la fel, live, fara attribute). Starter/Medium/Elite Pack scoase
+-- intentionat -- nu apar in Shop (au propriul flow separat, un singur slot
+-- care trece prin toate 3 treptele -- StarterPackShop.client.luau).
 -- Attribute e folosit DOAR pentru badge-ul "OWNED". Auto Sell e singurul
 -- dintre pass-urile "clasice" cu toggle propriu -- foloseste OwnsAutoSellPass
 -- (proprietatea reala), nu HasAutoSellPass (care poate fi oprit temporar din
 -- Settings), altfel un jucator care il opreste ar vedea magazinul spunandu-i
 -- ca nu-l mai detine deloc.
 local GAME_PASSES = {
-	{Name = "VIP", Id = 1898198234, Attribute = "IsVIP", Icon = "rbxassetid://74375751325744"},
-	{Name = "More NPC Speed", Id = Economy.SpeedPass.GamePassId, Attribute = "HasSpeedPass", Icon = "rbxassetid://111045527678748"},
+	{Name = "VIP", Id = 1898198234, Attribute = "IsVIP", Icon = "rbxassetid://74375751325744", IconScale = 0.92},
+	{Name = "More NPC Speed", Id = Economy.SpeedPass.GamePassId, Attribute = "HasSpeedPass", Icon = "rbxassetid://111045527678748", IconScale = 0.92},
 	{Name = "Auto Sell", Id = Economy.AutoSellPass.GamePassId, Attribute = "OwnsAutoSellPass", Icon = "rbxassetid://90788671280233"},
 	{Name = "+100 Inventory Space", Id = 1899734044, Attribute = nil, Icon = "rbxassetid://71016405354553"},
 	{Name = "Auto Buy", Id = Economy.AutoBuyPass.GamePassId, Attribute = "HasAutoBuyPass", Icon = "rbxassetid://87364006551417"},
-	{Name = "Auto Rebirth", Id = Economy.AutoRebirthPass.GamePassId, Attribute = "HasAutoRebirthPass", Emoji = "♻️"}
+	{Name = "Auto Rebirth", Id = Economy.AutoRebirthPass.GamePassId, Attribute = "HasAutoRebirthPass", Icon = "rbxassetid://89685231540915"}
 }
 
 local function computeIsMobile()
@@ -319,9 +320,10 @@ local function buildRow(config)
 	iconStroke.Parent = iconBox
 
 	if config.IconAsset then
+		local iconScale = config.IconScale or 0.72
 		local icon = Instance.new("ImageLabel")
 		icon.BackgroundTransparency = 1
-		icon.Size = UDim2.new(0.72, 0, 0.72, 0)
+		icon.Size = UDim2.new(iconScale, 0, iconScale, 0)
 		icon.Position = UDim2.new(0.5, 0, 0.5, 0)
 		icon.AnchorPoint = Vector2.new(0.5, 0.5)
 		icon.Image = config.IconAsset
@@ -428,6 +430,7 @@ local function buildGamePassesTab()
 			LayoutOrder = i,
 			IconAsset = entry.Icon,
 			IconEmoji = entry.Emoji,
+			IconScale = entry.IconScale,
 			PriceText = price and (price .. " R$") or "BUY",
 			Owned = owned,
 			OnClick = function()

@@ -86,6 +86,11 @@ local function createBlockyCharacter(npcType)
 		part.Material = material or Enum.Material.SmoothPlastic
 		part.TopSurface = Enum.SurfaceType.Smooth
 		part.BottomSurface = Enum.SurfaceType.Smooth
+		-- NPC-ul se misca doar prin Humanoid:MoveTo (nu fizica reala) --
+		-- CanCollide/Massless oprite, ca sa nu coste deloc motorul de fizica
+		-- (coliziuni cu solul/alte NPC-uri/jucatori, calcule de masa etc.)
+		part.CanCollide = false
+		part.Massless = true
 		part.Parent = model
 		return part
 	end
@@ -536,6 +541,19 @@ local function spawnNPCForPlayer(player, pendingDelay)
 	local humanoid = npc:WaitForChild("Humanoid")
 	local rootPart = npc:WaitForChild("HumanoidRootPart")
 
+	-- BUG gasit: modelele custom din Toolbox (Bobux Man, Mr. Robot, Gemeral
+	-- etc.) nu aveau NICIODATA coliziunea dezactivata -- NPC-ul se misca doar
+	-- prin Humanoid:MoveTo (nu fizica reala), deci fiecare piesa a fiecarui
+	-- NPC clonat tot cerea calcule de coliziune/masa degeaba (cu solul, cu
+	-- alti NPC/jucatori) -- aplicat la TOATE tipurile, nu doar la rig-ul de
+	-- rezerva.
+	for _, descendant in ipairs(npc:GetDescendants()) do
+		if descendant:IsA("BasePart") then
+			descendant.CanCollide = false
+			descendant.Massless = true
+		end
+	end
+
 	local bonuses = getStandBonuses(player)
 	local cosmeticBonuses = CosmeticManager.GetBonuses(player)
 	local petBonuses = PetManager.GetBonuses(player)
@@ -599,10 +617,12 @@ local function spawnNPCForPlayer(player, pendingDelay)
 
 	local vipLuck = player:GetAttribute("IsVIP") and Economy.VIP.Luck or 0
 	local starterPackLuck = player:GetAttribute("HasStarterPack") and Economy.StarterPack.LuckBonus or 0
+	local mediumPackLuck = player:GetAttribute("HasMediumPack") and Economy.MediumPack.LuckBonus or 0
+	local elitePackLuck = player:GetAttribute("HasElitePack") and Economy.ElitePack.LuckBonus or 0
 	local rebirthLuck = getRebirthBonuses(player).Luck
 	local titleLuck = Economy.TokenShop.GetTitleLuckBonus(player)
 
-	local totalLuck = bonuses.Luck + cosmeticBonuses.NpcLuck + petBonuses.NpcLuck + vipLuck + starterPackLuck + rebirthLuck + titleLuck
+	local totalLuck = bonuses.Luck + cosmeticBonuses.NpcLuck + petBonuses.NpcLuck + vipLuck + starterPackLuck + mediumPackLuck + elitePackLuck + rebirthLuck + titleLuck
 	totalLuck = math.clamp(totalLuck, 0, Economy.Caps.Luck)
 
 	-- Cat timp jucatorul nu a terminat tutorialul (primele oferte, imediat

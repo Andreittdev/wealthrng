@@ -346,40 +346,6 @@ local function metallicGlow(container, lightColor, darkColor)
 	gradient.Parent = glow
 end
 
--- Aura curcubeu, animata (se roteste incet la nesfarsit) -- doar pentru
--- Day 7, ca sa dea un aspect vizibil "exclusiv/legendar", diferit de restul.
-local function rainbowGlow(container)
-	local glow = Instance.new("Frame")
-	glow.AnchorPoint = Vector2.new(0.5, 0.5)
-	glow.Position = UDim2.fromScale(0.5, 0.5)
-	glow.Size = UDim2.fromOffset(48, 48)
-	glow.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	glow.BackgroundTransparency = 0.35
-	glow.BorderSizePixel = 0
-	glow.ZIndex = 22
-	glow.Parent = container
-	Instance.new("UICorner", glow).CornerRadius = UDim.new(0.5, 0)
-
-	local gradient = Instance.new("UIGradient")
-	gradient.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 90, 90)),
-		ColorSequenceKeypoint.new(0.17, Color3.fromRGB(255, 205, 90)),
-		ColorSequenceKeypoint.new(0.34, Color3.fromRGB(140, 255, 110)),
-		ColorSequenceKeypoint.new(0.50, Color3.fromRGB(90, 220, 255)),
-		ColorSequenceKeypoint.new(0.67, Color3.fromRGB(150, 130, 255)),
-		ColorSequenceKeypoint.new(0.84, Color3.fromRGB(255, 110, 220)),
-		ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 90, 90))
-	})
-	gradient.Parent = glow
-
-	task.spawn(function()
-		while glow.Parent do
-			gradient.Rotation = (gradient.Rotation + 1.5) % 360
-			RunService.Heartbeat:Wait()
-		end
-	end)
-end
-
 -- Coloreaza CARDUL intreg (nu doar cercul din spatele iconitei) pentru Day 2
 -- (bronz), Day 4 (argintiu) si Day 7 (curcubeu, animat). IMPORTANT: UIGradient
 -- inmulteste culorile cu BackgroundColor3 al parintelui -- pus direct pe
@@ -572,11 +538,11 @@ local function createDayIcon(parent, dayConfig, iconScale, centerYScale)
 		uiScale.Parent = container
 	end
 
-	-- Fundaluri speciale: Day 2 (bronz), Day 4 (argintiu), Day 7 (curcubeu,
-	-- singurul animat) -- ca sa se vada o progresie de raritate intre zile,
-	-- fara sa fie toate identice.
+	-- Fundaluri speciale: Day 2 (bronz), Day 4 (argintiu) -- ca sa se vada o
+	-- progresie de raritate intre zile, fara sa fie toate identice. Day 7 nu
+	-- mai are glow, ca sa nu acopere imaginea reala a petului.
 	if dayConfig.Type == "SpecificPet" then
-		rainbowGlow(container)
+		-- fara glow
 	elseif dayConfig.Type == "RandomPet" then
 		metallicGlow(container, BRONZE_LIGHT, BRONZE_DARK)
 	elseif dayConfig.Type == "RebirthTokens" then
@@ -585,9 +551,19 @@ local function createDayIcon(parent, dayConfig, iconScale, centerYScale)
 		iconGlow(container, GOLD_ICON)
 	end
 
-	local builder = ICON_BUILDERS[dayConfig.Type]
-	if builder then
-		builder(container)
+	local petImage = dayConfig.Type == "SpecificPet" and dayConfig.Pet and dayConfig.Pet.Image
+	if petImage and petImage ~= "" then
+		local image = Instance.new("ImageLabel")
+		image.BackgroundTransparency = 1
+		image.Size = UDim2.new(1, 0, 1, 0)
+		image.Image = petImage
+		image.ZIndex = 24
+		image.Parent = container
+	else
+		local builder = ICON_BUILDERS[dayConfig.Type]
+		if builder then
+			builder(container)
+		end
 	end
 
 	return container
