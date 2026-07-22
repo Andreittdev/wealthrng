@@ -3,7 +3,7 @@
 --    jos -- prinde si achizitii vechi, dinainte sa existe tracking-ul).
 -- 2) Developer Product-urile cumparate (Premium Egg, Cash Packs) -- astea NU
 --    au "ownership" (sunt repetabile), deci se ACUMULEAZA incremental in
---    leaderstats.DevProductRobuxSpent de catre PremiumPurchaseManager.server.luau
+--    HiddenStats.DevProductRobuxSpent de catre PremiumPurchaseManager.server.luau
 --    la fiecare achizitie, si persista prin DataManager (salvat/incarcat).
 --
 -- Modul separat (nu un Script) ca sa poata fi apelat si de
@@ -15,6 +15,7 @@ local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local RobuxSpentStore = require(script.Parent:WaitForChild("RobuxSpentStore"))
+local DataManager = require(script.Parent:WaitForChild("DataManager"))
 local Economy = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("EconomyConfig"))
 
 local RobuxSpentCalculator = {}
@@ -85,19 +86,18 @@ local function getGamepassTotal(player)
 end
 
 function RobuxSpentCalculator.Recompute(player)
-	local leaderstats = player:FindFirstChild("leaderstats")
-	if not leaderstats then
-		return
-	end
+	-- Pus intr-un folder SEPARAT (HiddenStats), nu in "leaderstats" -- cerut
+	-- explicit, sa nu mai apara "RobuxSpent" in lista default de jucatori.
+	local hiddenStats = DataManager.GetHiddenStats(player)
 
-	local robuxSpent = leaderstats:FindFirstChild("RobuxSpent")
+	local robuxSpent = hiddenStats:FindFirstChild("RobuxSpent")
 	if not robuxSpent then
 		robuxSpent = Instance.new("IntValue")
 		robuxSpent.Name = "RobuxSpent"
-		robuxSpent.Parent = leaderstats
+		robuxSpent.Parent = hiddenStats
 	end
 
-	local devProductSpent = leaderstats:FindFirstChild("DevProductRobuxSpent")
+	local devProductSpent = hiddenStats:FindFirstChild("DevProductRobuxSpent")
 	local devProductTotal = devProductSpent and devProductSpent.Value or 0
 
 	robuxSpent.Value = getGamepassTotal(player) + devProductTotal

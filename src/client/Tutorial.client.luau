@@ -48,6 +48,15 @@ local FORCE_SHOW_FOR_TESTING = false
 local function markCompleted()
 	player:SetAttribute("TutorialCompleted", true)
 	completeTutorialEvent:FireServer()
+
+	-- Pe mobil, cat tutorialul era activ, am ascuns tot HUD-ul (butoane
+	-- Shop/Egg Shop/Market/Inventory/Pets/Settings + stiva din dreapta) prin
+	-- acelasi flag comun (ShopModalOpen) folosit deja de toate panourile ca
+	-- sa se ascunda unele pe altele -- il eliberam acum, la final, ca butoanele
+	-- sa reapara.
+	if computeIsMobile() then
+		player:SetAttribute("ShopModalOpen", false)
+	end
 end
 
 -- Asteapta explicit flag-ul (nil = inca nu s-au incarcat datele din
@@ -72,6 +81,16 @@ task.spawn(function()
 	local alreadyCompleted = waitForTutorialFlag()
 	if alreadyCompleted and not FORCE_SHOW_FOR_TESTING then
 		return
+	end
+
+	-- Pe mobil, cat un jucator CHIAR NOU e in tutorial, ascundem tot restul
+	-- HUD-ului (aceleasi butoane care se ascund deja intre ele via
+	-- ShopModalOpen -- Shop/Egg Shop/Market/Inventory/Pets/Settings + stiva
+	-- din dreapta) -- ca sa vada DOAR tutorialul, fara sa fie distras/
+	-- coplesit de restul UI-ului inainte sa inteleaga jocul. Eliberat in
+	-- markCompleted(), la finalul tutorialului (natural sau Skip).
+	if computeIsMobile() then
+		player:SetAttribute("ShopModalOpen", true)
 	end
 
 	local screenGui = Instance.new("ScreenGui")

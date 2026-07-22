@@ -11,11 +11,6 @@ Players.PlayerAdded:Connect(function(player)
 	money.Value = 1000
 	money.Parent = leaderstats
 
-	local level = Instance.new("IntValue")
-	level.Name = "Level"
-	level.Value = 1
-	level.Parent = leaderstats
-
 	local rebirths = Instance.new("IntValue")
 	rebirths.Name = "Rebirths"
 	rebirths.Value = 0

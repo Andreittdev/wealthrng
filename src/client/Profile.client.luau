@@ -302,7 +302,11 @@ local moneyValue = leaderstats:WaitForChild("Money")
 local cashEarnedValue = leaderstats:WaitForChild("CashEarned")
 local rebirthsValue = leaderstats:WaitForChild("Rebirths")
 local timePlayedValue = leaderstats:WaitForChild("TimePlayed")
-local robuxSpentValue = leaderstats:WaitForChild("RobuxSpent")
+
+-- RobuxSpent nu mai e in "leaderstats" (mutat in HiddenStats, ca sa nu mai
+-- apara in lista default de jucatori a Roblox -- cerut explicit).
+local hiddenStats = player:WaitForChild("HiddenStats")
+local robuxSpentValue = hiddenStats:WaitForChild("RobuxSpent")
 
 local _, setCash = createStatRow(1, "💰 Cash")
 local _, setCashEarned = createStatRow(2, "📈 Cash Earned")

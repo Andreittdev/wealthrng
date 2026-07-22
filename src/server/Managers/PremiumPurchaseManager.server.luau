@@ -128,14 +128,12 @@ end
 -- care poate fi incorecta) la totalul de Robux cheltuit pe Developer
 -- Products al jucatorului, persistat prin DataManager.
 local function addDevProductSpend(player, productId)
-	local leaderstats = player:FindFirstChild("leaderstats")
-	if not leaderstats then
-		return
-	end
-
-	local devProductRobuxSpent = leaderstats:FindFirstChild("DevProductRobuxSpent")
+	local hiddenStats = DataManager.GetHiddenStats(player)
+	local devProductRobuxSpent = hiddenStats:FindFirstChild("DevProductRobuxSpent")
 	if not devProductRobuxSpent then
-		return
+		devProductRobuxSpent = Instance.new("IntValue")
+		devProductRobuxSpent.Name = "DevProductRobuxSpent"
+		devProductRobuxSpent.Parent = hiddenStats
 	end
 
 	local price = 0

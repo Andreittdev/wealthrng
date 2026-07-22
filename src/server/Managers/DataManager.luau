@@ -8,6 +8,22 @@ local DataManager = {}
 
 local playerDataStore = DataStoreService:GetDataStore("PlayerData_V2")
 
+-- Folder SEPARAT de "leaderstats" -- orice pus aici (RobuxSpent,
+-- DevProductRobuxSpent) NU apare in lista de jucatori default a Roblox
+-- (care afiseaza automat TOATE valorile din "leaderstats") -- cerut explicit,
+-- leaderboard-ul sa arate DOAR Money si Rebirths.
+function DataManager.GetHiddenStats(player)
+	local hiddenStats = player:FindFirstChild("HiddenStats")
+
+	if not hiddenStats then
+		hiddenStats = Instance.new("Folder")
+		hiddenStats.Name = "HiddenStats"
+		hiddenStats.Parent = player
+	end
+
+	return hiddenStats
+end
+
 local function getDefaultData()
 	return {
 		Money = 1000,
@@ -67,6 +83,24 @@ local function getDefaultData()
         PityCountMythic = 0,
         TutorialCompleted = false
 	}
+end
+
+-- Utilitar de DEV/testare (folosit de "!resetdata" din AdminCommands.server.luau)
+-- -- suprascrie salvarea reala a jucatorului cu date complet default. Nu
+-- atinge sesiunea curenta (leaderstats/attribute-uri deja aplicate raman
+-- neschimbate pana la urmatorul join) -- apelantul trebuie sa il faca pe
+-- jucator sa iasa/reintre ca sa vada efectul.
+function DataManager.ResetData(player)
+	local ok, err = pcall(function()
+		playerDataStore:SetAsync(player.UserId, getDefaultData())
+	end)
+
+	if not ok then
+		warn("DataManager.ResetData: nu am putut reseta DataStore pentru " .. player.Name .. ": " .. tostring(err))
+		return false
+	end
+
+	return true
 end
 
 function DataManager.LoadData(player)
@@ -232,7 +266,9 @@ function DataManager.SaveData(player)
 
 	local cashEarned = leaderstats:FindFirstChild("CashEarned")
 	local timePlayed = leaderstats:FindFirstChild("TimePlayed")
-	local devProductRobuxSpent = leaderstats:FindFirstChild("DevProductRobuxSpent")
+
+	local hiddenStats = player:FindFirstChild("HiddenStats")
+	local devProductRobuxSpent = hiddenStats and hiddenStats:FindFirstChild("DevProductRobuxSpent")
 
 	local dataToSave = {
 		Money = money.Value,
@@ -462,11 +498,12 @@ function DataManager.ApplyData(player, data)
 	-- -- alimentata de PremiumPurchaseManager.server.luau la fiecare
 	-- achizitie, citita de RobuxSpentCalculator ca sa o adauge la partea de
 	-- gamepass-uri (RobuxSpent = gamepass-uri + astea).
-	local devProductRobuxSpent = leaderstats:FindFirstChild("DevProductRobuxSpent")
+	local hiddenStats = DataManager.GetHiddenStats(player)
+	local devProductRobuxSpent = hiddenStats:FindFirstChild("DevProductRobuxSpent")
 	if not devProductRobuxSpent then
 		devProductRobuxSpent = Instance.new("IntValue")
 		devProductRobuxSpent.Name = "DevProductRobuxSpent"
-		devProductRobuxSpent.Parent = leaderstats
+		devProductRobuxSpent.Parent = hiddenStats
 	end
 	devProductRobuxSpent.Value = data.DevProductRobuxSpent or 0
 

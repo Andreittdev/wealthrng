@@ -74,21 +74,33 @@ screenGui.Parent = playerGui
 
 -- ================= Butonul mic, in mijlocul ecranului =================
 
--- Fara fundal/cutie -- doar iconita cadoului, cu countdown-ul scris direct
--- sub ea (text cu contur negru, ca sa se citeasca pe orice fundal din joc).
+-- Aceeasi forma patrata compacta pe mobil SI pe PC -- doar cadoul + timerul,
+-- fara niciun text de titlu. Singura diferenta: pe PC are un fundal (chenar)
+-- in spate; pe mobil ramane transparent, ca inainte.
 local toggleButton = Instance.new("TextButton")
 toggleButton.Name = "PlaytimeRewardsButton"
-toggleButton.BackgroundTransparency = 1
+toggleButton.BackgroundColor3 = BG_DARK
+toggleButton.BackgroundTransparency = isMobile and 1 or 0.1
 toggleButton.Text = ""
 toggleButton.AutoButtonColor = false
 toggleButton.ClipsDescendants = false
 toggleButton.Parent = screenGui
 
+if not isMobile then
+	Instance.new("UICorner", toggleButton).CornerRadius = UDim.new(0.2, 0)
+
+	local toggleStroke = Instance.new("UIStroke")
+	toggleStroke.Color = ACCENT
+	toggleStroke.Thickness = 2
+	toggleStroke.Transparency = 0.3
+	toggleStroke.Parent = toggleButton
+end
+
 -- BUG gasit: UIAspectRatioConstraint cu Size initial de latime 0 -- cu
 -- AspectType implicit (FitWithinMaxSize), incadrarea intr-o cutie de latime
 -- 0 dadea tot 0 -- imaginea disparea complet. Fix simplu: parintele
--- (toggleButton) e deja garantat patrat (vezi repositionToggle), deci
--- Scale egal pe X si Y produce direct un patrat, fara nicio constrangere.
+-- (toggleButton) e garantat patrat (vezi repositionToggle), deci Scale egal
+-- pe X si Y produce direct un patrat, fara nicio constrangere.
 local badgeIcon = Instance.new("ImageLabel")
 badgeIcon.BackgroundTransparency = 1
 badgeIcon.Size = UDim2.new(0.72, 0, 0.72, 0)
@@ -113,15 +125,14 @@ toggleCountdownLabel.ZIndex = 2
 toggleCountdownLabel.Parent = toggleButton
 
 -- Cerut: sus, in mijlocul ecranului (centrat orizontal, aproape de partea de
--- sus, nu chiar in centrul ecranului). Offset-ul de 80px de sus il tine
--- departe de topbar-ul Roblox (meniu/leaderboard).
+-- sus, nu chiar in centrul ecranului).
 local function repositionToggle()
 	local absSize = storeButton.AbsoluteSize
 	local side = absSize.Y
 
 	toggleButton.AnchorPoint = Vector2.new(0.5, 0)
 	toggleButton.Size = UDim2.new(0, side, 0, side)
-	toggleButton.Position = UDim2.new(0.5, 0, 0, 2)
+	toggleButton.Position = UDim2.new(0.5, 0, 0, isMobile and 2 or 0)
 end
 
 repositionToggle()
