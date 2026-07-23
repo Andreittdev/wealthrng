@@ -11,7 +11,11 @@ local OrderedStatStore = require(script.Parent:WaitForChild("OrderedStatStore"))
 
 local UPDATE_INTERVAL = 30
 
-return OrderedStatStore.new("CashEarnedLeaderboard_V1", UPDATE_INTERVAL, function(player)
+-- V2 (nu V1) -- cerut explicit un reset complet al clasamentului (inclusiv
+-- scorul vechi al contului de test buylowsellhigh5) -- schimband numele
+-- DataStore-ului, TOATA lumea porneste de la zero, fara sa fie nevoie sa
+-- stergem manual intrari individuale din DataStore-ul vechi.
+return OrderedStatStore.new("CashEarnedLeaderboard_V2", UPDATE_INTERVAL, function(player)
 	local leaderstats = player:FindFirstChild("leaderstats")
 	local cashEarned = leaderstats and leaderstats:FindFirstChild("CashEarned")
 	return cashEarned and cashEarned.Value

@@ -8,7 +8,8 @@ local OrderedStatStore = require(script.Parent:WaitForChild("OrderedStatStore"))
 
 local UPDATE_INTERVAL = 30
 
-return OrderedStatStore.new("RobuxSpentLeaderboard_V1", UPDATE_INTERVAL, function(player)
+-- V2 (nu V1) -- reset complet, cerut explicit (vezi CashLeaderboardStore).
+return OrderedStatStore.new("RobuxSpentLeaderboard_V2", UPDATE_INTERVAL, function(player)
 	local hiddenStats = player:FindFirstChild("HiddenStats")
 	local robuxSpent = hiddenStats and hiddenStats:FindFirstChild("RobuxSpent")
 	return robuxSpent and robuxSpent.Value

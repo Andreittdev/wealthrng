@@ -15,12 +15,57 @@ local OrderedStatStore = {}
 -- mari trebuie sa avansam manual prin pagini (AdvanceToNextPageAsync).
 local MAX_PAGE_SIZE = 100
 
+-- Owner-ul jocului (cerut explicit sa NU apara pe niciun clasament) --
+-- cautat dupa username, cand modulul se incarca. Roblox cache-uieste modulul
+-- (acelasi UserId rezolvat o singura data, reutilizat de toate cele 3
+-- clasamente: Cash Earned, Robux Spent, Time Played).
+--
+-- BUG gasit la audit: un singur pcall, fara retry, NEprotejat cu task.spawn
+-- -- daca API-ul lui Roblox avea un hiccup tranzitoriu chiar la boot,
+-- excludedUserId ramanea nil PERMANENT toata sesiunea serverului (owner-ul
+-- aparea pe clasamente, doar cu un warn in consola, nimeni nu observa) --
+-- si, fiind blocant (nu task.spawn), primul script care face require aici
+-- astepta degeaba acel apel de retea inainte sa continue. Acum: 3 incercari
+-- cu backoff (acelasi tipar ca DataManager.LoadData), intr-un task.spawn
+-- separat, ca sa nu blocheze deloc pornirea.
+local EXCLUDED_USERNAME = "fizzknot1"
+local excludedUserId = nil
+
+task.spawn(function()
+	for attempt = 1, 3 do
+		local ok, userId = pcall(function()
+			return Players:GetUserIdFromNameAsync(EXCLUDED_USERNAME)
+		end)
+
+		if ok then
+			excludedUserId = userId
+			return
+		end
+
+		warn("OrderedStatStore: nu am putut rezolva username-ul '" .. EXCLUDED_USERNAME .. "' (incercarea " .. attempt .. "/3): " .. tostring(userId))
+
+		if attempt < 3 then
+			task.wait(2)
+		end
+	end
+
+	warn("OrderedStatStore: excluderea lui '" .. EXCLUDED_USERNAME .. "' de pe clasamente NU functioneaza in aceasta sesiune de server (toate cele 3 incercari au esuat).")
+end)
+
+local function isExcludedUserId(userId)
+	return excludedUserId ~= nil and userId == excludedUserId
+end
+
 function OrderedStatStore.new(dataStoreName, updateInterval, getValue)
 	local store = DataStoreService:GetOrderedDataStore(dataStoreName)
 	local pendingUpdate = {}
 	local api = {}
 
 	local function flushPlayer(player)
+		if isExcludedUserId(player.UserId) then
+			return
+		end
+
 		local value = getValue(player)
 		if not value then
 			return
@@ -85,10 +130,17 @@ function OrderedStatStore.new(dataStoreName, updateInterval, getValue)
 			local page = pages:GetCurrentPage()
 
 			for _, entry in ipairs(page) do
-				position += 1
+				local userId = tonumber(entry.key)
 
-				if position <= maxCount then
-					table.insert(list, {UserId = tonumber(entry.key), Score = entry.value, Rank = position})
+				-- Owner-ul (fizzknot1) sarit complet -- nici macar nu ii
+				-- consumam un loc in clasament, ca sa nu ramana un rand gol
+				-- ("#2" ca prim loc afisat) daca ar fi avut vreodata scor.
+				if not isExcludedUserId(userId) then
+					position += 1
+
+					if position <= maxCount then
+						table.insert(list, {UserId = userId, Score = entry.value, Rank = position})
+					end
 				end
 			end
 

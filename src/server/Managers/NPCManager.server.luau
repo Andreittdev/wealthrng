@@ -630,6 +630,13 @@ local function spawnNPCForPlayer(player, pendingDelay)
 	local offer = TradeManager.CreateOffer(npcType, totalLuck, forceRarity)
 
 	if offer then
+		-- Trimisa MEREU catre client, indiferent unde e jucatorul -- vizibilitatea
+		-- pe ecran e deja gestionata client-side, in TradeGui.rbxmx
+		-- (isPlayerInOwnZone, re-evaluata la fiecare 0.3s cat timp exista o
+		-- oferta curenta) -- acolo traieste deja regula "doar pe podeaua
+		-- standului tau", nu aici. Un al doilea filtru aici, pe server, era
+		-- pur redundant si a introdus un bug (oferta nu mai ajungea deloc la
+		-- client cand jucatorul nu era pe podea la momentul crearii ei).
 		activeTrades[player] = {
 			NPC = npc,
 			Offer = offer,
