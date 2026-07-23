@@ -40,7 +40,7 @@ Pets.Eggs = {
 			{Name = "B Beast", Rarity = "Legendary", Chance = 39.9, Luck = 8, Sell = 7, Speed = 4, Image = "rbxassetid://77761425616150"},
 			{Name = "Diamond Emperor", Rarity = "Legendary", Chance = 30, Luck = 9, Sell = 8, Speed = 4, Image = "rbxassetid://112937280899690"},
 			{Name = "Hype Dragon", Rarity = "Legendary", Chance = 20, Luck = 10, Sell = 9, Speed = 5, Image = "rbxassetid://113560516680662"},
-			{Name = "King Of Kicks", Rarity = "Legendary", Chance = 10, Luck = 12, Sell = 10, Speed = 6, Image = "rbxassetid://131342079845243"},
+			{Name = "King Of Kicks", Rarity = "Legendary", Chance = 10, Luck = 12, Sell = 10, Speed = 6, Image = "rbxassetid://106244236786775"},
 			{Name = "THE COLLECTOR", Rarity = "Secret", Chance = 0.1, Luck = 25, Sell = 20, Speed = 10, Image = "rbxassetid://139001462245720"}
 		}
 	},

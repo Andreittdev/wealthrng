@@ -151,6 +151,17 @@ Economy.ElitePack = {
 }
 
 -- ============================
+-- CHEST REWARD (Group + Like) -- vezi ChestRewardManager.server.luau.
+-- "A dat Like" NU poate fi verificat tehnic (Roblox nu expune deloc
+-- informatia asta scripturilor) -- verificam DOAR apartenenta la grup,
+-- pe incredere pentru Like (cerut explicit, decizie asumata).
+-- ============================
+Economy.ChestReward = {
+	GroupId = 13443306,
+	Money = 10000
+}
+
+-- ============================
 -- PETS (echipare)
 -- ============================
 Economy.EquippedPetSlots = 2
@@ -496,15 +507,20 @@ Economy.Market = {
 	MaxPriceDeviation = 50,     -- cap ±50% față de bază
 
 	GoldenHour = {
-		Duration = 600,          -- 10 minute (cat un slot intreg -- se termina
-		                         -- exact cand vine si urmatorul update general,
-		                         -- ca countdown-urile din MarketGui si din
-		                         -- tunel sa coincida mereu cat timp e activ)
+		-- 590, NU 600 (=UpdateInterval) -- daca ar fi fost exact egal, la
+		-- fiecare final natural de Golden Hour, "eventul s-a terminat" SI
+		-- "a inceput un slot nou" s-ar fi intamplat in ACEEASI iteratie a
+		-- buclei din MarketManager.luau, trimitand doua broadcast-uri
+		-- separate in aceeasi secunda (stare tranzitorie, posibil confuza
+		-- vizual pentru cateva clipe). Cu 590, evenimentul se termina cu
+		-- 10s inainte de urmatorul slot -- imperceptibil pentru jucator,
+		-- dar elimina complet coincidenta.
+		Duration = 590,
 		Boost = 40
 	},
 
 	MarketCrash = {
-		Duration = 600,          -- 10 minute (acelasi motiv ca la GoldenHour)
+		Duration = 590,          -- acelasi motiv ca la GoldenHour
 		Drop = 40
 	},
 

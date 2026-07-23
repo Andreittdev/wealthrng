@@ -222,18 +222,16 @@ local function findPortalPosition(name, fallback)
 	return fallback
 end
 
-local portalNorthPosition = findPortalPosition("PortalNorth", Vector3.new(0, 5, 600))
+-- Cerut explicit: TOATE NPC-urile pornesc din tunelul de Sud (cel cu
+-- panoul negru "NEXT MARKET SPECIAL EVENT"), indiferent de standul
+-- jucatorului -- nu mai alegem cel mai apropiat dintre Nord/Sud. Conceptul
+-- vizual al tunelului (panou + countdown) ramane neschimbat -- NPC-urile
+-- oricum nu au coliziune reala (CanCollide=false), deci nu au nevoie de un
+-- gol fizic in zid ca sa "iasa" vizual de acolo.
 local portalSouthPosition = findPortalPosition("PortalSouth", Vector3.new(0, 5, 200))
 
-local function getClosestPortalPosition(targetPosition)
-	local distanceToNorth = (targetPosition - portalNorthPosition).Magnitude
-	local distanceToSouth = (targetPosition - portalSouthPosition).Magnitude
-
-	if distanceToSouth < distanceToNorth then
-		return portalSouthPosition
-	end
-
-	return portalNorthPosition
+local function getClosestPortalPosition(_targetPosition)
+	return portalSouthPosition
 end
 
 local function getStandLevel(player)

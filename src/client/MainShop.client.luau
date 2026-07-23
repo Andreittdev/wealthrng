@@ -789,6 +789,20 @@ mainFrame:GetPropertyChangedSignal("Visible"):Connect(function()
 	end
 end)
 
+-- Butonul "+" de langa Cash-ul din HUD (MainHUD.rbxmx) seteaza acest
+-- attribute ca sa deschida Shop-ul direct pe tab-ul Cash, fara sa mai caute
+-- jucatorul tab-ul manual.
+player:GetAttributeChangedSignal("RequestOpenShopTab"):Connect(function()
+	local requestedTab = player:GetAttribute("RequestOpenShopTab")
+	if not requestedTab or requestedTab == "" then
+		return
+	end
+
+	mainFrame.Visible = true
+	selectTab(requestedTab)
+	player:SetAttribute("RequestOpenShopTab", "")
+end)
+
 MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(purchasedPlayer, gamePassId, wasPurchased)
 	if purchasedPlayer ~= player or not wasPurchased then
 		return

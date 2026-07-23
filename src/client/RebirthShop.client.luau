@@ -152,7 +152,7 @@ local card = Instance.new("Frame")
 card.Name = "Card"
 card.AnchorPoint = Vector2.new(0.5, 0.5)
 card.Position = UDim2.new(0.5, 0, 0.5, 0)
-card.Size = UDim2.new(0, 340, 0, 470)
+card.Size = UDim2.new(0, 340, 0, 548)
 card.BackgroundColor3 = PURPLE_MID
 card.ClipsDescendants = true
 card.ZIndex = 21
@@ -297,9 +297,34 @@ perksLabel.TextScaled = true
 perksLabel.ZIndex = 22
 perksLabel.Parent = card
 
+-- ---- Perks-urile CURENTE (cumulate din toate rebirth-urile facute pana acum) ----
+
+local currentPerksTitle = Instance.new("TextLabel")
+currentPerksTitle.BackgroundTransparency = 1
+currentPerksTitle.Position = UDim2.new(0, 24, 0, 282)
+currentPerksTitle.Size = UDim2.new(1, -48, 0, 26)
+currentPerksTitle.Text = "Current Perks:"
+currentPerksTitle.TextColor3 = GREEN_OK
+currentPerksTitle.Font = FONT_DISPLAY
+currentPerksTitle.TextScaled = true
+currentPerksTitle.ZIndex = 22
+currentPerksTitle.Parent = card
+
+local currentPerksLabel = Instance.new("TextLabel")
+currentPerksLabel.BackgroundTransparency = 1
+currentPerksLabel.Position = UDim2.new(0, 24, 0, 308)
+currentPerksLabel.Size = UDim2.new(1, -48, 0, 46)
+currentPerksLabel.Text = "+0% Sell   +0% Luck   +0% Speed"
+currentPerksLabel.TextColor3 = TEXT_LIGHT
+currentPerksLabel.TextWrapped = true
+currentPerksLabel.Font = FONT_BODY
+currentPerksLabel.TextScaled = true
+currentPerksLabel.ZIndex = 22
+currentPerksLabel.Parent = card
+
 local resetInfoLabel = Instance.new("TextLabel")
 resetInfoLabel.BackgroundTransparency = 1
-resetInfoLabel.Position = UDim2.new(0, 24, 0, 282)
+resetInfoLabel.Position = UDim2.new(0, 24, 0, 360)
 resetInfoLabel.Size = UDim2.new(1, -48, 0, 40)
 resetInfoLabel.Text = "Resets: Money & Stand Level  |  Keeps: Pets & Upgrades"
 resetInfoLabel.TextColor3 = TEXT_LIGHT
@@ -314,7 +339,7 @@ resetInfoLabel.Parent = card
 -- lipeasca mereu chiar dupa numar, indiferent cate cifre are.
 local tokenRow = Instance.new("Frame")
 tokenRow.BackgroundTransparency = 1
-tokenRow.Position = UDim2.new(0, 24, 0, 328)
+tokenRow.Position = UDim2.new(0, 24, 0, 406)
 tokenRow.Size = UDim2.new(1, -48, 0, 26)
 tokenRow.ZIndex = 22
 tokenRow.Parent = card
@@ -418,6 +443,11 @@ local function refreshState()
 	local nextPerks = Economy.Rebirth.GetPerks(rebirths + 1)
 	perksLabel.Text = "+" .. nextPerks.Sell .. "% Sell   +" .. nextPerks.Luck .. "% Luck   +" .. nextPerks.Speed .. "% Speed"
 
+	-- Bonusul TOTAL, cumulat din toate rebirth-urile facute pana acum (activ
+	-- chiar acum, permanent) -- nu doar cel pe care il aduce urmatorul rebirth.
+	local currentBonuses = Economy.Rebirth.GetCumulativeBonuses(rebirths)
+	currentPerksLabel.Text = "+" .. currentBonuses.Sell .. "% Sell   +" .. currentBonuses.Luck .. "% Luck   +" .. currentBonuses.Speed .. "% Speed"
+
 	tokenLabel.Text = "Rebirth Tokens: " .. tokens
 
 	toggleSubtitle.Text = "Rebirths: " .. rebirths
@@ -479,14 +509,14 @@ local function updateUIScale()
 		toggleButton.Position = UDim2.new(1, -8, 0, 96)
 		toggleButton.Size = UDim2.new(0, 102, 0, 36)
 
-		-- MIN_UI_SCALE (0.75) era un scale FIX -- cardul de baza (340x470px)
-		-- la 0.75 ramane 255x352px, mai mare decat inaltimea disponibila pe
+		-- MIN_UI_SCALE (0.75) era un scale FIX -- cardul de baza (340x548px)
+		-- la 0.75 ramane 255x411px, mai mare decat inaltimea disponibila pe
 		-- un telefon landscape (ecran lat-dar-scund), deci iesea pe sub
 		-- marginea ecranului. Calculam scale-ul din dimensiunea REALA a
 		-- ecranului, ca sa incapa garantat, indiferent cat de mic e telefonul.
 		local fitScale = math.min(
 			(camera.ViewportSize.X * 0.78) / 340,
-			(camera.ViewportSize.Y * 0.70) / 470
+			(camera.ViewportSize.Y * 0.70) / 548
 		)
 		cardScale.Scale = math.min(MIN_UI_SCALE, fitScale)
 	else
@@ -560,7 +590,7 @@ local function setOpen(open)
 		TweenService:Create(
 			card,
 			TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-			{Size = UDim2.new(0, 340, 0, 470)}
+			{Size = UDim2.new(0, 340, 0, 548)}
 		):Play()
 	else
 		overlay.Visible = false

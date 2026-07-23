@@ -359,21 +359,19 @@ for i, milestone in ipairs(Economy.PlaytimeRewards.Milestones) do
 end
 
 -- ================= Deschidere/inchidere =================
--- BUG gasit (audit): panoul asta nu respecta ShopModalOpen/SideStackCollapsed
--- -- singurul din stiva care nu se ascundea cand se deschidea alt panou, si
--- singurul care nu putea fi ascuns de comutatorul "<"/">" -- exact bug-ul
--- reparat explicit mai devreme pentru Starter Pack/Rebirth/Daily Rewards/
--- Settings, reintrodus aici din greseala.
+-- Continua sa se ascunda cand orice alt panou e deschis (ShopModalOpen), ca
+-- sa nu se suprapuna peste el -- dar, cerut explicit, NU mai dispare cand
+-- jucatorul restrange stiva din dreapta cu "<" (SideStackCollapsed). Playtime
+-- Rewards ramane vizibil mereu, indiferent de starea comutatorului.
 local function setShopModalOpen(open)
 	player:SetAttribute("ShopModalOpen", open)
 end
 
 local function updateToggleVisibility()
-	toggleButton.Visible = not player:GetAttribute("ShopModalOpen") and not player:GetAttribute("SideStackCollapsed")
+	toggleButton.Visible = not player:GetAttribute("ShopModalOpen")
 end
 
 player:GetAttributeChangedSignal("ShopModalOpen"):Connect(updateToggleVisibility)
-player:GetAttributeChangedSignal("SideStackCollapsed"):Connect(updateToggleVisibility)
 updateToggleVisibility()
 
 local function setOpen(open)
