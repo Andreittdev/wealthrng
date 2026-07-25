@@ -1,4 +1,5 @@
--- Roll button, Buy VIP button, and the slot-machine reveal window.
+-- Roll button and the slot-machine reveal window. (Buy VIP moved to the
+-- sidebar's Shop panel, ShopPanel.luau.)
 --
 -- Animation flow: on click the reveal window cycles through random items
 -- every SPIN_INTERVAL seconds. RollResult is buffered into `pendingResult`
@@ -10,8 +11,6 @@
 -- the button would look clickable mid-spin while clicks were silently
 -- dropped by the isSpinning guard.
 
-local Players = game:GetService("Players")
-local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
@@ -40,17 +39,21 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	revealFrame.BackgroundColor3 = RarityConfig.GetColor("Common")
 	revealFrame.BackgroundTransparency = 0.3
 
+	-- Theme.Panel's default dark gradient would muddy the rarity-color
+	-- cycling this window does during a spin -- drop it, keep the
+	-- stroke/shadow framing.
+	local revealGradient = revealFrame:FindFirstChildOfClass("UIGradient")
+	if revealGradient then
+		revealGradient:Destroy()
+	end
+	local revealStroke = revealFrame:FindFirstChildOfClass("UIStroke")
+
 	local revealLabel = Theme.Label(revealFrame, UDim2.new(1, -16, 1, -8), "Press ROLL", true)
 	revealLabel.Position = UDim2.new(0, 8, 0, 4)
 	revealLabel.TextXAlignment = Enum.TextXAlignment.Center
 	revealLabel.TextYAlignment = Enum.TextYAlignment.Center
 
 	local rollButton = Theme.Button(screenGui, UDim2.new(0, 200, 0, 60), UDim2.new(0.5, -100, 1, -96), "ROLL", true)
-
-	local buyVIPButton = Theme.Button(screenGui, UDim2.new(0, 140, 0, 40), UDim2.new(0.5, 116, 1, -86), "Buy VIP", true)
-	buyVIPButton.Activated:Connect(function()
-		MarketplaceService:PromptGamePassPurchase(Players.LocalPlayer, VIPConfig.GamepassId)
-	end)
 
 	local pendingResult = nil
 	rollResult.OnClientEvent:Connect(function(item)
@@ -63,7 +66,7 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	local function setRollEnabled(enabled: boolean)
 		rollButton.Active = enabled
 		rollButton.AutoButtonColor = enabled
-		rollButton.BackgroundColor3 = enabled and Theme.Colors.Accent or Theme.Colors.Panel
+		rollButton.BackgroundColor3 = enabled and Theme.Colors.Accent or Theme.Colors.Surface
 	end
 
 	local function playSettleBounce()
@@ -74,6 +77,13 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 			{ Size = REVEAL_SIZE }
 		)
 		tween:Play()
+
+		-- Bright flash on the border that fades back to the normal subtle
+		-- stroke over a second -- a little glow highlight on the result.
+		if revealStroke then
+			revealStroke.Transparency = 0
+			TweenService:Create(revealStroke, TweenInfo.new(1, Enum.EasingStyle.Quad), { Transparency = 0.35 }):Play()
+		end
 	end
 
 	-- Runs the spin, blocking until it settles on the real result. Caller
@@ -85,8 +95,12 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 
 		while true do
 			local randomItem = allItems[math.random(1, #allItems)]
+			local randomColor = RarityConfig.GetColor(randomItem.Rarity)
 			revealLabel.Text = randomItem.Name
-			revealFrame.BackgroundColor3 = RarityConfig.GetColor(randomItem.Rarity)
+			revealFrame.BackgroundColor3 = randomColor
+			if revealStroke then
+				revealStroke.Color = randomColor
+			end
 
 			task.wait(SPIN_INTERVAL)
 
@@ -97,8 +111,12 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 
 		local item = pendingResult
 		pendingResult = nil
+		local finalColor = RarityConfig.GetColor(item.Rarity)
 		revealLabel.Text = item.Name
-		revealFrame.BackgroundColor3 = RarityConfig.GetColor(item.Rarity)
+		revealFrame.BackgroundColor3 = finalColor
+		if revealStroke then
+			revealStroke.Color = finalColor
+		end
 		playSettleBounce()
 
 		isSpinning = false
@@ -130,6 +148,15 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 
 	function handle.SetVIP(newIsVIP: boolean)
 		isVIP = newIsVIP
+	end
+
+	-- Hidden while any modal panel (shop, net worth, etc.) is open -- on
+	-- short viewports, RollPanel's bottom-anchored elements have nowhere to
+	-- go that a centered/top modal can't reach, so MainUI hides these
+	-- instead of chasing an ever-shrinking gap with positioning alone.
+	function handle.SetHudVisible(visible: boolean)
+		rollButton.Visible = visible
+		revealFrame.Visible = visible
 	end
 
 	return handle

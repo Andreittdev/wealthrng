@@ -6,11 +6,13 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
 local VIPConfig = require(ReplicatedStorage.Modules.VIPConfig)
+local PotionConfig = require(ReplicatedStorage.Modules.PotionConfig)
 local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local InventoryManager = require(ServerScriptService.Managers.InventoryManager)
 local StatsManager = require(ServerScriptService.Managers.StatsManager)
 local VIPManager = require(ServerScriptService.Managers.VIPManager)
+local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManager)
 
 local sellItem = RemotesBootstrap:WaitForChild("SellItem")
 local inventoryUpdated = RemotesBootstrap:WaitForChild("InventoryUpdated")
@@ -32,13 +34,19 @@ sellItem.OnServerEvent:Connect(function(player: Player, uid: number)
 
 	local item = ItemDatabase.GetItem(removed.ItemId)
 	if item then
-		local value = item.Value
+		local bonusPercent = PotionConfig.GetCashBonusPercent(session, os.time())
 		if VIPManager.IsVIP(player) then
-			value = math.floor(value * (1 + VIPConfig.SellBonusPercent / 100))
+			bonusPercent += VIPConfig.SellBonusPercent
 		end
+		local value = math.floor(item.Value * (1 + bonusPercent / 100))
 		session.Cash += value
 	end
 
 	inventoryUpdated:FireClient(player, session.Inventory)
 	StatsManager.Recompute(player)
+	LeaderboardManager.MarkDirty(player)
 end)
+
+-- Side-effect-only module -- see RollManager.luau's tail comment for why
+-- this return is required even though nothing is exported.
+return true

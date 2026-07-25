@@ -12,22 +12,40 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local VIPConfig = require(ReplicatedStorage.Modules.VIPConfig)
 
-require(ServerScriptService.RemotesBootstrap)
-require(ServerScriptService.MapBuilder).BuildIfMissing()
+local remotesFolder = require(ServerScriptService.RemotesBootstrap)
+require(ServerScriptService.MapBuilder).Build()
+
+local inventoryUpdated = remotesFolder:WaitForChild("InventoryUpdated")
+local assetUpdated = remotesFolder:WaitForChild("AssetUpdated")
+local investmentUpdated = remotesFolder:WaitForChild("InvestmentUpdated")
+local potionUpdated = remotesFolder:WaitForChild("PotionUpdated")
 
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local Leaderstats = require(ServerScriptService.Managers.Leaderstats)
 local VIPManager = require(ServerScriptService.Managers.VIPManager)
 local StatsManager = require(ServerScriptService.Managers.StatsManager)
 
+require(ServerScriptService.Managers.LeaderboardManager)
+require(ServerScriptService.Managers.IncomeManager)
 require(ServerScriptService.Managers.RollManager)
 require(ServerScriptService.Managers.SellManager)
+require(ServerScriptService.Managers.AssetManager)
+require(ServerScriptService.Managers.InvestmentManager)
+require(ServerScriptService.Managers.PotionManager)
 
 local function onPlayerAdded(player: Player)
-	DataManager.Load(player)
+	local session = DataManager.Load(player)
 	VIPManager.Load(player)
 	Leaderstats.Create(player)
 	StatsManager.Recompute(player)
+
+	-- Initial pushes so a returning player sees their saved Inventory/Asset/
+	-- Investments/ActivePotions immediately instead of an empty list until
+	-- their next action.
+	inventoryUpdated:FireClient(player, session.Inventory)
+	assetUpdated:FireClient(player, { Owned = session.OwnedAssets, Equipped = session.EquippedAssets })
+	investmentUpdated:FireClient(player, session.Investments)
+	potionUpdated:FireClient(player, session.ActivePotions)
 end
 
 Players.PlayerAdded:Connect(onPlayerAdded)

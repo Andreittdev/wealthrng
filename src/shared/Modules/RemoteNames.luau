@@ -9,6 +9,16 @@ local RemoteNames = {
 		"SellItem", -- client -> server, payload: uid
 		"InventoryUpdated", -- server -> client, payload: { {Uid, ItemId} }
 		"StatsUpdated", -- server -> client, payload: { Cash, NetWorth, Title }
+		"BuyAsset", -- client -> server, payload: assetId
+		"SellAsset", -- client -> server, payload: assetId
+		"EquipAsset", -- client -> server, payload: assetId
+		"UnequipAsset", -- client -> server, payload: assetId
+		"AssetUpdated", -- server -> client, payload: { Owned: {[assetId]: boolean}, Equipped: {assetId} }
+		"BuyInvestment", -- client -> server, payload: investmentId
+		"SellInvestment", -- client -> server, payload: uid
+		"InvestmentUpdated", -- server -> client, payload: { {Uid, Id} }
+		"BuyPotion", -- client -> server, payload: potionId
+		"PotionUpdated", -- server -> client, payload: { [potionId] = expiresAt }
 	},
 	Functions = {},
 }

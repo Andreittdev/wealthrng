@@ -17,6 +17,12 @@ export type Session = {
 	Cash: number,
 	Inventory: { { Uid: number, ItemId: string } },
 	NextUid: number,
+	TotalRolls: number,
+	OwnedAssets: { [string]: boolean },
+	EquippedAssets: { string },
+	Investments: { { Uid: number, Id: string, PurchasedAt: number } },
+	NextInvestmentUid: number,
+	ActivePotions: { [string]: number },
 	LoadedOk: boolean,
 }
 
@@ -27,6 +33,12 @@ local function newDefaultSession(): Session
 		Cash = 0,
 		Inventory = {},
 		NextUid = 1,
+		TotalRolls = 0,
+		OwnedAssets = {},
+		EquippedAssets = {},
+		Investments = {},
+		NextInvestmentUid = 1,
+		ActivePotions = {},
 		LoadedOk = true,
 	}
 end
@@ -57,6 +69,12 @@ function DataManager.Load(player: Player): Session
 				Cash = data.Cash or 0,
 				Inventory = data.Inventory or {},
 				NextUid = data.NextUid or 1,
+				TotalRolls = data.TotalRolls or 0,
+				OwnedAssets = data.OwnedAssets or {},
+				EquippedAssets = data.EquippedAssets or {},
+				Investments = data.Investments or {},
+				NextInvestmentUid = data.NextInvestmentUid or 1,
+				ActivePotions = data.ActivePotions or {},
 				LoadedOk = true,
 			}
 		else
@@ -89,6 +107,12 @@ function DataManager.Save(player: Player)
 		Cash = session.Cash,
 		Inventory = session.Inventory,
 		NextUid = session.NextUid,
+		TotalRolls = session.TotalRolls,
+		OwnedAssets = session.OwnedAssets,
+		EquippedAssets = session.EquippedAssets,
+		Investments = session.Investments,
+		NextInvestmentUid = session.NextInvestmentUid,
+		ActivePotions = session.ActivePotions,
 	}
 
 	local ok = attempt(function()

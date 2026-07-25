@@ -17,14 +17,17 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	frame.Size = UDim2.new(0, 260, 0.6, 0)
 	frame.Position = UDim2.new(1, -276, 0, 16)
 	frame.BackgroundColor3 = Theme.Colors.Panel
-	frame.BackgroundTransparency = 0.1
+	frame.BackgroundTransparency = 0
 	frame.BorderSizePixel = 0
 	frame.CanvasSize = UDim2.new(0, 0, 0, 0)
 	frame.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	frame.ScrollBarThickness = 6
 	frame.ScrollBarImageColor3 = Theme.Colors.Accent
 	frame.Parent = screenGui
+	frame.Visible = false
 	Theme.Round(frame)
+	Theme.Stroke(frame, Color3.fromRGB(255, 215, 140), 1)
+	Theme.Shadow(frame)
 
 	local padding = Instance.new("UIPadding")
 	padding.PaddingTop = UDim.new(0, 8)
@@ -38,6 +41,10 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	layout.Parent = frame
 
 	local handle = {}
+
+	function handle.Toggle()
+		frame.Visible = not frame.Visible
+	end
 
 	function handle.Render(inventory: { { Uid: number, ItemId: string } })
 		for _, child in frame:GetChildren() do
@@ -53,17 +60,22 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 			end
 
 			local row = Instance.new("Frame")
-			row.Size = UDim2.new(1, 0, 0, 44)
-			row.BackgroundColor3 = RarityConfig.GetColor(item.Rarity)
-			row.BackgroundTransparency = 0.55
+			row.Size = UDim2.new(1, 0, 0, 54)
+			row.BackgroundColor3 = Theme.Colors.Surface
+			row.BackgroundTransparency = 0
 			row.BorderSizePixel = 0
 			row.Parent = frame
 			Theme.Round(row, UDim.new(0, 8))
+			Theme.Stroke(row, RarityConfig.GetColor(item.Rarity), 2)
 
-			local nameLabel = Theme.Label(row, UDim2.new(0.58, 0, 1, 0), string.format("%s ($%d)", item.Name, item.Value))
-			nameLabel.Position = UDim2.new(0, 10, 0, 0)
+			local nameLabel = Theme.Label(row, UDim2.new(0.58, 0, 0, 24), string.format("%s ($%d)", item.Name, item.Value))
+			nameLabel.Position = UDim2.new(0, 10, 0, 6)
 
-			local sellButton = Theme.Button(row, UDim2.new(0.36, 0, 0.7, 0), UDim2.new(1, -10, 0.5, 0), "Sell")
+			local incomeLabel = Theme.Label(row, UDim2.new(0.58, 0, 0, 18), string.format("+$%d/s", item.IncomePerSecond))
+			incomeLabel.Position = UDim2.new(0, 10, 0, 30)
+			incomeLabel.TextColor3 = Theme.Colors.Success
+
+			local sellButton = Theme.Button(row, UDim2.new(0.36, 0, 0.55, 0), UDim2.new(1, -10, 0.5, 0), "Sell")
 			sellButton.AnchorPoint = Vector2.new(1, 0.5)
 			sellButton.BackgroundColor3 = Theme.Colors.Danger
 			sellButton.TextColor3 = Color3.fromRGB(255, 255, 255)
