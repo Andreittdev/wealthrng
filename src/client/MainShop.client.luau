@@ -186,6 +186,23 @@ end
 
 applyLayout()
 
+-- BUG gasit la audit: nimic nu recalcula layout-ul daca fereastra se
+-- redimensiona CAT shop-ul era deschis -- ramanea "inghetat" pe layout-ul
+-- de la deschidere pana il inchideai si redeschideai. applyLayout() de mai
+-- sus ruleaza din nou oricum la fiecare deschidere (linia cu
+-- "if mainFrame.Visible then applyLayout()"), asta doar acopera si cazul
+-- "redimensionat CAT era deja deschis".
+do
+	local camera = workspace.CurrentCamera
+	if camera then
+		camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+			if mainFrame.Visible then
+				applyLayout()
+			end
+		end)
+	end
+end
+
 -- ================= Header =================
 
 local header = Instance.new("Frame")
@@ -798,8 +815,20 @@ player:GetAttributeChangedSignal("RequestOpenShopTab"):Connect(function()
 		return
 	end
 
-	mainFrame.Visible = true
-	selectTab(requestedTab)
+	-- BUG gasit la audit: seta mainFrame.Visible=true SI apela selectTab
+	-- direct -- dar handler-ul de GetPropertyChangedSignal("Visible") de mai
+	-- sus ORICUM apela selectTab(currentTab) cand Visible trece pe true,
+	-- deci tab-ul se construia de 2 ori la rand (clearScroll + rebuild),
+	-- degeaba. Daca shop-ul era DEJA deschis, .Visible nu se schimba (e deja
+	-- true), deci acel handler nu se declansa deloc -- de-asta selectTab
+	-- direct ramane necesar in ramura asta.
+	if mainFrame.Visible then
+		selectTab(requestedTab)
+	else
+		currentTab = requestedTab
+		mainFrame.Visible = true
+	end
+
 	player:SetAttribute("RequestOpenShopTab", "")
 end)
 

@@ -249,6 +249,15 @@ for _, giftEntry in ipairs(Economy.GiftPasses) do
 	end
 end
 
+-- Lock per-PurchaseId -- isPurchaseAlreadyProcessed face un GetAsync (yield),
+-- iar SetAsync-ul care marcheaza receipt-ul ca procesat vine abia DUPA ce
+-- handler-ul de grant ruleaza -- daca Roblox ar re-invoca ProcessReceipt
+-- pentru ACELASI PurchaseId cat primul apel e inca "in zbor" (teoretic
+-- posibil, ex. la un restart de server chiar in acel interval), ambele
+-- treceri ar vedea "not processed" si ar acorda de doua ori. Acelasi tipar
+-- de lock ca la ChestRewardManager.
+local receiptInProgress = {}
+
 MarketplaceService.ProcessReceipt = function(receiptInfo)
 	local player = Players:GetPlayerByUserId(receiptInfo.PlayerId)
 
@@ -258,15 +267,22 @@ MarketplaceService.ProcessReceipt = function(receiptInfo)
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 
+	if receiptInProgress[receiptInfo.PurchaseId] then
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	receiptInProgress[receiptInfo.PurchaseId] = true
+
 	if isPurchaseAlreadyProcessed(receiptInfo.PurchaseId) then
 		-- Deja acordat intr-o sesiune anterioara -- Roblox tot reincearca
 		-- receipt-ul pana confirmam din nou, dar NU mai acordam a doua oara.
+		receiptInProgress[receiptInfo.PurchaseId] = nil
 		return Enum.ProductPurchaseDecision.PurchaseGranted
 	end
 
 	local handler = productHandlers[receiptInfo.ProductId]
 	if not handler then
 		warn("PremiumPurchaseManager: ProductId necunoscut -- " .. tostring(receiptInfo.ProductId))
+		receiptInProgress[receiptInfo.PurchaseId] = nil
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 
@@ -275,10 +291,12 @@ MarketplaceService.ProcessReceipt = function(receiptInfo)
 		-- Fie handler-ul a aruncat eroare, fie n-a putut acorda efectiv
 		-- reward-ul (ex: leaderstats inca nu exista) -- NU marcam procesat,
 		-- ca Roblox sa reincerce receipt-ul mai tarziu in loc sa piarda plata.
+		receiptInProgress[receiptInfo.PurchaseId] = nil
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 
 	markPurchaseProcessed(receiptInfo.PurchaseId)
+	receiptInProgress[receiptInfo.PurchaseId] = nil
 	SFXServer.Play(player, "Purchase")
 
 	local spendOk = pcall(addDevProductSpend, player, receiptInfo.ProductId)

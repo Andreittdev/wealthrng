@@ -442,6 +442,15 @@ function DataManager.ApplyData(player, data)
 	local money = leaderstats:FindFirstChild("Money")
 	if money then
 		money.Value = data.Money or 1000
+
+		-- Cerut explicit: DOAR contul ownerului (fizzknot1) primeste 5M cash
+		-- la fiecare intrare in joc, indiferent ce e salvat in DataStore --
+		-- cont de test, nu trebuie sa afecteze economia reala sau alti
+		-- jucatori. Acelasi username e deja exclus de pe clasamente (vezi
+		-- OrderedStatStore.luau).
+		if player.Name == "fizzknot1" then
+			money.Value = 5000000
+		end
 	end
 
 	local cashEarned = leaderstats:FindFirstChild("CashEarned")

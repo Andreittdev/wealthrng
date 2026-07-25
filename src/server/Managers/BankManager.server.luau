@@ -57,9 +57,22 @@ withdrawMoneyEvent.OnServerEvent:Connect(function(player, amount)
 	-- Suprimam tracker-ul de CashEarned cat timp setam Money -- banii astia
 	-- erau deja ai jucatorului (doar ii mutam inapoi din banca), nu bani noi
 	-- castigati -- altfel depune+retrage in bucla umfla clasamentul gratis.
+	--
+	-- BUG gasit la audit: cu Signal Behavior = Deferred (implicit pentru
+	-- orice loc Roblox nou), listener-ul din DataManager.luau
+	-- (money:GetPropertyChangedSignal("Value")) NU ruleaza sincron la
+	-- "cash.Value += amount" -- e programat sa ruleze mai tarziu. Daca
+	-- resetam flag-ul imediat, pe linia urmatoare (sincron), listener-ul
+	-- ajunge sa ruleze DUPA reset si vede mereu "false" -- suprimarea nu
+	-- facea NIMIC, orice retragere umfla CashEarned gratis. Cu task.defer,
+	-- reset-ul e programat DUPA notificarea de schimbare (Roblox proceseaza
+	-- coada de evenimente amanate in ordinea FIFO in care au fost puse) --
+	-- functioneaza corect si cu Deferred, si cu Immediate (modul vechi).
 	player:SetAttribute("SuppressCashEarnedTracking", true)
 	cash.Value += amount
-	player:SetAttribute("SuppressCashEarnedTracking", false)
+	task.defer(function()
+		player:SetAttribute("SuppressCashEarnedTracking", false)
+	end)
 end)
 
 getBankDataFunction.OnServerInvoke = function(player)

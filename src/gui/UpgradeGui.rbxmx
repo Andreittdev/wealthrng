@@ -53,6 +53,27 @@ local function computeIsMobile()
 	return UserInputService.TouchEnabled or viewport.X < 700 or viewport.Y < 500
 end
 
+-- Asteptam un ViewportSize real inainte sa decidem isMobile -- altfel, la
+-- un ecran care raporteaza o rezolutie implicita/gresita la primul frame,
+-- layout-ul putea "inghetta" gresit pe desktop/mobil pentru toata sesiunea
+-- (acelasi bug gasit si reparat la EggShopGui/InventoryV2).
+local function waitForRealViewport()
+	local attempts = 0
+
+	while attempts < 30 do
+		local camera = workspace.CurrentCamera
+
+		if camera and camera.ViewportSize.Magnitude > 1 then
+			return
+		end
+
+		task.wait(0.1)
+		attempts += 1
+	end
+end
+
+waitForRealViewport()
+
 local isMobile = computeIsMobile()
 
 -- Butonul "STAND" din HUD a fost scos -- panoul se deschide/inchide singur

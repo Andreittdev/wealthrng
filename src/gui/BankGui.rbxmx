@@ -66,6 +66,25 @@ local function computeIsMobile()
 	return UserInputService.TouchEnabled or viewport.X < 700 or viewport.Y < 500
 end
 
+-- Asteptam un ViewportSize real inainte sa decidem isMobile (acelasi bug
+-- gasit si reparat la EggShopGui/InventoryV2/UpgradeGui).
+local function waitForRealViewport()
+	local attempts = 0
+
+	while attempts < 30 do
+		local camera = workspace.CurrentCamera
+
+		if camera and camera.ViewportSize.Magnitude > 1 then
+			return
+		end
+
+		task.wait(0.1)
+		attempts += 1
+	end
+end
+
+waitForRealViewport()
+
 local isMobile = computeIsMobile()
 
 local function applyLayout()

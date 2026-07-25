@@ -810,6 +810,15 @@ local function doHandleBuy(player, clientOffer)
 		if not autoSold then
 			showNotificationEvent:FireClient(player, "🎒 Inventory Full! Press + to upgrade.")
 			SFXServer.Play(player, "InventoryFull")
+			-- BUG gasit: TradeGui.rbxmx ascunde oferta OPTIMIST, imediat la
+			-- click pe Buy, inainte sa stie daca serverul a acceptat (vezi
+			-- buyButton.Activated in TradeGui.rbxmx). Daca refuzam aici fara
+			-- sa facem nimic, activeTrades ramane ocupat pentru totdeauna
+			-- (guard-ul din spawnNPCForPlayer), deci niciun NPC nou nu mai
+			-- apare. Tratam refuzul ca un skip automat -- NPC-ul pleaca,
+			-- vine urmatorul, exact ca la Skip manual.
+			removeNPC(player)
+			spawnNPCForPlayer(player, getSpawnDelay(player) + 2)
 			return
 		end
 	end
@@ -824,6 +833,10 @@ local function doHandleBuy(player, clientOffer)
 
 	if money.Value < buyPrice then
 		showNotificationEvent:FireClient(player, "❌ Not enough money")
+		-- Acelasi bug/fix ca mai sus -- tratam ca skip automat, ca NPC-ul sa
+		-- dispara si sa vina urmatorul, in loc sa ramana blocat definitiv.
+		removeNPC(player)
+		spawnNPCForPlayer(player, getSpawnDelay(player) + 2)
 		return
 	end
 

@@ -51,6 +51,30 @@ local function computeIsMobile()
 	return UserInputService.TouchEnabled or viewport.X < 700 or viewport.Y < 500
 end
 
+-- BUG gasit la audit: isMobile decidea aici, o singura data, daca se
+-- CONSTRUIESTE deloc UI-ul de mobil (MobileDetailsFrame + butoane, mai jos)
+-- -- nu doar cum arata. Pe un ecran care raporteaza o rezolutie implicita/
+-- gresita la primul frame (acelasi bug gasit si reparat la EggShopGui),
+-- UI-ul de mobil putea sa nu existe deloc daca telefonul/fereastra mica e
+-- detectata ca desktop la acel moment. Asteptam un ViewportSize real inainte
+-- sa decidem.
+local function waitForRealViewport()
+	local attempts = 0
+
+	while attempts < 30 do
+		local camera = workspace.CurrentCamera
+
+		if camera and camera.ViewportSize.Magnitude > 1 then
+			return
+		end
+
+		task.wait(0.1)
+		attempts += 1
+	end
+end
+
+waitForRealViewport()
+
 local isMobile = computeIsMobile()
 
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
