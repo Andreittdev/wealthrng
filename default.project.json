@@ -1,55 +1,19 @@
 {
-  "name": "buylowsellhigh",
+  "name": "wealthrng",
   "tree": {
     "$className": "DataModel",
 
     "ReplicatedStorage": {
-      "Modules": {
-        "$path": "src/shared/Modules"
-      }
+      "$path": "src/shared"
     },
 
     "ServerScriptService": {
-      "Server": {
-        "$path": "src/server"
-      }
+      "$path": "src/server"
     },
 
     "StarterPlayer": {
       "StarterPlayerScripts": {
-        "Client": {
-          "$path": "src/client"
-        }
-      }
-    },
-
-    "StarterGui": {
-      "EggShopGui": {
-        "$path": "src/gui/EggShopGui.rbxmx"
-      },
-      "StoreGui": {
-        "$path": "src/gui/StoreGui.rbxmx"
-      },
-      "TradeGui": {
-        "$path": "src/gui/TradeGui.rbxmx"
-      },
-      "InventoryV2": {
-        "$path": "src/gui/InventoryV2.rbxmx"
-      },
-      "MainHUD": {
-        "$path": "src/gui/MainHUD.rbxmx"
-      },
-      "UpgradeGui": {
-        "$path": "src/gui/UpgradeGui.rbxmx"
-      },
-      "ItemsGui": {
-        "$path": "src/gui/ItemsGui.rbxmx"
-      },
-      "BankGui": {
-        "$path": "src/gui/BankGui.rbxmx"
-      },
-      "MarketGui": {
-        "$path": "src/gui/MarketGui.rbxmx"
+        "$path": "src/client"
       }
     }
   }

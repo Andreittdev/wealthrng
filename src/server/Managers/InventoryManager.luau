@@ -1,85 +1,57 @@
+-- Pure table manipulation over a player's DataManager session -- no
+-- Instance-per-item, the client just gets a payload over InventoryUpdated.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
+
+local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
+local DataManager = require(ServerScriptService.Managers.DataManager)
+
 local InventoryManager = {}
 
-local nextItemId = 1
+function InventoryManager.AddItem(player: Player, itemId: string)
+	local session = DataManager.Get(player)
+	if not session then
+		return nil
+	end
 
-local function createString(parent, name, value)
-	local v = Instance.new("StringValue")
-	v.Name = name
-	v.Value = value or ""
-	v.Parent = parent
+	local uid = session.NextUid
+	session.NextUid += 1
+
+	local entry = { Uid = uid, ItemId = itemId }
+	table.insert(session.Inventory, entry)
+	return entry
 end
 
-local function createInt(parent, name, value)
-	local v = Instance.new("IntValue")
-	v.Name = name
-	v.Value = tonumber(value) or 0
-	v.Parent = parent
+function InventoryManager.RemoveItem(player: Player, uid: number)
+	local session = DataManager.Get(player)
+	if not session then
+		return nil
+	end
+
+	for index, entry in session.Inventory do
+		if entry.Uid == uid then
+			table.remove(session.Inventory, index)
+			return entry
+		end
+	end
+	return nil
 end
 
--- Marcheaza un ItemId ca "descoperit vreodata" -- ramane asa chiar daca
--- exemplarul respectiv e ulterior vandut, la fel ca markDiscovered din
--- PetManager.luau (folosit de Index ca sa stie ce iteme sa arate normal vs.
--- ca o umbra neagra/nedescoperit).
-local function markItemDiscovered(player, itemId)
-	if not itemId or itemId == "" then
-		return
+function InventoryManager.GetValue(player: Player): number
+	local session = DataManager.Get(player)
+	if not session then
+		return 0
 	end
 
-	local discovered = player:FindFirstChild("DiscoveredItems")
-	if not discovered then
-		discovered = Instance.new("Folder")
-		discovered.Name = "DiscoveredItems"
-		discovered.Parent = player
+	local total = 0
+	for _, entry in session.Inventory do
+		local item = ItemDatabase.GetItem(entry.ItemId)
+		if item then
+			total += item.Value
+		end
 	end
-
-	if discovered:FindFirstChild(itemId) then
-		return
-	end
-
-	local marker = Instance.new("BoolValue")
-	marker.Name = itemId
-	marker.Value = true
-	marker.Parent = discovered
-end
-
-function InventoryManager.AddItem(player, offer)
-	local inventory = player:FindFirstChild("Inventory")
-
-	if not inventory then
-		warn("Inventory not found")
-		return
-	end
-
-	-- Prefix "New" -- nextItemId e un contor GLOBAL, comun tuturor jucatorilor
-	-- de pe server, in timp ce iteme restaurate din DataStore sunt numite
-	-- "1".."N" (DataManager.luau:398, per jucator). Fara prefix, un jucator
-	-- care revine cu iteme restaurate putea primi un item nou cu acelasi nume
-	-- ca unul restaurat -- coliziune care facea unul din ele de negasit/
-	-- ne-vandabil (FindFirstChild gasea mereu primul).
-	local item = Instance.new("Folder")
-	item.Name = "New" .. tostring(nextItemId)
-	item.Parent = inventory
-
-	nextItemId += 1
-
-	createString(item, "ItemId", offer.ItemId)
-	createString(item, "ItemName", offer.ItemName or "Unknown Item")
-	createString(item, "Rarity", offer.Rarity or "Common")
-	createString(item, "Category", offer.Category or "Unknown")
-	createString(item, "Condition", offer.Condition or "Good")
-	createString(item, "Image", offer.Image or "")
-
-	createInt(item, "BuyPrice", offer.BuyPrice)
-	createInt(item, "BaseValue", offer.BaseValue or offer.BuyPrice)
-	createInt(item, "MinSell", offer.MinSell or offer.BuyPrice)
-	createInt(item, "MaxSell", offer.MaxSell or offer.BaseValue or offer.BuyPrice)
-	createInt(item, "PurchaseTime", offer.PurchaseTime or os.time())
-
-	markItemDiscovered(player, offer.ItemId)
-
-	print(player.Name .. " received " .. tostring(offer.ItemName))
-
-	return item
+	return total
 end
 
 return InventoryManager

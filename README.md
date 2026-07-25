@@ -1,1 +1,1 @@
-# buylowsellhigh
+# wealthrng

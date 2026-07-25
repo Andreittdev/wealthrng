@@ -1,65 +1,56 @@
-local ItemDatabase = {}
+-- Canonical item schema, one shape for every rarity tier:
+-- { Id, Name, Rarity, Value, Image }
+-- Placeholder items/values -- reskin and rebalance freely, the rest of the
+-- system only depends on the shape, not the specific entries below.
 
-ItemDatabase.Items = {}
-
-local categoryModules = {
-	"Clothing",
-	"Shoes",
-	"Electronics",
-	"Luxury",
-	"Collectibles"
+export type Item = {
+	Id: string,
+	Name: string,
+	Rarity: string,
+	Value: number,
+	Image: string,
 }
 
-for _, moduleName in ipairs(categoryModules) do
-	local module = script.Parent:FindFirstChild(moduleName)
+local ItemDatabase = {}
 
-	if module then
-		local items = require(module)
+local items: { [string]: Item } = {
+	-- Common
+	Watch = { Id = "Watch", Name = "Wrist Watch", Rarity = "Common", Value = 25, Image = "rbxassetid://0" },
+	Sneakers = { Id = "Sneakers", Name = "Sneakers", Rarity = "Common", Value = 40, Image = "rbxassetid://0" },
+	Bike = { Id = "Bike", Name = "Bicycle", Rarity = "Common", Value = 60, Image = "rbxassetid://0" },
 
-		for itemId, item in pairs(items) do
-			item.Id = item.Id or itemId
-			item.ItemId = item.ItemId or item.Id
-			item.Name = item.Name or item.ItemName
-			item.ItemName = item.ItemName or item.Name
-			item.Category = item.Category or moduleName
-			item.Icon = item.Icon or "rbxassetid://0"
+	-- Rare
+	GoldChain = { Id = "GoldChain", Name = "Gold Chain", Rarity = "Rare", Value = 500, Image = "rbxassetid://0" },
+	DesignerBag = { Id = "DesignerBag", Name = "Designer Bag", Rarity = "Rare", Value = 750, Image = "rbxassetid://0" },
 
-			ItemDatabase.Items[itemId] = item
-		end
-	else
-		warn("Missing item category module:", moduleName)
-	end
+	-- Epic
+	DiamondRing = { Id = "DiamondRing", Name = "Diamond Ring", Rarity = "Epic", Value = 5000, Image = "rbxassetid://0" },
+	SportsCar = { Id = "SportsCar", Name = "Sports Car", Rarity = "Epic", Value = 8500, Image = "rbxassetid://0" },
+
+	-- Legendary
+	Yacht = { Id = "Yacht", Name = "Yacht", Rarity = "Legendary", Value = 75000, Image = "rbxassetid://0" },
+	PrivateJet = { Id = "PrivateJet", Name = "Private Jet", Rarity = "Legendary", Value = 150000, Image = "rbxassetid://0" },
+
+	-- Luxury
+	Mansion = { Id = "Mansion", Name = "Mansion", Rarity = "Luxury", Value = 1000000, Image = "rbxassetid://0" },
+	Bugatti = { Id = "Bugatti", Name = "Bugatti", Rarity = "Luxury", Value = 2500000, Image = "rbxassetid://0" },
+}
+
+function ItemDatabase.GetItem(id: string): Item?
+	return items[id]
 end
 
-function ItemDatabase.GetItem(itemId)
-	return ItemDatabase.Items[itemId]
+function ItemDatabase.GetAllItems(): { [string]: Item }
+	return items
 end
 
-function ItemDatabase.GetAllItems()
-	return ItemDatabase.Items
-end
-
-function ItemDatabase.GetItemsByCategory(category)
+function ItemDatabase.GetItemsByRarity(rarity: string): { Item }
 	local result = {}
-
-	for _, item in pairs(ItemDatabase.Items) do
-		if item.Category == category then
-			table.insert(result, item)
-		end
-	end
-
-	return result
-end
-
-function ItemDatabase.GetItemsByRarity(rarity)
-	local result = {}
-
-	for _, item in pairs(ItemDatabase.Items) do
+	for _, item in items do
 		if item.Rarity == rarity then
 			table.insert(result, item)
 		end
 	end
-
 	return result
 end
 
