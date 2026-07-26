@@ -16,6 +16,7 @@ local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManag
 
 local sellItem = RemotesBootstrap:WaitForChild("SellItem")
 local inventoryUpdated = RemotesBootstrap:WaitForChild("InventoryUpdated")
+local equippedItemsUpdated = RemotesBootstrap:WaitForChild("EquippedItemsUpdated")
 
 sellItem.OnServerEvent:Connect(function(player: Player, uid: number)
 	if typeof(uid) ~= "number" then
@@ -43,6 +44,10 @@ sellItem.OnServerEvent:Connect(function(player: Player, uid: number)
 	end
 
 	inventoryUpdated:FireClient(player, session.Inventory)
+	-- Selling an equipped item silently drops it from EquippedItemUids too
+	-- (InventoryManager.RemoveItem's cleanup) -- keep the client's equipped
+	-- set in sync, not just the inventory list.
+	equippedItemsUpdated:FireClient(player, session.EquippedItemUids)
 	StatsManager.Recompute(player)
 	LeaderboardManager.MarkDirty(player)
 end)

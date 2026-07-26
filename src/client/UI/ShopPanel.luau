@@ -17,7 +17,7 @@ local ShopPanel = {}
 function ShopPanel.Create(screenGui: ScreenGui)
 	-- Anchored near the top (not dead-center) so it doesn't collide with
 	-- RollPanel's bottom-anchored reveal window/button on shorter viewports.
-	local panel = Theme.Panel(screenGui, UDim2.new(0, 360, 0, 220), UDim2.new(0.5, -180, 0, 60))
+	local panel = Theme.ResponsivePanel(screenGui, UDim2.new(0, 360, 0, 220), UDim2.new(0.5, -180, 0, 60))
 	panel.Visible = false
 	panel.ZIndex = 10
 

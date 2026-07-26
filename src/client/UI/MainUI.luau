@@ -28,6 +28,8 @@ local ShopPanel = require(script.Parent.ShopPanel)
 local NetWorthPanel = require(script.Parent.NetWorthPanel)
 local SettingsPanel = require(script.Parent.SettingsPanel)
 local ProfilePanel = require(script.Parent.ProfilePanel)
+local TradePanel = require(script.Parent.TradePanel)
+local CatalogPanel = require(script.Parent.CatalogPanel)
 local Sidebar = require(script.Parent.Sidebar)
 
 local MainUI = {}
@@ -57,6 +59,8 @@ function MainUI.Init()
 	local netWorthHandle = NetWorthPanel.Create(screenGui, remotesFolder)
 	local settingsHandle = SettingsPanel.Create(screenGui)
 	local profileHandle = ProfilePanel.Create(screenGui)
+	local tradeHandle = TradePanel.Create(screenGui, remotesFolder)
+	local catalogHandle = CatalogPanel.Create(screenGui)
 
 	Sidebar.Create(screenGui, {
 		Inventory = inventoryHandle,
@@ -64,6 +68,7 @@ function MainUI.Init()
 		Shop = shopHandle,
 		Settings = settingsHandle,
 		Profile = profileHandle,
+		Trade = tradeHandle,
 	})
 
 	local modalFrames = {
@@ -73,6 +78,9 @@ function MainUI.Init()
 		netWorthHandle.Frame,
 		settingsHandle.Frame,
 		profileHandle.Frame,
+		tradeHandle.Frame,
+		tradeHandle.TradeWindowFrame,
+		catalogHandle.Frame,
 	}
 
 	local function updateRollHud()

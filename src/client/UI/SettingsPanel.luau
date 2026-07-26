@@ -5,7 +5,7 @@ local Theme = require(script.Parent.Theme)
 local SettingsPanel = {}
 
 function SettingsPanel.Create(screenGui: ScreenGui)
-	local panel = Theme.Panel(screenGui, UDim2.new(0, 320, 0, 180), UDim2.new(0.5, -160, 0, 60))
+	local panel = Theme.ResponsivePanel(screenGui, UDim2.new(0, 320, 0, 180), UDim2.new(0.5, -160, 0, 60))
 	panel.Visible = false
 	panel.ZIndex = 10
 

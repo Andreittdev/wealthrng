@@ -4,6 +4,9 @@
 -- glance without opening a menu, so it's not gated behind any panel/modal
 -- and never hides when a modal opens (unlike RollPanel's HUD).
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
 local Theme = require(script.Parent.Theme)
 
 local CashHud = {}
@@ -29,7 +32,7 @@ function CashHud.Create(screenGui: ScreenGui)
 	handle.Frame = pill
 
 	function handle.Update(cash: number)
-		label.Text = string.format("\u{1F4B5} $%d", cash)
+		label.Text = "\u{1F4B5} " .. NumberFormat.FormatCash(cash)
 	end
 
 	return handle

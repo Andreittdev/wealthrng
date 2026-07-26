@@ -33,6 +33,9 @@ local PLAZA_DIAMETER = 100
 local PLAZA_HEIGHT = 3
 local RIM_DIAMETER = 110
 local RIM_HEIGHT = 2
+local PLAZA_TILE_SIZE = 10
+local PLAZA_TILE_COLOR_A = Color3.fromRGB(190, 190, 200)
+local PLAZA_TILE_COLOR_B = Color3.fromRGB(162, 162, 175)
 
 local PATH_WIDTH = 16
 local PATH_LENGTH = 100
@@ -99,24 +102,34 @@ local POTION_STAND_POSITION = Vector2.new(30.08, 35.90)
 local POTION_STAND_ROOF_COLOR = Color3.fromRGB(190, 60, 180)
 local POTION_STAND_LABEL = "POTIONS"
 
+-- Read-only Index/Catalog stand, right next to the Shop kiosk -- browses
+-- every rolled Item/Asset/Investment that exists in the game (no remotes,
+-- pure shared-database lookups, see CatalogPanel.luau) rather than trying
+-- to physically render 100+ individual items with no models/images.
+local INDEX_STAND_POSITION = Vector2.new(STAND_POSITION.X + 11, STAND_POSITION.Y + 4)
+local INDEX_STAND_ROOF_COLOR = Color3.fromRGB(80, 170, 190)
+local INDEX_STAND_LABEL = "INDEX"
+
 -- 3 boards in a row, centered on this XZ point, all facing the plaza
 -- center -- LEADERBOARD_SPACING studs apart along the row.
 local LEADERBOARD_CENTER = Vector2.new(-36.95, 24.42)
 local LEADERBOARD_SPACING = 6
 local LEADERBOARD_LABELS = { "TOP CASH", "TOP NET WORTH", "TOP ROLLS" }
 
-local TREE_COUNT = 45
+-- Trees sit on a fixed, centered grid (not scattered randomly) so the
+-- forest reads as deliberately planted rows, not clutter -- isBlocked still
+-- skips any grid point that lands on the plaza or a path.
+local TREE_GRID_SPACING = 42
 local TREE_EXCLUSION_RADIUS = 57
 local GRASS_PLACEMENT_BOUND = 130
-local TREE_PLACEMENT_ATTEMPTS = 20
 
 -- Puffy blocky clouds (a handful of overlapping Balls per cloud, same
 -- "chunky primitive" trick as the trees) floating high above the map, plus
--- brighter/more saturated Lighting -- the biggest single lever for a
--- cartoon look without needing custom skybox textures we don't have.
-local CLOUD_COUNT = 18
+-- a mild Lighting boost -- toned down from the initial pass (which read as
+-- too cartoonish) to just a light "pop", not full toon-shaded.
+local CLOUD_COUNT = 10
 local CLOUD_HEIGHT = 160
-local CLOUD_SPREAD = 140
+local CLOUD_SPREAD = 160
 local CLOUD_COLOR = Color3.fromRGB(255, 255, 255)
 
 local random = Random.new()
@@ -221,15 +234,33 @@ local function buildPlaza(mapFolder: Folder)
 	)
 	rim.Parent = mapFolder
 
-	local floor = createCylinder(
-		"PlazaFloor",
-		PLAZA_DIAMETER,
-		PLAZA_HEIGHT,
-		Vector3.new(0, 0, 0),
-		Color3.fromRGB(175, 175, 185),
-		Enum.Material.Cobblestone
-	)
-	floor.Parent = mapFolder
+	-- Checkerboard of square tiles clipped to the plaza's circular footprint
+	-- -- same "Bloxy" blocky-square trick buildGround uses for the grass --
+	-- instead of one plain cylinder, so the stone floor reads as chunky
+	-- square tiles too.
+	local radius = PLAZA_DIAMETER / 2
+	local tileCount = math.ceil((PLAZA_DIAMETER + PLAZA_TILE_SIZE) / PLAZA_TILE_SIZE)
+	local halfSpan = (tileCount * PLAZA_TILE_SIZE) / 2
+
+	for row = 0, tileCount - 1 do
+		for col = 0, tileCount - 1 do
+			local x = -halfSpan + PLAZA_TILE_SIZE * col + PLAZA_TILE_SIZE / 2
+			local z = -halfSpan + PLAZA_TILE_SIZE * row + PLAZA_TILE_SIZE / 2
+			if math.sqrt(x * x + z * z) > radius then
+				continue
+			end
+
+			local isEven = (row + col) % 2 == 0
+			local tile = createBlock(
+				"PlazaFloorTile",
+				Vector3.new(PLAZA_TILE_SIZE, PLAZA_HEIGHT, PLAZA_TILE_SIZE),
+				Vector3.new(x, 0, z),
+				isEven and PLAZA_TILE_COLOR_A or PLAZA_TILE_COLOR_B,
+				Enum.Material.Cobblestone
+			)
+			tile.Parent = mapFolder
+		end
+	end
 end
 
 local function buildPaths(mapFolder: Folder)
@@ -460,25 +491,32 @@ end
 local LEADERBOARD_WIDTH = 5
 local LEADERBOARD_HEIGHT = 6
 local LEADERBOARD_DEPTH = 0.6
-local LEADERBOARD_POLE_HEIGHT = 2
+local LEADERBOARD_STAND_HEIGHT = 2
 local LEADERBOARD_HEADER_HEIGHT = 1
 local LEADERBOARD_HEADER_COLORS = { Color3.fromRGB(60, 190, 100), Color3.fromRGB(85, 140, 235), Color3.fromRGB(200, 90, 220) }
 local LEADERBOARD_ROW_COUNT = 8 -- keep in sync with LeaderboardManager's TOP_N
+local LEADERBOARD_BASE_HEIGHT = 1.2
+local LEADERBOARD_FRAME_MARGIN = 0.5
 
--- Plain scoreboard, like a standard simulator-game leaderboard: a pole, a
--- flat dark screen, and a colored header strip with the title -- no gold,
--- no ornamentation. Still faces the plaza center (CFrame.lookAt).
+-- Premium trophy-stand look: a wide gold pedestal, two gold side pillars,
+-- and a gold backing frame peeking out around the dark screen -- the same
+-- FOUNTAIN_GOLD used on the fountain/shop-stand finials, so the boards
+-- read as part of the same "wealth" aesthetic instead of a plain
+-- scoreboard. Still faces the plaza center (CFrame.lookAt).
 local function buildLeaderboard(mapFolder: Folder, offsetIndex: number, labelText: string, index: number)
 	local clusterCF = CFrame.lookAt(Vector3.new(LEADERBOARD_CENTER.X, PLAZA_TOP_Y, LEADERBOARD_CENTER.Y), Vector3.new(0, PLAZA_TOP_Y, 0))
 	local boardCF = clusterCF * CFrame.new(offsetIndex * LEADERBOARD_SPACING, 0, 0)
 
-	local function place(name: string, size: Vector3, localOffset: Vector3, color: Color3, material: Enum.Material?): Part
+	local function place(name: string, size: Vector3, localOffset: Vector3, color: Color3, material: Enum.Material?, shape: Enum.PartType?): Part
 		local part = Instance.new("Part")
 		part.Name = "Leaderboard" .. index .. "_" .. name
 		part.Size = size
 		part.CFrame = boardCF * CFrame.new(localOffset)
 		part.Color = color
 		part.Material = material or Enum.Material.SmoothPlastic
+		if shape then
+			part.Shape = shape
+		end
 		part.Anchored = true
 		part.TopSurface = Enum.SurfaceType.Smooth
 		part.BottomSurface = Enum.SurfaceType.Smooth
@@ -486,10 +524,30 @@ local function buildLeaderboard(mapFolder: Folder, offsetIndex: number, labelTex
 		return part
 	end
 
-	local poleCenterY = LEADERBOARD_POLE_HEIGHT / 2
-	place("Pole", Vector3.new(1, LEADERBOARD_POLE_HEIGHT, 1), Vector3.new(0, poleCenterY, 0), Color3.fromRGB(90, 90, 95), Enum.Material.Metal)
+	local boardCenterY = LEADERBOARD_STAND_HEIGHT + LEADERBOARD_HEIGHT / 2
+	local boardTopY = boardCenterY + LEADERBOARD_HEIGHT / 2
 
-	local boardCenterY = LEADERBOARD_POLE_HEIGHT + LEADERBOARD_HEIGHT / 2
+	-- Wide gold pedestal base (replaces the old bare pole's footing).
+	place("Base", Vector3.new(LEADERBOARD_WIDTH + 1.5, LEADERBOARD_BASE_HEIGHT, LEADERBOARD_DEPTH + 1.2), Vector3.new(0, LEADERBOARD_BASE_HEIGHT / 2, 0), FOUNTAIN_GOLD, Enum.Material.Metal)
+
+	-- Two gold side pillars, base top to board top -- reads as a trophy
+	-- stand holding the screen up, not a single bare pole.
+	local pillarHeight = boardTopY - LEADERBOARD_BASE_HEIGHT
+	local pillarCenterY = LEADERBOARD_BASE_HEIGHT + pillarHeight / 2
+	local pillarX = LEADERBOARD_WIDTH / 2 + 0.35
+	place("PillarLeft", Vector3.new(0.5, pillarHeight, 0.5), Vector3.new(-pillarX, pillarCenterY, 0), FOUNTAIN_GOLD, Enum.Material.Metal)
+	place("PillarRight", Vector3.new(0.5, pillarHeight, 0.5), Vector3.new(pillarX, pillarCenterY, 0), FOUNTAIN_GOLD, Enum.Material.Metal)
+
+	-- Gold backing frame, set back and larger than the screen so it peeks
+	-- out as a border all the way around.
+	place(
+		"Frame",
+		Vector3.new(LEADERBOARD_WIDTH + LEADERBOARD_FRAME_MARGIN * 2, LEADERBOARD_HEIGHT + LEADERBOARD_FRAME_MARGIN * 2, LEADERBOARD_DEPTH * 0.6),
+		Vector3.new(0, boardCenterY, LEADERBOARD_DEPTH * 0.35),
+		FOUNTAIN_GOLD,
+		Enum.Material.Metal
+	)
+
 	local board = place("Board", Vector3.new(LEADERBOARD_WIDTH, LEADERBOARD_HEIGHT, LEADERBOARD_DEPTH), Vector3.new(0, boardCenterY, 0), Color3.fromRGB(25, 25, 30), Enum.Material.SmoothPlastic)
 
 	-- Rank rows, painted onto the board's front face. LeaderboardManager finds
@@ -562,43 +620,46 @@ local function buildTrees(mapFolder: Folder)
 	treesFolder.Name = "Trees"
 	treesFolder.Parent = mapFolder
 
-	local placed = 0
-	local index = 0
-	while placed < TREE_COUNT and index < TREE_COUNT * TREE_PLACEMENT_ATTEMPTS do
-		index += 1
+	-- Centered, symmetric grid (not an arbitrary corner-anchored one) so the
+	-- rows line up evenly on both sides of the plaza.
+	local steps = math.floor((2 * GRASS_PLACEMENT_BOUND) / TREE_GRID_SPACING)
+	local gridStart = -steps / 2 * TREE_GRID_SPACING
 
-		local x = random:NextNumber(-GRASS_PLACEMENT_BOUND, GRASS_PLACEMENT_BOUND)
-		local z = random:NextNumber(-GRASS_PLACEMENT_BOUND, GRASS_PLACEMENT_BOUND)
-		if isBlocked(x, z) then
-			continue
+	for row = 0, steps do
+		for col = 0, steps do
+			local x = gridStart + row * TREE_GRID_SPACING
+			local z = gridStart + col * TREE_GRID_SPACING
+			if isBlocked(x, z) then
+				continue
+			end
+
+			-- Position is strictly on-grid; only size gets slight variation
+			-- so the rows still read as uniform, not identical toy soldiers.
+			local scale = random:NextNumber(0.9, 1.1)
+			local trunkHeight = 4.5 * scale
+			local foliageDiameter = 9 * scale
+
+			local trunk = createCylinder(
+				"TreeTrunk",
+				3 * scale,
+				trunkHeight,
+				Vector3.new(x, trunkHeight / 2, z),
+				Color3.fromRGB(110, 75, 45),
+				Enum.Material.Wood
+			)
+			trunk.Parent = treesFolder
+
+			local foliage = Instance.new("Part")
+			foliage.Name = "TreeFoliage"
+			foliage.Shape = Enum.PartType.Ball
+			foliage.Size = Vector3.new(foliageDiameter, foliageDiameter, foliageDiameter)
+			foliage.CFrame = CFrame.new(x, trunkHeight + foliageDiameter / 2.5, z)
+			foliage.Color = Color3.fromRGB(45, 150, 60)
+			foliage.Material = Enum.Material.Grass
+			foliage.Anchored = true
+			foliage.CanCollide = false
+			foliage.Parent = treesFolder
 		end
-
-		local scale = random:NextNumber(0.8, 1.3)
-		local trunkHeight = 4.5 * scale
-		local foliageDiameter = 9 * scale
-
-		local trunk = createCylinder(
-			"TreeTrunk",
-			3 * scale,
-			trunkHeight,
-			Vector3.new(x, trunkHeight / 2, z),
-			Color3.fromRGB(110, 75, 45),
-			Enum.Material.Wood
-		)
-		trunk.Parent = treesFolder
-
-		local foliage = Instance.new("Part")
-		foliage.Name = "TreeFoliage"
-		foliage.Shape = Enum.PartType.Ball
-		foliage.Size = Vector3.new(foliageDiameter, foliageDiameter, foliageDiameter)
-		foliage.CFrame = CFrame.new(x, trunkHeight + foliageDiameter / 2.5, z)
-		foliage.Color = Color3.fromRGB(45, 150, 60)
-		foliage.Material = Enum.Material.Grass
-		foliage.Anchored = true
-		foliage.CanCollide = false
-		foliage.Parent = treesFolder
-
-		placed += 1
 	end
 end
 
@@ -637,10 +698,10 @@ end
 -- Roblox's default look is fairly flat/realistic; this is the cheap,
 -- asset-free way to push it toward a cartoon "pop" instead.
 local function applyCartoonLighting()
-	Lighting.Brightness = 3
+	Lighting.Brightness = 2.4
 	Lighting.ClockTime = 14
-	Lighting.Ambient = Color3.fromRGB(150, 150, 170)
-	Lighting.OutdoorAmbient = Color3.fromRGB(190, 190, 210)
+	Lighting.Ambient = Color3.fromRGB(140, 140, 150)
+	Lighting.OutdoorAmbient = Color3.fromRGB(175, 175, 190)
 	Lighting.FogEnd = 100000
 
 	local colorCorrection = Lighting:FindFirstChild("WealthRNG_ColorCorrection")
@@ -649,9 +710,9 @@ local function applyCartoonLighting()
 		colorCorrection.Name = "WealthRNG_ColorCorrection"
 		colorCorrection.Parent = Lighting
 	end
-	colorCorrection.Saturation = 0.3
-	colorCorrection.Contrast = 0.15
-	colorCorrection.Brightness = 0.05
+	colorCorrection.Saturation = 0.15
+	colorCorrection.Contrast = 0.08
+	colorCorrection.Brightness = 0.02
 end
 
 function MapBuilder.Build()
@@ -689,6 +750,7 @@ function MapBuilder.Build()
 
 	buildStand(mapFolder, STAND_POSITION, 1, STAND_ROOF_COLOR, STAND_LABEL, "ShopPrompt")
 	buildStand(mapFolder, POTION_STAND_POSITION, 2, POTION_STAND_ROOF_COLOR, POTION_STAND_LABEL, "PotionShopPrompt")
+	buildStand(mapFolder, INDEX_STAND_POSITION, 3, INDEX_STAND_ROOF_COLOR, INDEX_STAND_LABEL, "CatalogPrompt")
 
 	for index, labelText in LEADERBOARD_LABELS do
 		local offsetIndex = index - 2 -- 3 boards -> -1, 0, 1

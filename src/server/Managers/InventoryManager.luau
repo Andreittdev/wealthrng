@@ -32,10 +32,70 @@ function InventoryManager.RemoveItem(player: Player, uid: number)
 	for index, entry in session.Inventory do
 		if entry.Uid == uid then
 			table.remove(session.Inventory, index)
+
+			-- A sold item can't stay "equipped" earning income it no
+			-- longer holds -- drop it from the equipped set too.
+			local equippedIndex = table.find(session.EquippedItemUids, uid)
+			if equippedIndex then
+				table.remove(session.EquippedItemUids, equippedIndex)
+			end
+
 			return entry
 		end
 	end
 	return nil
+end
+
+-- Equip/Unequip pick which held items actively earn IncomePerSecond (see
+-- ItemDatabase.MaxEquipped) -- pure state mutation only, no StatsManager/
+-- remote calls here, so this stays a leaf callable from RollManager/
+-- SellManager without risking a circular require; EquipManager.luau owns
+-- the remote wiring + StatsManager.Recompute side effects.
+function InventoryManager.Equip(player: Player, uid: number): boolean
+	local session = DataManager.Get(player)
+	if not session then
+		return false
+	end
+
+	local owned = false
+	for _, entry in session.Inventory do
+		if entry.Uid == uid then
+			owned = true
+			break
+		end
+	end
+	if not owned then
+		return false
+	end
+
+	if table.find(session.EquippedItemUids, uid) then
+		return false
+	end
+
+	-- Swap out the oldest equipped item(s) to make room instead of
+	-- requiring a manual Unequip first -- with MaxEquipped at 1, picking a
+	-- new item just replaces whatever was equipped before.
+	while #session.EquippedItemUids >= ItemDatabase.MaxEquipped do
+		table.remove(session.EquippedItemUids, 1)
+	end
+
+	table.insert(session.EquippedItemUids, uid)
+	return true
+end
+
+function InventoryManager.Unequip(player: Player, uid: number): boolean
+	local session = DataManager.Get(player)
+	if not session then
+		return false
+	end
+
+	local index = table.find(session.EquippedItemUids, uid)
+	if not index then
+		return false
+	end
+
+	table.remove(session.EquippedItemUids, index)
+	return true
 end
 
 function InventoryManager.GetValue(player: Player): number

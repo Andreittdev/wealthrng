@@ -1,8 +1,10 @@
--- Passive income: every TICK_INTERVAL_SECONDS, each online player earns
--- cash from whatever's currently sitting unsold in their inventory (rate
--- math lives in the shared IncomeConfig so StatsManager can display the
--- same number without requiring this module -- see IncomeConfig's header
--- for why). Online-only -- no offline/away-time accrual in this pass.
+-- Passive income, two independent timers (see IncomeConfig's header for
+-- why they're not merged): items tick continuously every
+-- ITEMS_TICK_INTERVAL_SECONDS, Assets pay out a lump sum once every
+-- ASSETS_PAYOUT_INTERVAL_SECONDS ("collect rent"). Rate math lives in the
+-- shared IncomeConfig so StatsManager can display the same numbers without
+-- requiring this module -- see IncomeConfig's header for why.
+-- Online-only -- no offline/away-time accrual in this pass.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -18,17 +20,35 @@ local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManag
 
 local IncomeManager = {}
 
-local TICK_INTERVAL_SECONDS = 3
+local ITEMS_TICK_INTERVAL_SECONDS = 3
+local ASSETS_PAYOUT_INTERVAL_SECONDS = 60
 
 task.spawn(function()
 	while true do
-		task.wait(TICK_INTERVAL_SECONDS)
+		task.wait(ITEMS_TICK_INTERVAL_SECONDS)
 		for _, player in Players:GetPlayers() do
 			local session = DataManager.Get(player)
 			if session then
-				local rate = IncomeConfig.ComputeRate(session, VIPManager.IsVIP(player), VIPConfig.SellBonusPercent, PotionConfig.GetCashBonusPercent(session, os.time()))
+				local rate = IncomeConfig.ComputeItemsRatePerSecond(session, VIPManager.IsVIP(player), VIPConfig.SellBonusPercent, PotionConfig.GetCashBonusPercent(session, os.time()))
 				if rate > 0 then
-					session.Cash += math.floor(rate * TICK_INTERVAL_SECONDS)
+					session.Cash += math.floor(rate * ITEMS_TICK_INTERVAL_SECONDS)
+					StatsManager.Recompute(player)
+					LeaderboardManager.MarkDirty(player)
+				end
+			end
+		end
+	end
+end)
+
+task.spawn(function()
+	while true do
+		task.wait(ASSETS_PAYOUT_INTERVAL_SECONDS)
+		for _, player in Players:GetPlayers() do
+			local session = DataManager.Get(player)
+			if session then
+				local payout = IncomeConfig.ComputeAssetsRatePerMinute(session, VIPManager.IsVIP(player), VIPConfig.SellBonusPercent, PotionConfig.GetCashBonusPercent(session, os.time()))
+				if payout > 0 then
+					session.Cash += math.floor(payout)
 					StatsManager.Recompute(player)
 					LeaderboardManager.MarkDirty(player)
 				end

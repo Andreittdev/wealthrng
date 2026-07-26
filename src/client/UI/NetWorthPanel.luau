@@ -13,6 +13,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
 local AssetDatabase = require(ReplicatedStorage.Modules.AssetDatabase)
 local InvestmentDatabase = require(ReplicatedStorage.Modules.InvestmentDatabase)
+local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
 local Theme = require(script.Parent.Theme)
 
 local NetWorthPanel = {}
@@ -20,7 +21,7 @@ local NetWorthPanel = {}
 function NetWorthPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	-- Anchored near the top (not dead-center) so it doesn't collide with
 	-- RollPanel's bottom-anchored reveal window/button on shorter viewports.
-	local panel = Theme.Panel(screenGui, UDim2.new(0, 380, 0, 380), UDim2.new(0.5, -190, 0, 60))
+	local panel = Theme.ResponsivePanel(screenGui, UDim2.new(0, 380, 0, 380), UDim2.new(0.5, -190, 0, 60))
 	panel.Visible = false
 	panel.ZIndex = 10
 
@@ -69,7 +70,7 @@ function NetWorthPanel.Create(screenGui: ScreenGui, remotes: Folder)
 			end
 		end
 
-		addRow(string.format("Cash: $%d", currentCash), Theme.Colors.Success)
+		addRow("Cash: " .. NumberFormat.FormatCash(currentCash), Theme.Colors.Success)
 
 		local itemsValue = 0
 		for _, entry in currentInventory do
@@ -78,7 +79,7 @@ function NetWorthPanel.Create(screenGui: ScreenGui, remotes: Folder)
 				itemsValue += item.Value
 			end
 		end
-		addRow(string.format("Rolled Items: $%d (%d owned)", itemsValue, #currentInventory))
+		addRow(string.format("Rolled Items: %s (%d owned)", NumberFormat.FormatCash(itemsValue), #currentInventory))
 
 		addRow("Assets", Theme.Colors.Accent, true)
 		local anyAssetOwned = false
@@ -90,14 +91,14 @@ function NetWorthPanel.Create(screenGui: ScreenGui, remotes: Folder)
 					anyAssetOwned = true
 					assetsTotal += asset.Price
 					local equipped = table.find(equippedAssets, id) ~= nil
-					addRow(string.format("  %s: $%d%s", asset.Name, asset.Price, equipped and " (equipped)" or ""))
+					addRow(string.format("  %s: %s%s", asset.Name, NumberFormat.FormatCash(asset.Price), equipped and " (equipped)" or ""))
 				end
 			end
 		end
 		if not anyAssetOwned then
 			addRow("None yet")
 		else
-			addRow(string.format("Assets Total: $%d", assetsTotal))
+			addRow("Assets Total: " .. NumberFormat.FormatCash(assetsTotal))
 		end
 
 		addRow("Investments", Theme.Colors.Accent, true)
@@ -111,13 +112,13 @@ function NetWorthPanel.Create(screenGui: ScreenGui, remotes: Folder)
 				if investment then
 					local value = InvestmentDatabase.ComputeCurrentValue(entry.Id, entry.PurchasedAt, now)
 					investmentsTotal += value
-					addRow(string.format("  %s: $%d", investment.Name, value))
+					addRow(string.format("  %s: %s", investment.Name, NumberFormat.FormatCash(value)))
 				end
 			end
-			addRow(string.format("Investments Total: $%d", investmentsTotal))
+			addRow("Investments Total: " .. NumberFormat.FormatCash(investmentsTotal))
 		end
 
-		addRow(string.format("Net Worth: $%d", currentNetWorth), Theme.Colors.Accent, true)
+		addRow("Net Worth: " .. NumberFormat.FormatCash(currentNetWorth), Theme.Colors.Accent, true)
 	end
 
 	local handle = {}

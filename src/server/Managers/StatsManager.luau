@@ -1,4 +1,5 @@
--- Recomputes Cash / NetWorth / Title / IsVIP / IncomePerSecond after any
+-- Recomputes Cash / NetWorth / Title / IsVIP / ItemsIncomePerSecond /
+-- AssetsIncomePerMinute after any
 -- mutation (roll, sell, VIP purchase, income tick, asset/investment trade)
 -- and pushes to the client + leaderstats only when something actually
 -- changed. Reads AssetDatabase/InvestmentDatabase directly (pure shared
@@ -25,7 +26,7 @@ local statsUpdated = RemotesBootstrap:WaitForChild("StatsUpdated")
 
 local StatsManager = {}
 
-local lastStats: { [Player]: { Cash: number, NetWorth: number, Title: string, IsVIP: boolean, IncomePerSecond: number } } = {}
+local lastStats: { [Player]: { Cash: number, NetWorth: number, Title: string, IsVIP: boolean, ItemsIncomePerSecond: number, AssetsIncomePerMinute: number } } = {}
 
 local function getAssetsValue(session): number
 	local total = 0
@@ -49,16 +50,29 @@ local function getInvestmentValue(session): number
 	return total
 end
 
+-- Exposed so other managers (e.g. TradeManager's Net Worth gate) can read
+-- a fresh Net Worth without duplicating this formula -- read-only, doesn't
+-- push anything or touch lastStats, unlike Recompute.
+function StatsManager.ComputeNetWorth(player: Player): number
+	local session = DataManager.Get(player)
+	if not session then
+		return 0
+	end
+	return session.Cash + InventoryManager.GetValue(player) + getAssetsValue(session) + getInvestmentValue(session)
+end
+
 function StatsManager.Recompute(player: Player)
 	local session = DataManager.Get(player)
 	if not session then
 		return
 	end
 
-	local netWorth = session.Cash + InventoryManager.GetValue(player) + getAssetsValue(session) + getInvestmentValue(session)
+	local netWorth = StatsManager.ComputeNetWorth(player)
 	local title = TitleConfig.GetTitleForNetWorth(netWorth)
 	local isVIP = VIPManager.IsVIP(player)
-	local incomePerSecond = IncomeConfig.ComputeRate(session, isVIP, VIPConfig.SellBonusPercent, PotionConfig.GetCashBonusPercent(session, os.time()))
+	local bonusArgs = { isVIP, VIPConfig.SellBonusPercent, PotionConfig.GetCashBonusPercent(session, os.time()) }
+	local itemsIncomePerSecond = IncomeConfig.ComputeItemsRatePerSecond(session, table.unpack(bonusArgs))
+	local assetsIncomePerMinute = IncomeConfig.ComputeAssetsRatePerMinute(session, table.unpack(bonusArgs))
 
 	local previous = lastStats[player]
 	if
@@ -67,14 +81,15 @@ function StatsManager.Recompute(player: Player)
 		and previous.NetWorth == netWorth
 		and previous.Title == title
 		and previous.IsVIP == isVIP
-		and previous.IncomePerSecond == incomePerSecond
+		and previous.ItemsIncomePerSecond == itemsIncomePerSecond
+		and previous.AssetsIncomePerMinute == assetsIncomePerMinute
 	then
 		return
 	end
 
-	lastStats[player] = { Cash = session.Cash, NetWorth = netWorth, Title = title, IsVIP = isVIP, IncomePerSecond = incomePerSecond }
+	lastStats[player] = { Cash = session.Cash, NetWorth = netWorth, Title = title, IsVIP = isVIP, ItemsIncomePerSecond = itemsIncomePerSecond, AssetsIncomePerMinute = assetsIncomePerMinute }
 	Leaderstats.SetCash(player, session.Cash)
-	statsUpdated:FireClient(player, { Cash = session.Cash, NetWorth = netWorth, Title = title, IsVIP = isVIP, IncomePerSecond = incomePerSecond })
+	statsUpdated:FireClient(player, { Cash = session.Cash, NetWorth = netWorth, Title = title, IsVIP = isVIP, ItemsIncomePerSecond = itemsIncomePerSecond, AssetsIncomePerMinute = assetsIncomePerMinute })
 end
 
 return StatsManager

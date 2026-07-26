@@ -8,6 +8,7 @@ local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local PotionDatabase = require(ReplicatedStorage.Modules.PotionDatabase)
+local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
 local Theme = require(script.Parent.Theme)
 
 local PotionShopPanel = {}
@@ -36,7 +37,7 @@ function PotionShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 
 	-- Anchored near the top (not dead-center) so it doesn't collide with
 	-- RollPanel's bottom-anchored reveal window/button on shorter viewports.
-	local panel = Theme.Panel(screenGui, UDim2.new(0, 380, 0, 360), UDim2.new(0.5, -190, 0, 60))
+	local panel = Theme.ResponsivePanel(screenGui, UDim2.new(0, 380, 0, 360), UDim2.new(0.5, -190, 0, 60))
 	panel.Visible = false
 	panel.ZIndex = 10
 
@@ -92,7 +93,7 @@ function PotionShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 			row.Parent = content
 			Theme.Round(row, UDim.new(0, 8))
 
-			local nameLabel = Theme.Label(row, UDim2.new(0.6, 0, 0, 24), string.format("%s ($%d)", potion.Name, potion.Price))
+			local nameLabel = Theme.Label(row, UDim2.new(0.6, 0, 0, 24), string.format("%s (%s)", potion.Name, NumberFormat.FormatCash(potion.Price)))
 			nameLabel.Position = UDim2.new(0, 10, 0, 6)
 
 			local descLabel = Theme.Label(row, UDim2.new(0.6, 0, 0, 20), describePotion(potion))

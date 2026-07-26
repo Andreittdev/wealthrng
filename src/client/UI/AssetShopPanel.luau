@@ -21,6 +21,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local AssetDatabase = require(ReplicatedStorage.Modules.AssetDatabase)
 local InvestmentDatabase = require(ReplicatedStorage.Modules.InvestmentDatabase)
+local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
 local Theme = require(script.Parent.Theme)
 
 local AssetShopPanel = {}
@@ -42,7 +43,7 @@ function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 
 	-- Anchored near the top (not dead-center) so it doesn't collide with
 	-- RollPanel's bottom-anchored reveal window/button on shorter viewports.
-	local panel = Theme.Panel(screenGui, UDim2.new(0, 420, 0, 420), UDim2.new(0.5, -210, 0, 60))
+	local panel = Theme.ResponsivePanel(screenGui, UDim2.new(0, 420, 0, 420), UDim2.new(0.5, -210, 0, 60))
 	panel.Visible = false
 	panel.ZIndex = 10
 
@@ -59,7 +60,7 @@ function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	-- which is active, and a permanent gradient on one but not the other
 	-- would look inconsistent once they swap states.
 	local assetsTabButton = Theme.Button(panel, UDim2.new(0.5, -20, 0, 32), UDim2.new(0, 16, 0, 50), "Assets")
-	local investTabButton = Theme.Button(panel, UDim2.new(0.5, -20, 0, 32), UDim2.new(0.5, 4, 0, 50), "Invest")
+	local investTabButton = Theme.Button(panel, UDim2.new(0.5, -20, 0, 32), UDim2.new(0.5, 4, 0, 50), "Investments")
 
 	local statusLabel = Theme.Label(panel, UDim2.new(1, -32, 0, 18), "")
 	statusLabel.Position = UDim2.new(0, 16, 0, 86)
@@ -153,7 +154,7 @@ function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		local order = 0
 		for id, asset in AssetDatabase.GetAllAssets() do
 			order += 1
-			local card = createCard(order, asset.Name, string.format("$%d", asset.Price), string.format("+$%d/s", asset.IncomePerSecond))
+			local card = createCard(order, asset.Name, NumberFormat.FormatCash(asset.Price), "+" .. NumberFormat.FormatCash(asset.IncomePerMinute) .. "/min")
 
 			local owned = ownedAssets[id]
 			local equipped = table.find(equippedAssets, id) ~= nil
@@ -192,7 +193,7 @@ function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		for id, investment in InvestmentDatabase.GetAllInvestments() do
 			order += 1
 			local owned = countOwnedInvestments(id)
-			local card = createCard(order, investment.Name, string.format("$%d", investment.Price), owned > 0 and string.format("Owned: %d", owned) or nil)
+			local card = createCard(order, investment.Name, NumberFormat.FormatCash(investment.Price), owned > 0 and string.format("Owned: %d", owned) or nil)
 			addActionButton(card, "Buy", true, function()
 				buyInvestment:FireServer(id)
 			end)

@@ -81,14 +81,10 @@ function Theme.Shadow(instance: GuiObject, offset: number?): Frame
 	return shadow
 end
 
-function Theme.Panel(parent: Instance, size: UDim2, position: UDim2): Frame
-	local frame = Instance.new("Frame")
-	frame.Size = size
-	frame.Position = position
+local function applyPanelChrome(frame: Frame): Frame
 	frame.BackgroundColor3 = Theme.Colors.Panel
 	frame.BackgroundTransparency = 0
 	frame.BorderSizePixel = 0
-	frame.Parent = parent
 	Theme.Round(frame)
 	Theme.Stroke(frame, Color3.fromRGB(255, 215, 140), 1)
 
@@ -100,9 +96,84 @@ function Theme.Panel(parent: Instance, size: UDim2, position: UDim2): Frame
 	gradient.Rotation = 90
 	gradient.Parent = frame
 
-	Theme.Shadow(frame)
+	return Theme.Shadow(frame)
+end
+
+-- Fixed pixel size -- only used for RollPanel's small reveal window, which
+-- runs its own Size-tweening bounce animation (see RollPanel.luau's
+-- playSettleBounce) that would fight with any responsive/scale-based
+-- sizing here. Every other panel should use Theme.ResponsivePanel instead.
+function Theme.Panel(parent: Instance, size: UDim2, position: UDim2): Frame
+	local frame = Instance.new("Frame")
+	frame.Size = size
+	frame.Position = position
+	frame.Parent = parent
+	applyPanelChrome(frame)
+	return frame
+end
+
+-- Same look as Theme.Panel, but shrinks to fit narrow (phone) screens
+-- instead of overflowing them: `maxSize`'s X.Offset becomes an upper
+-- bound (via UISizeConstraint), not a fixed width -- the panel is 94% of
+-- screen width up to that bound. Height stays fixed at maxSize.Y.Offset;
+-- these dialogs are short enough vertically that width was the actual
+-- overflow risk (a 420-480px-wide fixed panel runs off the edge of a
+-- ~375-430px phone screen), not height.
+-- `position`'s X component is ignored -- the panel is always centered via
+-- AnchorPoint instead of the caller working out "-width/2" by hand, which
+-- only produced correct centering for a fixed width. Pass position's Y
+-- component exactly like Theme.Panel's.
+function Theme.ResponsivePanel(parent: Instance, maxSize: UDim2, position: UDim2): Frame
+	local frame = Instance.new("Frame")
+	frame.Size = UDim2.new(0.94, 0, 0, maxSize.Y.Offset)
+	frame.AnchorPoint = Vector2.new(0.5, 0)
+	frame.Position = UDim2.new(0.5, 0, position.Y.Scale, position.Y.Offset)
+	frame.Parent = parent
+
+	local sizeConstraint = Instance.new("UISizeConstraint")
+	sizeConstraint.MaxSize = Vector2.new(maxSize.X.Offset, math.huge)
+	sizeConstraint.Parent = frame
+
+	local shadow = applyPanelChrome(frame)
+
+	-- Shadow is a sibling Frame (see Theme.Shadow), not a child, so it
+	-- doesn't inherit `frame`'s UISizeConstraint automatically -- give it
+	-- a matching cap or it'd render wider than the panel it's shadowing on
+	-- large screens.
+	local shadowConstraint = Instance.new("UISizeConstraint")
+	shadowConstraint.MaxSize = Vector2.new(maxSize.X.Offset, math.huge)
+	shadowConstraint.Parent = shadow
 
 	return frame
+end
+
+-- Shrinks a fixed-size HUD cluster (Sidebar's button grid, RollPanel's
+-- reveal window + button) to fit narrow phone screens, via UIScale rather
+-- than resizing every child individually -- `container` should be an
+-- otherwise-plain (BackgroundTransparency = 1) Frame sized to exactly wrap
+-- its children at their normal/desktop size, anchored wherever the cluster
+-- should stay pinned (e.g. bottom-center for the Roll HUD) so scaling
+-- shrinks it toward that anchor instead of toward the screen's corner.
+-- `referenceWidth` is the screen width at/above which Scale stays 1 (no
+-- change from the existing desktop look); below it, Scale shrinks down to
+-- `minScale` (default 0.6, chosen so Sidebar's 76px buttons don't shrink
+-- past ~46px -- still comfortably tappable).
+function Theme.AutoScale(screenGui: ScreenGui, container: GuiObject, referenceWidth: number, minScale: number?): UIScale
+	local uiScale = Instance.new("UIScale")
+	uiScale.Parent = container
+
+	local function update()
+		local width = screenGui.AbsoluteSize.X
+		if width <= 0 then
+			return
+		end
+		uiScale.Scale = math.clamp(width / referenceWidth, minScale or 0.6, 1)
+	end
+
+	screenGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(update)
+	update()
+
+	return uiScale
 end
 
 -- Hover/leave lighten by a fixed delta relative to whatever the button's

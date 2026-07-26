@@ -10,6 +10,11 @@
 -- cooldown (0.75s) is shorter than SPIN_MIN_DURATION (0.9s), so without this
 -- the button would look clickable mid-spin while clicks were silently
 -- dropped by the isSpinning guard.
+--
+-- Both pieces live inside one bottom-anchored hudContainer with a
+-- Theme.AutoScale UIScale (see Theme.luau) so the whole HUD shrinks toward
+-- the bottom-center as one unit on narrow phone screens, instead of
+-- staying full desktop size regardless of screen width.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
@@ -18,11 +23,23 @@ local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
 local RarityConfig = require(ReplicatedStorage.Modules.RarityConfig)
 local RollConfig = require(ReplicatedStorage.Modules.RollConfig)
 local VIPConfig = require(ReplicatedStorage.Modules.VIPConfig)
+local RollOdds = require(ReplicatedStorage.Modules.RollOdds)
 local Theme = require(script.Parent.Theme)
 
 local SPIN_MIN_DURATION = 0.9
 local SPIN_INTERVAL = 0.06
-local REVEAL_SIZE = UDim2.new(0, 220, 0, 70)
+local REVEAL_SIZE = UDim2.new(0, 220, 0, 92)
+local HUD_WIDTH = 220
+local HUD_HEIGHT = 212
+local HUD_REFERENCE_WIDTH = 900
+
+local function formatOdds(item): string
+	local oneInN = RollOdds.GetOneInN(item.Id)
+	if not oneInN then
+		return item.Rarity
+	end
+	return string.format("%s  \u{2022}  1 in %d", item.Rarity, math.floor(oneInN + 0.5))
+end
 
 local RollPanel = {}
 
@@ -35,7 +52,17 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		table.insert(allItems, item)
 	end
 
-	local revealFrame = Theme.Panel(screenGui, REVEAL_SIZE, UDim2.new(0.5, -110, 1, -180))
+	-- Anchored bottom-center at the very bottom of the screen; scaling
+	-- shrinks toward that pinned point, not toward a screen corner.
+	local hudContainer = Instance.new("Frame")
+	hudContainer.Size = UDim2.new(0, HUD_WIDTH, 0, HUD_HEIGHT)
+	hudContainer.AnchorPoint = Vector2.new(0.5, 1)
+	hudContainer.Position = UDim2.new(0.5, 0, 1, 0)
+	hudContainer.BackgroundTransparency = 1
+	hudContainer.Parent = screenGui
+	Theme.AutoScale(screenGui, hudContainer, HUD_REFERENCE_WIDTH)
+
+	local revealFrame = Theme.Panel(hudContainer, REVEAL_SIZE, UDim2.new(0, 0, 0, 10))
 	revealFrame.BackgroundColor3 = RarityConfig.GetColor("Common")
 	revealFrame.BackgroundTransparency = 0.3
 
@@ -48,12 +75,21 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	end
 	local revealStroke = revealFrame:FindFirstChildOfClass("UIStroke")
 
-	local revealLabel = Theme.Label(revealFrame, UDim2.new(1, -16, 1, -8), "Press ROLL", true)
+	local revealLabel = Theme.Label(revealFrame, UDim2.new(1, -16, 0, 46), "Press ROLL", true)
 	revealLabel.Position = UDim2.new(0, 8, 0, 4)
 	revealLabel.TextXAlignment = Enum.TextXAlignment.Center
 	revealLabel.TextYAlignment = Enum.TextYAlignment.Center
 
-	local rollButton = Theme.Button(screenGui, UDim2.new(0, 200, 0, 60), UDim2.new(0.5, -100, 1, -96), "ROLL", true)
+	-- Rarity + "1 in N" base odds -- shown for both the cycling spin (so it
+	-- flickers along with the name/color) and the final settled result.
+	local oddsLabel = Theme.Label(revealFrame, UDim2.new(1, -16, 0, 30), "")
+	oddsLabel.Position = UDim2.new(0, 8, 0, 52)
+	oddsLabel.TextXAlignment = Enum.TextXAlignment.Center
+	oddsLabel.TextYAlignment = Enum.TextYAlignment.Center
+	oddsLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	oddsLabel.TextStrokeTransparency = 0.5
+
+	local rollButton = Theme.Button(hudContainer, UDim2.new(0, 200, 0, 60), UDim2.new(0, 10, 0, 116), "ROLL", true)
 
 	local pendingResult = nil
 	rollResult.OnClientEvent:Connect(function(item)
@@ -97,6 +133,7 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 			local randomItem = allItems[math.random(1, #allItems)]
 			local randomColor = RarityConfig.GetColor(randomItem.Rarity)
 			revealLabel.Text = randomItem.Name
+			oddsLabel.Text = formatOdds(randomItem)
 			revealFrame.BackgroundColor3 = randomColor
 			if revealStroke then
 				revealStroke.Color = randomColor
@@ -113,6 +150,7 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		pendingResult = nil
 		local finalColor = RarityConfig.GetColor(item.Rarity)
 		revealLabel.Text = item.Name
+		oddsLabel.Text = formatOdds(item)
 		revealFrame.BackgroundColor3 = finalColor
 		if revealStroke then
 			revealStroke.Color = finalColor
