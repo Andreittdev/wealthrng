@@ -181,7 +181,7 @@ local function addLabel(adornee: BasePart, text: string, studsUp: number)
 	textLabel.BackgroundTransparency = 1
 	textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 	textLabel.TextStrokeTransparency = 0
-	textLabel.Font = Enum.Font.GothamBold
+	textLabel.Font = Enum.Font.LuckiestGuy
 	textLabel.TextScaled = true
 	textLabel.Text = text
 	textLabel.Parent = billboard
@@ -494,7 +494,6 @@ local LEADERBOARD_DEPTH = 0.6
 local LEADERBOARD_STAND_HEIGHT = 2
 local LEADERBOARD_HEADER_HEIGHT = 1
 local LEADERBOARD_HEADER_COLORS = { Color3.fromRGB(60, 190, 100), Color3.fromRGB(85, 140, 235), Color3.fromRGB(200, 90, 220) }
-local LEADERBOARD_ROW_COUNT = 8 -- keep in sync with LeaderboardManager's TOP_N
 local LEADERBOARD_BASE_HEIGHT = 1.2
 local LEADERBOARD_FRAME_MARGIN = 0.5
 
@@ -551,8 +550,10 @@ local function buildLeaderboard(mapFolder: Folder, offsetIndex: number, labelTex
 	local board = place("Board", Vector3.new(LEADERBOARD_WIDTH, LEADERBOARD_HEIGHT, LEADERBOARD_DEPTH), Vector3.new(0, boardCenterY, 0), Color3.fromRGB(25, 25, 30), Enum.Material.SmoothPlastic)
 
 	-- Rank rows, painted onto the board's front face. LeaderboardManager finds
-	-- this by name ("Display" -> "Row1".."Row8") and fills it in periodically;
-	-- MapBuilder only lays out the placeholders.
+	-- this by name ("Display" -> "Rows") and (re)creates one TextLabel row
+	-- per ranked entry (up to top 100) on every refresh -- MapBuilder only
+	-- builds the empty scrolling container, since a fixed row count can't
+	-- fit 100 readable entries on a ~5x6 stud board.
 	local displayGui = Instance.new("SurfaceGui")
 	displayGui.Name = "Display"
 	displayGui.Face = Enum.NormalId.Front
@@ -560,28 +561,26 @@ local function buildLeaderboard(mapFolder: Folder, offsetIndex: number, labelTex
 	displayGui.Parent = board
 
 	local displayPadding = Instance.new("UIPadding")
-	displayPadding.PaddingTop = UDim.new(0.18, 0)
+	displayPadding.PaddingTop = UDim.new(0.05, 0)
 	displayPadding.PaddingLeft = UDim.new(0.04, 0)
 	displayPadding.PaddingRight = UDim.new(0.04, 0)
+	displayPadding.PaddingBottom = UDim.new(0.02, 0)
 	displayPadding.Parent = displayGui
 
-	local displayLayout = Instance.new("UIListLayout")
-	displayLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	displayLayout.Parent = displayGui
+	local rows = Instance.new("ScrollingFrame")
+	rows.Name = "Rows"
+	rows.Size = UDim2.new(1, 0, 1, 0)
+	rows.BackgroundTransparency = 1
+	rows.BorderSizePixel = 0
+	rows.CanvasSize = UDim2.new(0, 0, 0, 0)
+	rows.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	rows.ScrollBarThickness = 10
+	rows.ScrollBarImageColor3 = FOUNTAIN_GOLD
+	rows.Parent = displayGui
 
-	for i = 1, LEADERBOARD_ROW_COUNT do
-		local row = Instance.new("TextLabel")
-		row.Name = "Row" .. i
-		row.LayoutOrder = i
-		row.Size = UDim2.new(1, 0, 1 / LEADERBOARD_ROW_COUNT, 0)
-		row.BackgroundTransparency = 1
-		row.TextColor3 = Color3.fromRGB(255, 255, 255)
-		row.Font = Enum.Font.Gotham
-		row.TextScaled = true
-		row.TextXAlignment = Enum.TextXAlignment.Left
-		row.Text = "-"
-		row.Parent = displayGui
-	end
+	local rowsLayout = Instance.new("UIListLayout")
+	rowsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	rowsLayout.Parent = rows
 
 	local headerCenterY = boardCenterY + LEADERBOARD_HEIGHT / 2 - LEADERBOARD_HEADER_HEIGHT / 2
 	local header = place(

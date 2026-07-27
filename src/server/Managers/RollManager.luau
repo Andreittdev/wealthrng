@@ -18,6 +18,7 @@ local InventoryManager = require(ServerScriptService.Managers.InventoryManager)
 local StatsManager = require(ServerScriptService.Managers.StatsManager)
 local VIPManager = require(ServerScriptService.Managers.VIPManager)
 local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManager)
+local SellManager = require(ServerScriptService.Managers.SellManager)
 
 local rollRequested = RemotesBootstrap:WaitForChild("RollRequested")
 local rollResult = RemotesBootstrap:WaitForChild("RollResult")
@@ -56,7 +57,23 @@ local function pickItem(session, isVIP: boolean, nowUnix: number)
 	if #candidates == 0 then
 		return nil
 	end
-	return candidates[random:NextInteger(1, #candidates)]
+
+	-- Weighted, not uniform -- pricier items within the same rarity are
+	-- rarer pulls (see ItemDatabase.GetRollWeight).
+	local totalWeight = 0
+	for _, item in candidates do
+		totalWeight += ItemDatabase.GetRollWeight(item)
+	end
+
+	local roll = random:NextNumber() * totalWeight
+	local cumulative = 0
+	for _, item in candidates do
+		cumulative += ItemDatabase.GetRollWeight(item)
+		if roll <= cumulative then
+			return item
+		end
+	end
+	return candidates[#candidates]
 end
 
 rollRequested.OnServerEvent:Connect(function(player: Player)
@@ -80,6 +97,31 @@ rollRequested.OnServerEvent:Connect(function(player: Player)
 	local item = pickItem(session, isVIP, nowUnix)
 	if not item then
 		return
+	end
+
+	-- Auto-sell duplicates (opt-in per rarity via SettingsPanel): if the
+	-- player already owns at least one of this exact item AND has that
+	-- rarity's toggle on, credit cash instead of adding a second copy to
+	-- the inventory. Still fires RollResult either way so the reveal
+	-- animation always shows what was actually rolled.
+	if session.AutoSellDuplicates[item.Rarity] then
+		local alreadyOwned = false
+		for _, invEntry in session.Inventory do
+			if invEntry.ItemId == item.Id then
+				alreadyOwned = true
+				break
+			end
+		end
+
+		if alreadyOwned then
+			session.Cash += SellManager.ComputeSellValue(session, isVIP, item)
+			session.TotalRolls += 1
+
+			rollResult:FireClient(player, item)
+			StatsManager.Recompute(player)
+			LeaderboardManager.MarkDirty(player)
+			return
+		end
 	end
 
 	local entry = InventoryManager.AddItem(player, item.Id)

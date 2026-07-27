@@ -9,13 +9,17 @@ VIPConfig.GamepassId = 1928251044
 VIPConfig.RollCooldownSeconds = 0.75
 
 -- Multiplies RarityConfig weights before the weighted roll, VIP only.
--- Common stays at 1 so only rare+ tiers get a relative boost.
+-- Common stays at 1 so only rare+ tiers get a relative boost. Must have an
+-- entry for every RarityConfig.Order tier -- RollManager.pickRarity does
+-- `weight *= VIPConfig.LuckWeightMultiplier[rarity]` with no `or 1`
+-- fallback, so a missing key errors out every VIP roll, not just under-boosts it.
 VIPConfig.LuckWeightMultiplier = {
 	Common = 1,
 	Rare = 1.5,
 	Epic = 2,
 	Legendary = 3,
-	Luxury = 4,
+	Ultra = 4,
+	Luxury = 6,
 }
 
 -- Extra % cash credited when a VIP sells an item.

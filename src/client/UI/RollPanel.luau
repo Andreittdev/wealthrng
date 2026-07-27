@@ -1,20 +1,24 @@
--- Roll button and the slot-machine reveal window. (Buy VIP moved to the
--- sidebar's Shop panel, ShopPanel.luau.)
+-- Roll button (always visible, bottom-center) + a big centered reveal
+-- overlay that only appears while spinning and briefly after settling --
+-- not a persistent small corner box. (Buy VIP moved to the sidebar's Shop
+-- panel, ShopPanel.luau.)
 --
--- Animation flow: on click the reveal window cycles through random items
--- every SPIN_INTERVAL seconds. RollResult is buffered into `pendingResult`
--- instead of being shown immediately, so the spin always runs for at least
--- SPIN_MIN_DURATION *and* until the real result has arrived, then settles
--- on it with a bounce tween. The Roll button only re-enables once BOTH the
--- spin has finished AND the (VIP or base) cooldown has elapsed -- VIP's
--- cooldown (0.75s) is shorter than SPIN_MIN_DURATION (0.9s), so without this
--- the button would look clickable mid-spin while clicks were silently
--- dropped by the isSpinning guard.
+-- Animation flow: on click the overlay pops in and cycles through random
+-- items every SPIN_INTERVAL seconds. RollResult is buffered into
+-- `pendingResult` instead of being shown immediately, so the spin always
+-- runs for at least SPIN_MIN_DURATION *and* until the real result has
+-- arrived, then settles on it with a bounce tween, holds for
+-- RESULT_DISPLAY_SECONDS, then hides itself. The Roll button only
+-- re-enables once BOTH the spin has finished AND the (VIP or base)
+-- cooldown has elapsed -- VIP's cooldown (0.75s) is shorter than
+-- SPIN_MIN_DURATION (0.9s), so without this the button would look
+-- clickable mid-spin while clicks were silently dropped by the isSpinning
+-- guard.
 --
--- Both pieces live inside one bottom-anchored hudContainer with a
--- Theme.AutoScale UIScale (see Theme.luau) so the whole HUD shrinks toward
--- the bottom-center as one unit on narrow phone screens, instead of
--- staying full desktop size regardless of screen width.
+-- Both the button cluster and the reveal overlay get their own
+-- Theme.AutoScale UIScale (see Theme.luau) so they shrink toward their own
+-- pinned anchor (bottom-center / screen-center) on narrow phone screens,
+-- instead of staying full desktop size regardless of screen width.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
@@ -28,10 +32,13 @@ local Theme = require(script.Parent.Theme)
 
 local SPIN_MIN_DURATION = 0.9
 local SPIN_INTERVAL = 0.06
-local REVEAL_SIZE = UDim2.new(0, 220, 0, 92)
-local HUD_WIDTH = 220
-local HUD_HEIGHT = 212
+local RESULT_DISPLAY_SECONDS = 1.8
+
+local BUTTON_SIZE = UDim2.new(0, 200, 0, 60)
 local HUD_REFERENCE_WIDTH = 900
+
+local REVEAL_SIZE = UDim2.new(0, 380, 0, 280)
+local REVEAL_REFERENCE_WIDTH = 900
 
 local function formatOdds(item): string
 	local oneInN = RollOdds.GetOneInN(item.Id)
@@ -52,44 +59,68 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		table.insert(allItems, item)
 	end
 
-	-- Anchored bottom-center at the very bottom of the screen; scaling
-	-- shrinks toward that pinned point, not toward a screen corner.
+	-- ===== Roll button, bottom-center =====
 	local hudContainer = Instance.new("Frame")
-	hudContainer.Size = UDim2.new(0, HUD_WIDTH, 0, HUD_HEIGHT)
+	hudContainer.Size = BUTTON_SIZE
 	hudContainer.AnchorPoint = Vector2.new(0.5, 1)
-	hudContainer.Position = UDim2.new(0.5, 0, 1, 0)
+	hudContainer.Position = UDim2.new(0.5, 0, 1, -20)
 	hudContainer.BackgroundTransparency = 1
 	hudContainer.Parent = screenGui
 	Theme.AutoScale(screenGui, hudContainer, HUD_REFERENCE_WIDTH)
 
-	local revealFrame = Theme.Panel(hudContainer, REVEAL_SIZE, UDim2.new(0, 0, 0, 10))
-	revealFrame.BackgroundColor3 = RarityConfig.GetColor("Common")
-	revealFrame.BackgroundTransparency = 0.3
+	local rollButton = Theme.Button(hudContainer, UDim2.new(1, 0, 1, 0), UDim2.new(0, 0, 0, 0), "ROLL", true)
 
-	-- Theme.Panel's default dark gradient would muddy the rarity-color
-	-- cycling this window does during a spin -- drop it, keep the
-	-- stroke/shadow framing.
+	-- ===== Reveal overlay, centered on screen -- hidden except during/right
+	-- after a spin =====
+	local revealAnchor = Instance.new("Frame")
+	revealAnchor.Size = REVEAL_SIZE
+	revealAnchor.AnchorPoint = Vector2.new(0.5, 0.5)
+	revealAnchor.Position = UDim2.new(0.5, 0, 0.42, 0)
+	revealAnchor.BackgroundTransparency = 1
+	revealAnchor.Visible = false
+	revealAnchor.Parent = screenGui
+	Theme.AutoScale(screenGui, revealAnchor, REVEAL_REFERENCE_WIDTH)
+
+	-- Background stays flat black for every item -- only the border
+	-- (revealStroke below) cycles to the rarity color, not the fill.
+	local revealFrame = Theme.Panel(revealAnchor, REVEAL_SIZE, UDim2.new(0, 0, 0, 0))
+	revealFrame.BackgroundColor3 = Color3.new(0, 0, 0)
+	revealFrame.BackgroundTransparency = 0
+
+	-- Theme.Panel's default dark gradient would muddy the solid black
+	-- background -- drop it, keep the stroke/shadow framing.
 	local revealGradient = revealFrame:FindFirstChildOfClass("UIGradient")
 	if revealGradient then
 		revealGradient:Destroy()
 	end
 	local revealStroke = revealFrame:FindFirstChildOfClass("UIStroke")
+	if revealStroke then
+		revealStroke.Thickness = 6
+	end
 
-	local revealLabel = Theme.Label(revealFrame, UDim2.new(1, -16, 0, 46), "Press ROLL", true)
-	revealLabel.Position = UDim2.new(0, 8, 0, 4)
+	local revealIcon = Instance.new("ImageLabel")
+	revealIcon.Size = UDim2.new(0, 150, 0, 150)
+	revealIcon.AnchorPoint = Vector2.new(0.5, 0)
+	revealIcon.Position = UDim2.new(0.5, 0, 0, 20)
+	revealIcon.BackgroundTransparency = 1
+	revealIcon.ScaleType = Enum.ScaleType.Fit
+	revealIcon.Image = ""
+	revealIcon.Parent = revealFrame
+
+	local revealLabel = Theme.Label(revealFrame, UDim2.new(1, -32, 0, 40), "", true)
+	revealLabel.Position = UDim2.new(0, 16, 0, 180)
 	revealLabel.TextXAlignment = Enum.TextXAlignment.Center
 	revealLabel.TextYAlignment = Enum.TextYAlignment.Center
+	revealLabel.TextWrapped = true
 
-	-- Rarity + "1 in N" base odds -- shown for both the cycling spin (so it
-	-- flickers along with the name/color) and the final settled result.
-	local oddsLabel = Theme.Label(revealFrame, UDim2.new(1, -16, 0, 30), "")
-	oddsLabel.Position = UDim2.new(0, 8, 0, 52)
+	-- Rarity + "1 in N" base odds.
+	local oddsLabel = Theme.Label(revealFrame, UDim2.new(1, -32, 0, 30), "")
+	oddsLabel.Position = UDim2.new(0, 16, 0, 222)
 	oddsLabel.TextXAlignment = Enum.TextXAlignment.Center
 	oddsLabel.TextYAlignment = Enum.TextYAlignment.Center
 	oddsLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 	oddsLabel.TextStrokeTransparency = 0.5
-
-	local rollButton = Theme.Button(hudContainer, UDim2.new(0, 200, 0, 60), UDim2.new(0, 10, 0, 116), "ROLL", true)
+	oddsLabel.TextWrapped = true
 
 	local pendingResult = nil
 	rollResult.OnClientEvent:Connect(function(item)
@@ -106,7 +137,7 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	end
 
 	local function playSettleBounce()
-		revealFrame.Size = UDim2.new(0, REVEAL_SIZE.X.Offset * 1.15, 0, REVEAL_SIZE.Y.Offset * 1.15)
+		revealFrame.Size = UDim2.new(0, REVEAL_SIZE.X.Offset * 1.1, 0, REVEAL_SIZE.Y.Offset * 1.1)
 		local tween = TweenService:Create(
 			revealFrame,
 			TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
@@ -122,11 +153,13 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		end
 	end
 
-	-- Runs the spin, blocking until it settles on the real result. Caller
-	-- decides how much additional cooldown time (if any) to wait afterward.
+	-- Runs the spin, blocking until it settles on the real result and has
+	-- been shown for RESULT_DISPLAY_SECONDS. Caller decides how much
+	-- additional cooldown time (if any) to wait afterward.
 	local function runSpin()
 		isSpinning = true
 		pendingResult = nil
+		revealAnchor.Visible = true
 		local startTime = os.clock()
 
 		while true do
@@ -134,7 +167,8 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 			local randomColor = RarityConfig.GetColor(randomItem.Rarity)
 			revealLabel.Text = randomItem.Name
 			oddsLabel.Text = formatOdds(randomItem)
-			revealFrame.BackgroundColor3 = randomColor
+			oddsLabel.TextColor3 = randomColor
+			revealIcon.Image = randomItem.Image
 			if revealStroke then
 				revealStroke.Color = randomColor
 			end
@@ -151,11 +185,15 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		local finalColor = RarityConfig.GetColor(item.Rarity)
 		revealLabel.Text = item.Name
 		oddsLabel.Text = formatOdds(item)
-		revealFrame.BackgroundColor3 = finalColor
+		oddsLabel.TextColor3 = finalColor
+		revealIcon.Image = item.Image
 		if revealStroke then
 			revealStroke.Color = finalColor
 		end
 		playSettleBounce()
+
+		task.wait(RESULT_DISPLAY_SECONDS)
+		revealAnchor.Visible = false
 
 		isSpinning = false
 	end
@@ -189,12 +227,14 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	end
 
 	-- Hidden while any modal panel (shop, net worth, etc.) is open -- on
-	-- short viewports, RollPanel's bottom-anchored elements have nowhere to
-	-- go that a centered/top modal can't reach, so MainUI hides these
-	-- instead of chasing an ever-shrinking gap with positioning alone.
+	-- short viewports, RollPanel's bottom-anchored button has nowhere to go
+	-- that a centered/top modal can't reach, so MainUI hides these instead
+	-- of chasing an ever-shrinking gap with positioning alone.
 	function handle.SetHudVisible(visible: boolean)
 		rollButton.Visible = visible
-		revealFrame.Visible = visible
+		if not visible then
+			revealAnchor.Visible = false
+		end
 	end
 
 	return handle

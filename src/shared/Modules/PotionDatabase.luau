@@ -21,7 +21,7 @@ local potions: { [string]: Potion } = {
 		Name = "Luck Potion",
 		Price = 3000,
 		DurationSeconds = 600,
-		LuckWeightMultiplier = { Common = 1, Rare = 1.3, Epic = 1.6, Legendary = 2, Luxury = 2.5 },
+		LuckWeightMultiplier = { Common = 1, Rare = 1.3, Epic = 1.6, Legendary = 2, Ultra = 2.5, Luxury = 3.5 },
 	},
 	SpeedPotion = {
 		Id = "SpeedPotion",

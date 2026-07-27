@@ -19,9 +19,12 @@ Theme.Colors = {
 	TextSecondary = Color3.fromRGB(170, 170, 180),
 }
 
+-- Single decorative display font for everything (no separate header/body
+-- weight the way Gotham had Bold/Regular) -- one field for each since every
+-- Theme.Label/Theme.Button call site already asks for one or the other.
 Theme.Fonts = {
-	Header = Enum.Font.GothamBold,
-	Body = Enum.Font.Gotham,
+	Header = Enum.Font.LuckiestGuy,
+	Body = Enum.Font.LuckiestGuy,
 }
 
 Theme.CornerRadius = UDim.new(0, 16)

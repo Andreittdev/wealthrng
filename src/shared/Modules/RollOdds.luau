@@ -31,12 +31,25 @@ function RollOdds.GetOneInN(itemId: string): number?
 		totalWeight += RarityConfig.Tiers[rarity].Weight
 	end
 
-	local itemsInRarity = #ItemDatabase.GetItemsByRarity(item.Rarity)
-	if itemsInRarity == 0 then
+	local itemsInRarity = ItemDatabase.GetItemsByRarity(item.Rarity)
+	if #itemsInRarity == 0 then
 		return nil
 	end
 
-	local probability = (tier.Weight / totalWeight) / itemsInRarity
+	-- Items within a rarity aren't uniform anymore -- pricier ones are
+	-- rarer pulls (see ItemDatabase.GetRollWeight), so this has to weigh
+	-- them the same way RollManager.pickItem actually does, or the
+	-- displayed odds would lie.
+	local rarityWeightTotal = 0
+	for _, candidate in itemsInRarity do
+		rarityWeightTotal += ItemDatabase.GetRollWeight(candidate)
+	end
+	if rarityWeightTotal <= 0 then
+		return nil
+	end
+
+	local withinRarityProbability = ItemDatabase.GetRollWeight(item) / rarityWeightTotal
+	local probability = (tier.Weight / totalWeight) * withinRarityProbability
 	if probability <= 0 then
 		return nil
 	end

@@ -29,6 +29,11 @@ local RemoteNames = {
 		"UpdateTradeOffer", -- client -> server, payload: { AssetIds: {string}, InvestmentUids: {number}, Cash: number }
 		"ConfirmTradeOffer", -- client -> server, no payload
 		"CancelTrade", -- client -> server, no payload
+		"SetAutoSellDuplicate", -- client -> server, payload: rarity (string), enabled (boolean)
+		"AutoSellDuplicatesUpdated", -- server -> client, payload: { [rarity]: boolean }
+		"SetPreference", -- client -> server, payload: key ("Music"/"SFX"/"VFX"), enabled (boolean)
+		"PreferencesUpdated", -- server -> client, payload: { [key]: boolean }
+		"SystemMessage", -- server -> client, payload: text (string) -- shown via TextChatService, this player only
 	},
 	Functions = {},
 }

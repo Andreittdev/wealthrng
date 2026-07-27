@@ -24,6 +24,17 @@ export type Session = {
 	Investments: { { Uid: number, Id: string, PurchasedAt: number } },
 	NextInvestmentUid: number,
 	ActivePotions: { [string]: number },
+	-- Per-rarity opt-in: missing/false means off. Defaults to all-off for
+	-- new players (see newDefaultSession) -- auto-selling is something a
+	-- player should turn on deliberately, not discover has been silently
+	-- eating their rolls.
+	AutoSellDuplicates: { [string]: boolean },
+	-- Music/SFX/VFX on-off prefs -- default true (opposite of
+	-- AutoSellDuplicates: there's no downside to leaving these on, so
+	-- opt-out reads better than opt-in). Not wired to any actual
+	-- sound/effect yet -- the game has none -- this just persists the
+	-- toggle state so it's ready the moment one exists.
+	Preferences: { [string]: boolean },
 	LoadedOk: boolean,
 }
 
@@ -41,6 +52,8 @@ local function newDefaultSession(): Session
 		Investments = {},
 		NextInvestmentUid = 1,
 		ActivePotions = {},
+		AutoSellDuplicates = {},
+		Preferences = { Music = true, SFX = true, VFX = true },
 		LoadedOk = true,
 	}
 end
@@ -78,6 +91,8 @@ function DataManager.Load(player: Player): Session
 				Investments = data.Investments or {},
 				NextInvestmentUid = data.NextInvestmentUid or 1,
 				ActivePotions = data.ActivePotions or {},
+				AutoSellDuplicates = data.AutoSellDuplicates or {},
+				Preferences = data.Preferences or { Music = true, SFX = true, VFX = true },
 				LoadedOk = true,
 			}
 		else
@@ -117,6 +132,8 @@ function DataManager.Save(player: Player)
 		Investments = session.Investments,
 		NextInvestmentUid = session.NextInvestmentUid,
 		ActivePotions = session.ActivePotions,
+		AutoSellDuplicates = session.AutoSellDuplicates,
+		Preferences = session.Preferences,
 	}
 
 	local ok = attempt(function()

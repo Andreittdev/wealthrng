@@ -57,10 +57,10 @@ function MainUI.Init()
 	local potionShopHandle = PotionShopPanel.Create(screenGui, remotesFolder)
 	local shopHandle = ShopPanel.Create(screenGui)
 	local netWorthHandle = NetWorthPanel.Create(screenGui, remotesFolder)
-	local settingsHandle = SettingsPanel.Create(screenGui)
+	local settingsHandle = SettingsPanel.Create(screenGui, remotesFolder)
 	local profileHandle = ProfilePanel.Create(screenGui)
 	local tradeHandle = TradePanel.Create(screenGui, remotesFolder)
-	local catalogHandle = CatalogPanel.Create(screenGui)
+	local catalogHandle = CatalogPanel.Create(screenGui, remotesFolder)
 
 	Sidebar.Create(screenGui, {
 		Inventory = inventoryHandle,
@@ -72,6 +72,7 @@ function MainUI.Init()
 	})
 
 	local modalFrames = {
+		inventoryHandle.Frame,
 		assetShopHandle.Frame,
 		potionShopHandle.Frame,
 		shopHandle.Frame,

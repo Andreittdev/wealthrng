@@ -20,13 +20,15 @@ local equippedItemsUpdated = remotesFolder:WaitForChild("EquippedItemsUpdated")
 local assetUpdated = remotesFolder:WaitForChild("AssetUpdated")
 local investmentUpdated = remotesFolder:WaitForChild("InvestmentUpdated")
 local potionUpdated = remotesFolder:WaitForChild("PotionUpdated")
+local autoSellDuplicatesUpdated = remotesFolder:WaitForChild("AutoSellDuplicatesUpdated")
+local preferencesUpdated = remotesFolder:WaitForChild("PreferencesUpdated")
 
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local Leaderstats = require(ServerScriptService.Managers.Leaderstats)
 local VIPManager = require(ServerScriptService.Managers.VIPManager)
 local StatsManager = require(ServerScriptService.Managers.StatsManager)
 
-require(ServerScriptService.Managers.LeaderboardManager)
+local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManager)
 require(ServerScriptService.Managers.IncomeManager)
 require(ServerScriptService.Managers.RollManager)
 require(ServerScriptService.Managers.SellManager)
@@ -35,12 +37,17 @@ require(ServerScriptService.Managers.InvestmentManager)
 require(ServerScriptService.Managers.PotionManager)
 require(ServerScriptService.Managers.EquipManager)
 require(ServerScriptService.Managers.TradeManager)
+require(ServerScriptService.Managers.PreferencesManager)
 
 local function onPlayerAdded(player: Player)
 	local session = DataManager.Load(player)
 	VIPManager.Load(player)
 	Leaderstats.Create(player)
 	StatsManager.Recompute(player)
+	-- So a player shows up on the boards from their very first stats
+	-- submission instead of waiting until their first roll/sell/etc.
+	-- marks them dirty.
+	LeaderboardManager.MarkDirty(player)
 
 	-- Initial pushes so a returning player sees their saved Inventory/
 	-- EquippedItemUids/Asset/Investments/ActivePotions immediately instead
@@ -50,6 +57,8 @@ local function onPlayerAdded(player: Player)
 	assetUpdated:FireClient(player, { Owned = session.OwnedAssets, Equipped = session.EquippedAssets })
 	investmentUpdated:FireClient(player, session.Investments)
 	potionUpdated:FireClient(player, session.ActivePotions)
+	autoSellDuplicatesUpdated:FireClient(player, session.AutoSellDuplicates)
+	preferencesUpdated:FireClient(player, session.Preferences)
 end
 
 Players.PlayerAdded:Connect(onPlayerAdded)

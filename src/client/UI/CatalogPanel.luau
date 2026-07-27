@@ -1,29 +1,30 @@
 -- Physical read-only "Index" stand, triggered by walking up to the
 -- "INDEX" kiosk MapBuilder builds next to the Shop (ProximityPrompt named
--- "CatalogPrompt"). Pure browser over the shared databases (ItemDatabase/
--- AssetDatabase/InvestmentDatabase) -- no remotes, no player-specific
--- state, just "here's everything that exists to roll/buy in the game."
--- Items are grouped by rarity (cheapest first within each) and colored by
--- RarityConfig, matching the same visual language as InventoryPanel/
--- RollPanel's reveal window.
+-- "CatalogPrompt"). Roll items only -- Assets/Investments have their own
+-- physical shop with full pricing already, this is purely the roll dex.
+--
+-- Dex/collection style, like the big RNG games -- each tile shows ONLY
+-- the item's shape (image), silhouetted black if the player has never
+-- rolled it, full color once they have. That needs player state (the
+-- current inventory), so this panel listens to InventoryUpdated even
+-- though it fires no remotes of its own.
 
 local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
-local AssetDatabase = require(ReplicatedStorage.Modules.AssetDatabase)
-local InvestmentDatabase = require(ReplicatedStorage.Modules.InvestmentDatabase)
 local RarityConfig = require(ReplicatedStorage.Modules.RarityConfig)
-local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
 local Theme = require(script.Parent.Theme)
 
 local CatalogPanel = {}
 
-local CARD_SIZE = UDim2.new(0, 150, 0, 108)
+local ITEM_CELL_SIZE = UDim2.new(0, 96, 0, 96)
 
-function CatalogPanel.Create(screenGui: ScreenGui)
-	local openCategory = "Items"
+function CatalogPanel.Create(screenGui: ScreenGui, remotes: Folder)
+	local inventoryUpdated = remotes:WaitForChild("InventoryUpdated")
+
+	local ownedItemIds: { [string]: boolean } = {}
 
 	local panel = Theme.ResponsivePanel(screenGui, UDim2.new(0, 460, 0, 440), UDim2.new(0.5, -230, 0, 60))
 	panel.Visible = false
@@ -37,13 +38,9 @@ function CatalogPanel.Create(screenGui: ScreenGui)
 		panel.Visible = false
 	end)
 
-	local itemsTabButton = Theme.Button(panel, UDim2.new(0.333, -12, 0, 32), UDim2.new(0, 16, 0, 50), "Items")
-	local assetsTabButton = Theme.Button(panel, UDim2.new(0.333, -12, 0, 32), UDim2.new(0.333, 10, 0, 50), "Assets")
-	local investTabButton = Theme.Button(panel, UDim2.new(0.333, -12, 0, 32), UDim2.new(0.666, 4, 0, 50), "Invest")
-
 	local content = Instance.new("ScrollingFrame")
-	content.Size = UDim2.new(1, -32, 1, -100)
-	content.Position = UDim2.new(0, 16, 0, 90)
+	content.Size = UDim2.new(1, -32, 1, -96)
+	content.Position = UDim2.new(0, 16, 0, 56)
 	content.BackgroundTransparency = 1
 	content.BorderSizePixel = 0
 	content.CanvasSize = UDim2.new(0, 0, 0, 0)
@@ -53,10 +50,16 @@ function CatalogPanel.Create(screenGui: ScreenGui)
 	content.Parent = panel
 
 	local gridLayout = Instance.new("UIGridLayout")
-	gridLayout.CellSize = CARD_SIZE
+	gridLayout.CellSize = ITEM_CELL_SIZE
 	gridLayout.CellPadding = UDim2.new(0, 8, 0, 8)
 	gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	gridLayout.Parent = content
+
+	-- Pinned below the scrolling grid, not inside it, so it's always
+	-- visible regardless of scroll position.
+	local footerLabel = Theme.Label(panel, UDim2.new(1, -32, 0, 24), "INDEX REWARDS SOON!", true)
+	footerLabel.Position = UDim2.new(0, 16, 1, -34)
+	footerLabel.TextXAlignment = Enum.TextXAlignment.Center
 
 	local function clearContent()
 		for _, child in content:GetChildren() do
@@ -66,39 +69,39 @@ function CatalogPanel.Create(screenGui: ScreenGui)
 		end
 	end
 
-	local function createCard(order: number, name: string, priceText: string, detailText: string?, accentColor: Color3?): Frame
+	-- Dex-style tile -- just the item's shape, nothing else. Silhouetted
+	-- black (ImageColor3 multiplies the image, so black = solid
+	-- silhouette of whatever shape/alpha the icon has) until the player
+	-- has actually rolled it at least once, then full color + a
+	-- rarity-colored border to mark it as found.
+	local function createItemCard(order: number, item, isUnlocked: boolean): Frame
 		local card = Instance.new("Frame")
 		card.LayoutOrder = order
-		card.BackgroundColor3 = Theme.Colors.Surface
+		card.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
 		card.BackgroundTransparency = 0
 		card.BorderSizePixel = 0
 		card.Parent = content
 		Theme.Round(card, UDim.new(0, 10))
-		Theme.Stroke(card, accentColor or Color3.fromRGB(110, 110, 122), accentColor and 2 or 1)
 
-		local padding = Instance.new("UIPadding")
-		padding.PaddingTop = UDim.new(0, 8)
-		padding.PaddingLeft = UDim.new(0, 8)
-		padding.PaddingRight = UDim.new(0, 8)
-		padding.Parent = card
+		local rarityColor = RarityConfig.GetColor(item.Rarity)
+		local borderColor = isUnlocked and rarityColor or Color3.fromRGB(60, 60, 66)
+		local stroke = Theme.Stroke(card, borderColor, isUnlocked and 2.5 or 1.5)
+		stroke.Transparency = isUnlocked and 0 or 0.3
 
-		local nameLabel = Theme.Label(card, UDim2.new(1, 0, 0, 36), name, true)
-		nameLabel.TextWrapped = true
-
-		local priceLabel = Theme.Label(card, UDim2.new(1, 0, 0, 20), priceText)
-		priceLabel.Position = UDim2.new(0, 0, 0, 40)
-		priceLabel.TextColor3 = Theme.Colors.Accent
-
-		if detailText then
-			local detailLabel = Theme.Label(card, UDim2.new(1, 0, 0, 18), detailText)
-			detailLabel.Position = UDim2.new(0, 0, 0, 62)
-			detailLabel.TextColor3 = Theme.Colors.Success
-		end
+		local icon = Instance.new("ImageLabel")
+		icon.Size = UDim2.new(1, -20, 1, -20)
+		icon.AnchorPoint = Vector2.new(0.5, 0.5)
+		icon.Position = UDim2.new(0.5, 0, 0.5, 0)
+		icon.BackgroundTransparency = 1
+		icon.ScaleType = Enum.ScaleType.Fit
+		icon.Image = item.Image or ""
+		icon.ImageColor3 = isUnlocked and Color3.new(1, 1, 1) or Color3.new(0, 0, 0)
+		icon.Parent = card
 
 		return card
 	end
 
-	local function renderItems()
+	local function render()
 		clearContent()
 		local order = 0
 		for _, rarity in RarityConfig.Order do
@@ -108,69 +111,19 @@ function CatalogPanel.Create(screenGui: ScreenGui)
 			end)
 			for _, item in candidates do
 				order += 1
-				createCard(
-					order,
-					item.Name,
-					NumberFormat.FormatCash(item.Value),
-					"+" .. NumberFormat.FormatCash(item.IncomePerSecond) .. "/s",
-					RarityConfig.GetColor(rarity)
-				)
+				createItemCard(order, item, ownedItemIds[item.Id] == true)
 			end
 		end
 	end
 
-	local function renderAssets()
-		clearContent()
-		local order = 0
-		for _, asset in AssetDatabase.GetAllAssets() do
-			order += 1
-			createCard(order, asset.Name, NumberFormat.FormatCash(asset.Price), "+" .. NumberFormat.FormatCash(asset.IncomePerMinute) .. "/min")
+	inventoryUpdated.OnClientEvent:Connect(function(inventory: { { Uid: number, ItemId: string } })
+		ownedItemIds = {}
+		for _, entry in inventory do
+			ownedItemIds[entry.ItemId] = true
 		end
-	end
-
-	local function renderInvestments()
-		clearContent()
-		local order = 0
-		for _, investment in InvestmentDatabase.GetAllInvestments() do
-			order += 1
-			createCard(order, investment.Name, NumberFormat.FormatCash(investment.Price))
+		if panel.Visible then
+			render()
 		end
-	end
-
-	local function highlightTabs()
-		local function style(button: TextButton, isActive: boolean)
-			button.BackgroundColor3 = isActive and Theme.Colors.Accent or Theme.Colors.Surface
-			button.TextColor3 = isActive and Color3.fromRGB(20, 20, 20) or Theme.Colors.TextPrimary
-		end
-		style(itemsTabButton, openCategory == "Items")
-		style(assetsTabButton, openCategory == "Assets")
-		style(investTabButton, openCategory == "Investments")
-	end
-
-	local function refresh()
-		if openCategory == "Items" then
-			renderItems()
-		elseif openCategory == "Assets" then
-			renderAssets()
-		else
-			renderInvestments()
-		end
-	end
-
-	local function switchTab(category: string)
-		openCategory = category
-		highlightTabs()
-		refresh()
-	end
-
-	itemsTabButton.Activated:Connect(function()
-		switchTab("Items")
-	end)
-	assetsTabButton.Activated:Connect(function()
-		switchTab("Assets")
-	end)
-	investTabButton.Activated:Connect(function()
-		switchTab("Investments")
 	end)
 
 	ProximityPromptService.PromptTriggered:Connect(function(prompt: ProximityPrompt, player: Player)
@@ -179,8 +132,7 @@ function CatalogPanel.Create(screenGui: ScreenGui)
 		end
 
 		panel.Visible = true
-		highlightTabs()
-		refresh()
+		render()
 	end)
 
 	local handle = {}

@@ -1,10 +1,14 @@
 -- Handles SellItem: server-authoritative, validates the uid actually
 -- belongs to the requesting player's inventory before crediting cash.
+-- ComputeSellValue is exported so RollManager's auto-sell-duplicates path
+-- (see SetAutoSellDuplicate below) credits the exact same VIP/Potion-boosted
+-- amount a manual sell would, without duplicating the formula.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
+local RarityConfig = require(ReplicatedStorage.Modules.RarityConfig)
 local VIPConfig = require(ReplicatedStorage.Modules.VIPConfig)
 local PotionConfig = require(ReplicatedStorage.Modules.PotionConfig)
 local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
@@ -15,8 +19,20 @@ local VIPManager = require(ServerScriptService.Managers.VIPManager)
 local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManager)
 
 local sellItem = RemotesBootstrap:WaitForChild("SellItem")
+local setAutoSellDuplicate = RemotesBootstrap:WaitForChild("SetAutoSellDuplicate")
 local inventoryUpdated = RemotesBootstrap:WaitForChild("InventoryUpdated")
 local equippedItemsUpdated = RemotesBootstrap:WaitForChild("EquippedItemsUpdated")
+local autoSellDuplicatesUpdated = RemotesBootstrap:WaitForChild("AutoSellDuplicatesUpdated")
+
+local SellManager = {}
+
+function SellManager.ComputeSellValue(session, isVIP: boolean, item: ItemDatabase.Item): number
+	local bonusPercent = PotionConfig.GetCashBonusPercent(session, os.time())
+	if isVIP then
+		bonusPercent += VIPConfig.SellBonusPercent
+	end
+	return math.floor(item.Value * (1 + bonusPercent / 100))
+end
 
 sellItem.OnServerEvent:Connect(function(player: Player, uid: number)
 	if typeof(uid) ~= "number" then
@@ -35,12 +51,7 @@ sellItem.OnServerEvent:Connect(function(player: Player, uid: number)
 
 	local item = ItemDatabase.GetItem(removed.ItemId)
 	if item then
-		local bonusPercent = PotionConfig.GetCashBonusPercent(session, os.time())
-		if VIPManager.IsVIP(player) then
-			bonusPercent += VIPConfig.SellBonusPercent
-		end
-		local value = math.floor(item.Value * (1 + bonusPercent / 100))
-		session.Cash += value
+		session.Cash += SellManager.ComputeSellValue(session, VIPManager.IsVIP(player), item)
 	end
 
 	inventoryUpdated:FireClient(player, session.Inventory)
@@ -52,6 +63,23 @@ sellItem.OnServerEvent:Connect(function(player: Player, uid: number)
 	LeaderboardManager.MarkDirty(player)
 end)
 
--- Side-effect-only module -- see RollManager.luau's tail comment for why
--- this return is required even though nothing is exported.
-return true
+local raritySet: { [string]: boolean } = {}
+for _, rarity in RarityConfig.Order do
+	raritySet[rarity] = true
+end
+
+setAutoSellDuplicate.OnServerEvent:Connect(function(player: Player, rarity: unknown, enabled: unknown)
+	if typeof(rarity) ~= "string" or typeof(enabled) ~= "boolean" or not raritySet[rarity] then
+		return
+	end
+
+	local session = DataManager.Get(player)
+	if not session then
+		return
+	end
+
+	session.AutoSellDuplicates[rarity] = enabled
+	autoSellDuplicatesUpdated:FireClient(player, session.AutoSellDuplicates)
+end)
+
+return SellManager
