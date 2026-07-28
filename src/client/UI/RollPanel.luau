@@ -1,7 +1,7 @@
--- Roll button (always visible, bottom-center) + a big centered reveal
--- overlay that only appears while spinning and briefly after settling --
--- not a persistent small corner box. (Buy VIP moved to the sidebar's Shop
--- panel, ShopPanel.luau.)
+-- Roll + Upgrade icon buttons (always visible, bottom-center) + a big
+-- centered reveal overlay that only appears while spinning and briefly
+-- after settling -- not a persistent small corner box. (Buy VIP moved to
+-- the sidebar's Shop panel, ShopPanel.luau.)
 --
 -- Animation flow: on click the overlay pops in and cycles through random
 -- items every SPIN_INTERVAL seconds. RollResult is buffered into
@@ -34,8 +34,26 @@ local SPIN_MIN_DURATION = 0.9
 local SPIN_INTERVAL = 0.06
 local RESULT_DISPLAY_SECONDS = 1.8
 
-local BUTTON_SIZE = UDim2.new(0, 200, 0, 60)
+-- Plain icon + text, no background/circle chrome -- and the text sits ON
+-- TOP of the icon's lower portion (overlapping it), not below it as a
+-- separate label, matching the reference screenshot. Both icons sit on
+-- the same bottom baseline (not the same center) -- ROLL is bigger, so
+-- center-aligning it with UPGRADE would push ROLL's bottom edge lower
+-- than UPGRADE's, which doesn't match the reference's row of icons that
+-- all sit on one line. ROLL is anchored to the true horizontal center of
+-- the container (Scale 0.5, not a fixed pixel offset) so it lands on
+-- actual screen-center regardless of the container's total width;
+-- UPGRADE sits a fixed offset to its right.
+local ROLL_ICON_SIZE = 154
+local UPGRADE_ICON_SIZE = 88
+local ICON_GAP = -14
+local HUD_CONTAINER_SIZE = UDim2.new(0, 400, 0, ROLL_ICON_SIZE + 20)
+local HUD_BASELINE_Y = ROLL_ICON_SIZE + 10
 local HUD_REFERENCE_WIDTH = 900
+
+-- White + black outline for both labels, matching the reference exactly
+-- (not colored per-button).
+local LABEL_COLOR = Color3.fromRGB(255, 255, 255)
 
 local REVEAL_SIZE = UDim2.new(0, 380, 0, 280)
 local REVEAL_REFERENCE_WIDTH = 900
@@ -46,6 +64,52 @@ local function formatOdds(item): string
 		return item.Rarity
 	end
 	return string.format("%s  \u{2022}  1 in %d", item.Rarity, math.floor(oneInN + 0.5))
+end
+
+-- `xPosition` is this icon's horizontal position within its parent (full
+-- UDim2.X control, so ROLL can use Scale=0.5 for true centering while
+-- UPGRADE uses a fixed pixel offset from it). `baselineY` is the shared
+-- bottom-edge Y both icons sit on. Returns the button (click target, same
+-- size as the icon) and the icon ImageLabel separately, so callers can
+-- dim it for a disabled state.
+local function createIconButton(parent: Instance, size: number, xPosition: UDim2, baselineY: number, iconId: string, labelText: string, labelColor: Color3): (TextButton, ImageLabel)
+	local button = Instance.new("TextButton")
+	button.Size = UDim2.new(0, size, 0, size)
+	button.AnchorPoint = Vector2.new(0.5, 1)
+	button.Position = UDim2.new(xPosition.X.Scale, xPosition.X.Offset, 0, baselineY)
+	button.BackgroundTransparency = 1
+	button.Text = ""
+	button.AutoButtonColor = false
+	button.Parent = parent
+
+	local icon = Instance.new("ImageLabel")
+	icon.Size = UDim2.new(1, 0, 1, 0)
+	icon.BackgroundTransparency = 1
+	icon.ScaleType = Enum.ScaleType.Fit
+	icon.Image = iconId
+	icon.ZIndex = 1
+	icon.Parent = button
+
+	-- Bottom-anchored with a fixed pixel margin (not a Scale fraction of
+	-- `size`) so ROLL's and UPGRADE's labels land at the exact same
+	-- absolute height -- both buttons share one baseline, but a
+	-- Scale-based label position would still put the smaller UPGRADE's
+	-- text lower than ROLL's, since it's a smaller % of a smaller button.
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, 14, 0, 22)
+	label.AnchorPoint = Vector2.new(0.5, 1)
+	label.Position = UDim2.new(0.5, 0, 1, -14)
+	label.BackgroundTransparency = 1
+	label.Font = Theme.Fonts.Header
+	label.TextScaled = true
+	label.Text = labelText
+	label.TextColor3 = labelColor
+	label.TextStrokeTransparency = 0
+	label.TextStrokeColor3 = Color3.new(0, 0, 0)
+	label.ZIndex = 2
+	label.Parent = button
+
+	return button, icon
 end
 
 local RollPanel = {}
@@ -59,16 +123,47 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		table.insert(allItems, item)
 	end
 
-	-- ===== Roll button, bottom-center =====
+	-- ===== Roll + Upgrade icon buttons, bottom-center =====
 	local hudContainer = Instance.new("Frame")
-	hudContainer.Size = BUTTON_SIZE
+	hudContainer.Size = HUD_CONTAINER_SIZE
 	hudContainer.AnchorPoint = Vector2.new(0.5, 1)
-	hudContainer.Position = UDim2.new(0.5, 0, 1, -20)
+	hudContainer.Position = UDim2.new(0.5, 0, 1, -4)
 	hudContainer.BackgroundTransparency = 1
 	hudContainer.Parent = screenGui
 	Theme.AutoScale(screenGui, hudContainer, HUD_REFERENCE_WIDTH)
 
-	local rollButton = Theme.Button(hudContainer, UDim2.new(1, 0, 1, 0), UDim2.new(0, 0, 0, 0), "ROLL", true)
+	local upgradeOffsetX = ROLL_ICON_SIZE / 2 + ICON_GAP + UPGRADE_ICON_SIZE / 2
+
+	local rollButton, rollIcon = createIconButton(
+		hudContainer,
+		ROLL_ICON_SIZE,
+		UDim2.new(0.5, 0, 0, 0),
+		HUD_BASELINE_Y,
+		"rbxassetid://92855815758385",
+		"ROLL",
+		LABEL_COLOR
+	)
+	local rollLabel = rollButton:FindFirstChildOfClass("TextLabel")
+	if rollLabel then
+		rollLabel.Size = UDim2.new(1, 14, 0, 28)
+	end
+
+	-- Raised a bit above the shared baseline -- sitting exactly level with
+	-- ROLL made the (visually lighter) arrow icon read as smaller/lower
+	-- than the dice.
+	local upgradeButton = createIconButton(
+		hudContainer,
+		UPGRADE_ICON_SIZE,
+		UDim2.new(0.5, upgradeOffsetX, 0, 0),
+		HUD_BASELINE_Y - 24,
+		"rbxassetid://119321429785408",
+		"UPGRADE",
+		LABEL_COLOR
+	)
+	local upgradeLabel = upgradeButton:FindFirstChildOfClass("TextLabel")
+	if upgradeLabel then
+		upgradeLabel.Position = UDim2.new(0.5, 0, 1, -4)
+	end
 
 	-- ===== Reveal overlay, centered on screen -- hidden except during/right
 	-- after a spin =====
@@ -132,8 +227,7 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 
 	local function setRollEnabled(enabled: boolean)
 		rollButton.Active = enabled
-		rollButton.AutoButtonColor = enabled
-		rollButton.BackgroundColor3 = enabled and Theme.Colors.Accent or Theme.Colors.Surface
+		rollIcon.ImageTransparency = enabled and 0 or 0.6
 	end
 
 	local function playSettleBounce()
@@ -222,6 +316,11 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 
 	local handle = {}
 
+	-- MainUI wires this to upgradesHandle.Toggle() -- RollPanel doesn't
+	-- require UpgradesPanel itself, keeping the same "MainUI wires
+	-- cross-panel interactions" pattern as the modalFrames coordinator.
+	handle.UpgradeButton = upgradeButton
+
 	function handle.SetVIP(newIsVIP: boolean)
 		isVIP = newIsVIP
 	end
@@ -231,7 +330,7 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	-- that a centered/top modal can't reach, so MainUI hides these instead
 	-- of chasing an ever-shrinking gap with positioning alone.
 	function handle.SetHudVisible(visible: boolean)
-		rollButton.Visible = visible
+		hudContainer.Visible = visible
 		if not visible then
 			revealAnchor.Visible = false
 		end

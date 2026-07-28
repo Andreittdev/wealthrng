@@ -34,6 +34,8 @@ local RemoteNames = {
 		"SetPreference", -- client -> server, payload: key ("Music"/"SFX"/"VFX"), enabled (boolean)
 		"PreferencesUpdated", -- server -> client, payload: { [key]: boolean }
 		"SystemMessage", -- server -> client, payload: text (string) -- shown via TextChatService, this player only
+		"BuyUpgrade", -- client -> server, payload: trackId (string)
+		"UpgradesUpdated", -- server -> client, payload: { [trackId]: level }
 	},
 	Functions = {},
 }

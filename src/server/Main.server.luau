@@ -22,6 +22,7 @@ local investmentUpdated = remotesFolder:WaitForChild("InvestmentUpdated")
 local potionUpdated = remotesFolder:WaitForChild("PotionUpdated")
 local autoSellDuplicatesUpdated = remotesFolder:WaitForChild("AutoSellDuplicatesUpdated")
 local preferencesUpdated = remotesFolder:WaitForChild("PreferencesUpdated")
+local upgradesUpdated = remotesFolder:WaitForChild("UpgradesUpdated")
 
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local Leaderstats = require(ServerScriptService.Managers.Leaderstats)
@@ -38,6 +39,7 @@ require(ServerScriptService.Managers.PotionManager)
 require(ServerScriptService.Managers.EquipManager)
 require(ServerScriptService.Managers.TradeManager)
 require(ServerScriptService.Managers.PreferencesManager)
+require(ServerScriptService.Managers.UpgradeManager)
 
 local function onPlayerAdded(player: Player)
 	local session = DataManager.Load(player)
@@ -59,6 +61,7 @@ local function onPlayerAdded(player: Player)
 	potionUpdated:FireClient(player, session.ActivePotions)
 	autoSellDuplicatesUpdated:FireClient(player, session.AutoSellDuplicates)
 	preferencesUpdated:FireClient(player, session.Preferences)
+	upgradesUpdated:FireClient(player, session.Upgrades)
 end
 
 Players.PlayerAdded:Connect(onPlayerAdded)

@@ -35,6 +35,9 @@ export type Session = {
 	-- sound/effect yet -- the game has none -- this just persists the
 	-- toggle state so it's ready the moment one exists.
 	Preferences: { [string]: boolean },
+	-- [trackId] = level, 0..UpgradeConfig.Tracks[trackId].MaxLevel. Missing
+	-- key means level 0 -- default empty table, not pre-filled zeros.
+	Upgrades: { [string]: number },
 	LoadedOk: boolean,
 }
 
@@ -54,6 +57,7 @@ local function newDefaultSession(): Session
 		ActivePotions = {},
 		AutoSellDuplicates = {},
 		Preferences = { Music = true, SFX = true, VFX = true },
+		Upgrades = {},
 		LoadedOk = true,
 	}
 end
@@ -93,6 +97,7 @@ function DataManager.Load(player: Player): Session
 				ActivePotions = data.ActivePotions or {},
 				AutoSellDuplicates = data.AutoSellDuplicates or {},
 				Preferences = data.Preferences or { Music = true, SFX = true, VFX = true },
+				Upgrades = data.Upgrades or {},
 				LoadedOk = true,
 			}
 		else
@@ -134,6 +139,7 @@ function DataManager.Save(player: Player)
 		ActivePotions = session.ActivePotions,
 		AutoSellDuplicates = session.AutoSellDuplicates,
 		Preferences = session.Preferences,
+		Upgrades = session.Upgrades,
 	}
 
 	local ok = attempt(function()

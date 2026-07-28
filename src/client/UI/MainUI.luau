@@ -30,6 +30,7 @@ local SettingsPanel = require(script.Parent.SettingsPanel)
 local ProfilePanel = require(script.Parent.ProfilePanel)
 local TradePanel = require(script.Parent.TradePanel)
 local CatalogPanel = require(script.Parent.CatalogPanel)
+local UpgradesPanel = require(script.Parent.UpgradesPanel)
 local Sidebar = require(script.Parent.Sidebar)
 
 local MainUI = {}
@@ -61,6 +62,11 @@ function MainUI.Init()
 	local profileHandle = ProfilePanel.Create(screenGui)
 	local tradeHandle = TradePanel.Create(screenGui, remotesFolder)
 	local catalogHandle = CatalogPanel.Create(screenGui, remotesFolder)
+	local upgradesHandle = UpgradesPanel.Create(screenGui, remotesFolder)
+
+	-- RollPanel's circular UPGRADE button next to ROLL is just another
+	-- shortcut to the same panel the sidebar's Upgrades button opens.
+	rollHandle.UpgradeButton.Activated:Connect(upgradesHandle.Toggle)
 
 	Sidebar.Create(screenGui, {
 		Inventory = inventoryHandle,
@@ -69,6 +75,7 @@ function MainUI.Init()
 		Settings = settingsHandle,
 		Profile = profileHandle,
 		Trade = tradeHandle,
+		Upgrades = upgradesHandle,
 	})
 
 	local modalFrames = {
@@ -82,6 +89,7 @@ function MainUI.Init()
 		tradeHandle.Frame,
 		tradeHandle.TradeWindowFrame,
 		catalogHandle.Frame,
+		upgradesHandle.Frame,
 	}
 
 	local function updateRollHud()

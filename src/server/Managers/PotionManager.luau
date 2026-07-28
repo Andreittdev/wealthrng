@@ -8,6 +8,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local PotionDatabase = require(ReplicatedStorage.Modules.PotionDatabase)
+local UpgradeConfig = require(ReplicatedStorage.Modules.UpgradeConfig)
 local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local StatsManager = require(ServerScriptService.Managers.StatsManager)
@@ -35,7 +36,8 @@ buyPotion.OnServerEvent:Connect(function(player: Player, potionId: string)
 
 	local now = os.time()
 	local currentExpiry = session.ActivePotions[potionId] or 0
-	session.ActivePotions[potionId] = math.max(currentExpiry, now) + potion.DurationSeconds
+	local duration = potion.DurationSeconds * UpgradeConfig.GetPotionDurationMultiplier(session.Upgrades.PotionBoost or 0)
+	session.ActivePotions[potionId] = math.max(currentExpiry, now) + duration
 
 	potionUpdated:FireClient(player, session.ActivePotions)
 	StatsManager.Recompute(player)

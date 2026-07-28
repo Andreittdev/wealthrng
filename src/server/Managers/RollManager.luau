@@ -1,7 +1,8 @@
 -- Handles RollRequested: server-enforced cooldown, weighted rarity pick,
 -- weighted item pick within that rarity, grants the item, pushes updates.
--- Luck/cooldown get boosted by both VIP (permanent) and an active Luck/
--- Speed Potion (temporary, via PotionConfig) -- the two stack.
+-- Luck/cooldown get boosted by VIP (permanent), an active Luck/Speed
+-- Potion (temporary, via PotionConfig), and the Luck/Roll Speed Upgrade
+-- tracks (permanent, via UpgradeConfig) -- all three stack multiplicatively.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -12,6 +13,7 @@ local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
 local RollConfig = require(ReplicatedStorage.Modules.RollConfig)
 local VIPConfig = require(ReplicatedStorage.Modules.VIPConfig)
 local PotionConfig = require(ReplicatedStorage.Modules.PotionConfig)
+local UpgradeConfig = require(ReplicatedStorage.Modules.UpgradeConfig)
 local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local InventoryManager = require(ServerScriptService.Managers.InventoryManager)
@@ -36,6 +38,7 @@ local function pickRarity(session, isVIP: boolean, nowUnix: number): string
 			weight *= VIPConfig.LuckWeightMultiplier[rarity]
 		end
 		weight *= PotionConfig.GetLuckMultiplier(session, rarity, nowUnix)
+		weight *= UpgradeConfig.GetLuckMultiplier(session.Upgrades.Luck or 0, rarity)
 		weights[rarity] = weight
 		totalWeight += weight
 	end
@@ -85,7 +88,9 @@ rollRequested.OnServerEvent:Connect(function(player: Player)
 	local isVIP = VIPManager.IsVIP(player)
 	local nowUnix = os.time()
 	local baseCooldown = isVIP and VIPConfig.RollCooldownSeconds or RollConfig.BaseCooldownSeconds
-	local cooldown = baseCooldown * PotionConfig.GetCooldownMultiplier(session, nowUnix)
+	local cooldown = baseCooldown
+		* PotionConfig.GetCooldownMultiplier(session, nowUnix)
+		* UpgradeConfig.GetCooldownMultiplier(session.Upgrades.RollSpeed or 0)
 
 	local nowClock = os.clock()
 	local last = lastRollAt[player]
