@@ -27,6 +27,7 @@ local Theme = require(script.Parent.Theme)
 local AssetShopPanel = {}
 
 local CARD_SIZE = UDim2.new(0, 185, 0, 150)
+local INVESTMENT_QUANTITIES = { 1, 10, 100 }
 
 function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	local buyAsset = remotes:WaitForChild("BuyAsset")
@@ -38,7 +39,7 @@ function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 
 	local ownedAssets: { [string]: boolean } = {}
 	local equippedAssets: { string } = {}
-	local currentInvestments: { { Uid: number, Id: string, PurchasedAt: number } } = {}
+	local currentInvestments: { { Uid: number, Id: string, PurchasedAt: number, Quantity: number } } = {}
 	local openCategory: string = "Assets"
 
 	-- Anchored near the top (not dead-center) so it doesn't collide with
@@ -135,6 +136,27 @@ function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		button.Activated:Connect(onClick)
 	end
 
+	-- Investments only -- x1/x10/x100 buttons instead of a single Buy, so
+	-- buying in bulk doesn't mean clicking Buy 100 times (and, matching
+	-- InvestmentManager, one purchase action always becomes exactly one
+	-- owned entry with that Quantity, not N separate entries to scroll
+	-- through later).
+	local function addBuyQuantityButtons(card: Frame, onBuy: (number) -> ())
+		local slotWidth = 1 / #INVESTMENT_QUANTITIES
+		for index, quantity in INVESTMENT_QUANTITIES do
+			local button = Theme.Button(
+				card,
+				UDim2.new(slotWidth, -4, 0, 30),
+				UDim2.new(slotWidth * (index - 1), index > 1 and 2 or 0, 1, -30),
+				"x" .. quantity,
+				true
+			)
+			button.Activated:Connect(function()
+				onBuy(quantity)
+			end)
+		end
+	end
+
 	-- Plain (non-interactive) status label instead of a disabled button --
 	-- a greyed-out TextButton still hover-highlights, which reads as
 	-- clickable when it isn't.
@@ -150,6 +172,7 @@ function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 
 		local equippedCount = #equippedAssets
 		statusLabel.Text = string.format("Equipped: %d/%d", equippedCount, AssetDatabase.MaxEquipped)
+		statusLabel.TextColor3 = Theme.Colors.TextSecondary
 
 		local order = 0
 		for id, asset in AssetDatabase.GetAllAssets() do
@@ -179,7 +202,7 @@ function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		local count = 0
 		for _, entry in currentInvestments do
 			if entry.Id == id then
-				count += 1
+				count += entry.Quantity or 1
 			end
 		end
 		return count
@@ -187,15 +210,16 @@ function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 
 	local function renderInvestments()
 		clearContent()
-		statusLabel.Text = ""
+		statusLabel.Text = "Investment Value increases by 10% every 3.5 days! (Grows Offline)"
+		statusLabel.TextColor3 = Theme.Colors.Success
 
 		local order = 0
 		for id, investment in InvestmentDatabase.GetAllInvestments() do
 			order += 1
 			local owned = countOwnedInvestments(id)
 			local card = createCard(order, investment.Name, NumberFormat.FormatCash(investment.Price), owned > 0 and string.format("Owned: %d", owned) or nil)
-			addActionButton(card, "Buy", true, function()
-				buyInvestment:FireServer(id)
+			addBuyQuantityButtons(card, function(quantity)
+				buyInvestment:FireServer(id, quantity)
 			end)
 		end
 	end
@@ -235,7 +259,7 @@ function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		refresh()
 	end)
 
-	investmentUpdated.OnClientEvent:Connect(function(investments: { { Uid: number, Id: string, PurchasedAt: number } })
+	investmentUpdated.OnClientEvent:Connect(function(investments: { { Uid: number, Id: string, PurchasedAt: number, Quantity: number } })
 		currentInvestments = investments
 		refresh()
 	end)

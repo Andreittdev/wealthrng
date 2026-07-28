@@ -17,9 +17,9 @@ local RemoteNames = {
 		"EquipAsset", -- client -> server, payload: assetId
 		"UnequipAsset", -- client -> server, payload: assetId
 		"AssetUpdated", -- server -> client, payload: { Owned: {[assetId]: boolean}, Equipped: {assetId} }
-		"BuyInvestment", -- client -> server, payload: investmentId
-		"SellInvestment", -- client -> server, payload: uid
-		"InvestmentUpdated", -- server -> client, payload: { {Uid, Id} }
+		"BuyInvestment", -- client -> server, payload: investmentId, quantity (1/10/100 from the shop buttons)
+		"SellInvestment", -- client -> server, payload: uid, quantity (units to sell -- omit/invalid = sell all of that entry)
+		"InvestmentUpdated", -- server -> client, payload: { {Uid, Id, PurchasedAt, Quantity} }
 		"BuyPotion", -- client -> server, payload: potionId
 		"PotionUpdated", -- server -> client, payload: { [potionId] = expiresAt }
 		"RequestTrade", -- client -> server, payload: target (Player) -- from the sidebar Trade button's player picker
@@ -36,6 +36,9 @@ local RemoteNames = {
 		"SystemMessage", -- server -> client, payload: text (string) -- shown via TextChatService, this player only
 		"BuyUpgrade", -- client -> server, payload: trackId (string)
 		"UpgradesUpdated", -- server -> client, payload: { [trackId]: level }
+		"ClientReady", -- client -> server, no payload -- fired once MainUI has built every panel and
+		-- connected every OnClientEvent listener, so the server's "here's your saved data" initial
+		-- pushes (Inventory/Assets/Investments/etc.) can't fire before anything is listening for them.
 	},
 	Functions = {},
 }

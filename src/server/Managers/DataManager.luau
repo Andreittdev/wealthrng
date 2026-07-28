@@ -21,7 +21,10 @@ export type Session = {
 	TotalRolls: number,
 	OwnedAssets: { [string]: boolean },
 	EquippedAssets: { string },
-	Investments: { { Uid: number, Id: string, PurchasedAt: number } },
+	-- Quantity: how many units this one purchase (x1/x10/x100) bought --
+	-- one entry per purchase action, not one per unit, so buying 100 at
+	-- once doesn't create 100 separate rows to scroll through.
+	Investments: { { Uid: number, Id: string, PurchasedAt: number, Quantity: number } },
 	NextInvestmentUid: number,
 	ActivePotions: { [string]: number },
 	-- Per-rarity opt-in: missing/false means off. Defaults to all-off for
@@ -84,6 +87,13 @@ function DataManager.Load(player: Player): Session
 	local session: Session
 	if ok then
 		if data then
+			-- Backfill Quantity = 1 on entries saved before that field
+			-- existed, so old saves don't silently value themselves at 0.
+			local investments = data.Investments or {}
+			for _, entry in investments do
+				entry.Quantity = entry.Quantity or 1
+			end
+
 			session = {
 				Cash = data.Cash or 0,
 				Inventory = data.Inventory or {},
@@ -92,7 +102,7 @@ function DataManager.Load(player: Player): Session
 				TotalRolls = data.TotalRolls or 0,
 				OwnedAssets = data.OwnedAssets or {},
 				EquippedAssets = data.EquippedAssets or {},
-				Investments = data.Investments or {},
+				Investments = investments,
 				NextInvestmentUid = data.NextInvestmentUid or 1,
 				ActivePotions = data.ActivePotions or {},
 				AutoSellDuplicates = data.AutoSellDuplicates or {},

@@ -16,8 +16,8 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
 local DataManager = require(ServerScriptService.Managers.DataManager)
-local InventoryManager = require(ServerScriptService.Managers.InventoryManager)
 local Leaderstats = require(ServerScriptService.Managers.Leaderstats)
+local StatsManager = require(ServerScriptService.Managers.StatsManager)
 
 -- Which BoardIndex's rank gets mirrored onto leaderstats.Rank (shown next
 -- to the player's name in Roblox's built-in PlayerList) -- Net Worth is
@@ -83,7 +83,12 @@ local function getNetWorth(player: Player): number?
 	if not session then
 		return nil
 	end
-	return session.Cash + InventoryManager.GetValue(player)
+	-- Was Cash + rolled-items value only -- silently missing Assets and
+	-- Investments, which for any established player are the majority of
+	-- their real net worth. Delegate to the one authoritative formula
+	-- (StatsManager, same as the client's Net Worth panel/stat) instead of
+	-- re-deriving a second, incomplete copy of it here.
+	return StatsManager.ComputeNetWorth(player)
 end
 
 local function getTotalRolls(player: Player): number?

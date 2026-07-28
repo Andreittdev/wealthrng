@@ -79,7 +79,8 @@ local function resolveInvestments(ownerSessionData, uids: { number })
 			if entry.Uid == uid then
 				table.insert(resolved, {
 					Id = entry.Id,
-					CurrentValue = InvestmentDatabase.ComputeCurrentValue(entry.Id, entry.PurchasedAt, now),
+					CurrentValue = InvestmentDatabase.ComputeEntryValue(entry, now),
+					Quantity = entry.Quantity,
 				})
 				break
 			end
@@ -222,12 +223,12 @@ local function executeTrade(session: TradeSession)
 	for _, entry in investmentsFromA do
 		local newUid = sessionB.NextInvestmentUid
 		sessionB.NextInvestmentUid += 1
-		table.insert(sessionB.Investments, { Uid = newUid, Id = entry.Id, PurchasedAt = entry.PurchasedAt })
+		table.insert(sessionB.Investments, { Uid = newUid, Id = entry.Id, PurchasedAt = entry.PurchasedAt, Quantity = entry.Quantity })
 	end
 	for _, entry in investmentsFromB do
 		local newUid = sessionA.NextInvestmentUid
 		sessionA.NextInvestmentUid += 1
-		table.insert(sessionA.Investments, { Uid = newUid, Id = entry.Id, PurchasedAt = entry.PurchasedAt })
+		table.insert(sessionA.Investments, { Uid = newUid, Id = entry.Id, PurchasedAt = entry.PurchasedAt, Quantity = entry.Quantity })
 	end
 
 	sessionA.Cash = sessionA.Cash - session.OfferA.Cash + session.OfferB.Cash

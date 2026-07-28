@@ -34,7 +34,7 @@ function TradePanel.Create(screenGui: ScreenGui, remotes: Folder)
 
 	local localPlayer = Players.LocalPlayer
 	local myOwnedAssets: { [string]: boolean } = {}
-	local myInvestments: { { Uid: number, Id: string, PurchasedAt: number } } = {}
+	local myInvestments: { { Uid: number, Id: string, PurchasedAt: number, Quantity: number } } = {}
 	local myNetWorth = 0
 	local currentState = nil
 	local pendingRequestFrom: Player? = nil
@@ -350,9 +350,10 @@ function TradePanel.Create(screenGui: ScreenGui, remotes: Folder)
 		for _, entry in myInvestments do
 			local investment = InvestmentDatabase.GetInvestment(entry.Id)
 			if investment then
-				local currentValue = InvestmentDatabase.ComputeCurrentValue(entry.Id, entry.PurchasedAt, now)
+				local currentValue = InvestmentDatabase.ComputeEntryValue(entry, now)
 				local inOffer = table.find(currentState.MyOffer.InvestmentUids, entry.Uid) ~= nil
-				local row = createRow(myList, string.format("\u{1F48E} %s (%s)", investment.Name, NumberFormat.FormatCash(currentValue)), inOffer)
+				local quantityText = (entry.Quantity or 1) > 1 and (" x" .. entry.Quantity) or ""
+				local row = createRow(myList, string.format("\u{1F48E} %s%s (%s)", investment.Name, quantityText, NumberFormat.FormatCash(currentValue)), inOffer)
 				local button = Instance.new("TextButton")
 				button.Size = UDim2.new(1, 0, 1, 0)
 				button.BackgroundTransparency = 1
@@ -381,7 +382,8 @@ function TradePanel.Create(screenGui: ScreenGui, remotes: Folder)
 		for _, summary in currentState.TheirOffer.Investments do
 			local investment = InvestmentDatabase.GetInvestment(summary.Id)
 			if investment then
-				createRow(theirList, string.format("\u{1F48E} %s (%s)", investment.Name, NumberFormat.FormatCash(summary.CurrentValue)), false)
+				local quantityText = (summary.Quantity or 1) > 1 and (" x" .. summary.Quantity) or ""
+				createRow(theirList, string.format("\u{1F48E} %s%s (%s)", investment.Name, quantityText, NumberFormat.FormatCash(summary.CurrentValue)), false)
 			end
 		end
 	end
@@ -428,7 +430,7 @@ function TradePanel.Create(screenGui: ScreenGui, remotes: Folder)
 		end
 	end)
 
-	investmentUpdated.OnClientEvent:Connect(function(investments: { { Uid: number, Id: string, PurchasedAt: number } })
+	investmentUpdated.OnClientEvent:Connect(function(investments: { { Uid: number, Id: string, PurchasedAt: number, Quantity: number } })
 		myInvestments = investments
 		if currentState then
 			renderMyList()

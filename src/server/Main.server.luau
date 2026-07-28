@@ -12,6 +12,14 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local VIPConfig = require(ReplicatedStorage.Modules.VIPConfig)
 
+-- The Emitter2D particle system (src/client/Emitter2D.rbxm) blocks forever
+-- on require() waiting for this attribute -- it's normally set by the
+-- Emitter2D Studio plugin, but plugins don't run during Play-test/live
+-- gameplay, only in Studio's own edit-mode. Setting it low (not the real
+-- installed version) is safe: the module only errors if this is HIGHER
+-- than its own bundled version, never if it's lower.
+ReplicatedStorage:SetAttribute("Emitter2D_Version", 0)
+
 local remotesFolder = require(ServerScriptService.RemotesBootstrap)
 require(ServerScriptService.MapBuilder).Build()
 
@@ -23,6 +31,7 @@ local potionUpdated = remotesFolder:WaitForChild("PotionUpdated")
 local autoSellDuplicatesUpdated = remotesFolder:WaitForChild("AutoSellDuplicatesUpdated")
 local preferencesUpdated = remotesFolder:WaitForChild("PreferencesUpdated")
 local upgradesUpdated = remotesFolder:WaitForChild("UpgradesUpdated")
+local clientReady = remotesFolder:WaitForChild("ClientReady")
 
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local Leaderstats = require(ServerScriptService.Managers.Leaderstats)
@@ -41,19 +50,24 @@ require(ServerScriptService.Managers.TradeManager)
 require(ServerScriptService.Managers.PreferencesManager)
 require(ServerScriptService.Managers.UpgradeManager)
 
-local function onPlayerAdded(player: Player)
-	local session = DataManager.Load(player)
-	VIPManager.Load(player)
-	Leaderstats.Create(player)
-	StatsManager.Recompute(player)
-	-- So a player shows up on the boards from their very first stats
-	-- submission instead of waiting until their first roll/sell/etc.
-	-- marks them dirty.
-	LeaderboardManager.MarkDirty(player)
+-- Initial pushes (saved Inventory/Assets/Investments/etc.) fire TWICE, on
+-- purpose: once immediately after DataManager.Load (the old behavior --
+-- fast, but can race MainUI still constructing panels client-side and get
+-- silently dropped for whichever panels hadn't connected their
+-- OnClientEvent listener yet), and again whenever the client's own
+-- ClientReady signal arrives (fires once MainUI has finished building
+-- everything, so it can't be dropped that way -- but waiting on it
+-- EXCLUSIVELY would mean one missed/failed signal loses the data
+-- entirely, worse than the original race). Receiving the same snapshot
+-- twice is harmless -- every panel just overwrites its local copy -- so
+-- "send twice, whichever lands is enough" is strictly safer than either
+-- one alone.
+local function sendInitialState(player: Player)
+	local session = DataManager.Get(player)
+	if not session then
+		return
+	end
 
-	-- Initial pushes so a returning player sees their saved Inventory/
-	-- EquippedItemUids/Asset/Investments/ActivePotions immediately instead
-	-- of an empty list until their next action.
 	inventoryUpdated:FireClient(player, session.Inventory)
 	equippedItemsUpdated:FireClient(player, session.EquippedItemUids)
 	assetUpdated:FireClient(player, { Owned = session.OwnedAssets, Equipped = session.EquippedAssets })
@@ -63,6 +77,23 @@ local function onPlayerAdded(player: Player)
 	preferencesUpdated:FireClient(player, session.Preferences)
 	upgradesUpdated:FireClient(player, session.Upgrades)
 end
+
+local function onPlayerAdded(player: Player)
+	DataManager.Load(player)
+	VIPManager.Load(player)
+	Leaderstats.Create(player)
+	StatsManager.Recompute(player)
+	-- So a player shows up on the boards from their very first stats
+	-- submission instead of waiting until their first roll/sell/etc.
+	-- marks them dirty.
+	LeaderboardManager.MarkDirty(player)
+
+	sendInitialState(player)
+end
+
+clientReady.OnServerEvent:Connect(function(player: Player)
+	sendInitialState(player)
+end)
 
 Players.PlayerAdded:Connect(onPlayerAdded)
 for _, player in Players:GetPlayers() do

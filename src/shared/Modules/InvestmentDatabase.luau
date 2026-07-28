@@ -75,4 +75,14 @@ function InvestmentDatabase.ComputeCurrentValue(id: string, purchasedAt: number,
 	return investment.Price * (1 + APPRECIATION_RATE) ^ periods
 end
 
+-- A single owned entry can represent more than one unit (bought via the
+-- x1/x10/x100 quantity buttons) -- this is the one place that multiplies
+-- by Quantity, so every caller (StatsManager's net worth, sell payout,
+-- trade valuation, NetWorthPanel/TradePanel display) stays in sync
+-- instead of each re-deriving it. `Quantity` defaults to 1 for old saved
+-- entries from before this field existed.
+function InvestmentDatabase.ComputeEntryValue(entry: { Id: string, PurchasedAt: number, Quantity: number? }, now: number): number
+	return InvestmentDatabase.ComputeCurrentValue(entry.Id, entry.PurchasedAt, now) * (entry.Quantity or 1)
+end
+
 return InvestmentDatabase

@@ -40,6 +40,7 @@ function MainUI.Init()
 	local inventoryUpdated = remotesFolder:WaitForChild("InventoryUpdated")
 	local statsUpdated = remotesFolder:WaitForChild("StatsUpdated")
 	local potionUpdated = remotesFolder:WaitForChild("PotionUpdated")
+	local clientReady = remotesFolder:WaitForChild("ClientReady")
 
 	local player = Players.LocalPlayer
 	local playerGui = player:WaitForChild("PlayerGui")
@@ -115,6 +116,12 @@ function MainUI.Init()
 
 	inventoryUpdated.OnClientEvent:Connect(inventoryHandle.Render)
 	potionUpdated.OnClientEvent:Connect(profileHandle.UpdatePotions)
+
+	-- Every panel above is built and every OnClientEvent listener above is
+	-- connected -- safe now to tell the server it can send the "here's your
+	-- saved data" initial pushes (Inventory/Assets/Investments/etc.)
+	-- without risking firing before anything was listening.
+	clientReady:FireServer()
 end
 
 return MainUI

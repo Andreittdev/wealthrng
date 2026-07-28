@@ -45,7 +45,7 @@ local function getInvestmentValue(session): number
 	local total = 0
 	local now = os.time()
 	for _, entry in session.Investments do
-		total += InvestmentDatabase.ComputeCurrentValue(entry.Id, entry.PurchasedAt, now)
+		total += InvestmentDatabase.ComputeEntryValue(entry, now)
 	end
 	return total
 end

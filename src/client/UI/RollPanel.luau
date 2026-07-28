@@ -20,6 +20,8 @@
 -- pinned anchor (bottom-center / screen-center) on narrow phone screens,
 -- instead of staying full desktop size regardless of screen width.
 
+local CollectionService = game:GetService("CollectionService")
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
@@ -57,6 +59,19 @@ local LABEL_COLOR = Color3.fromRGB(255, 255, 255)
 
 local REVEAL_SIZE = UDim2.new(0, 380, 0, 280)
 local REVEAL_REFERENCE_WIDTH = 900
+
+-- StarterGui.EffectsGui.RareItemEffect.{Ultra,Luxury}Emitter -- Emitter2D
+-- Configuration objects (see their own attributes for color/texture/etc.).
+-- Fired with :Emit(amount) on settle for these two tiers only -- the
+-- whole point of Ultra/Luxury is that they're rare, so only the rarest
+-- pulls get a particle burst, not every roll.
+local RARE_EFFECT_PATH = { "EffectsGui", "RareItemEffect" }
+local RARE_EFFECT_EMITTER_NAMES = { Ultra = "UltraEmitter", Luxury = "LuxuryEmitter" }
+local RARE_EFFECT_BURST_AMOUNT = 60
+-- Bigger than REVEAL_SIZE and centered on the same spot -- gives the
+-- burst room to spread past the reveal box's edges instead of clipping
+-- exactly at it.
+local RARE_EFFECT_HOST_SIZE = UDim2.new(0, 700, 0, 500)
 
 local function formatOdds(item): string
 	local oneInN = RollOdds.GetOneInN(item.Id)
@@ -121,6 +136,65 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	local allItems = {}
 	for _, item in ItemDatabase.GetAllItems() do
 		table.insert(allItems, item)
+	end
+
+	-- Emitter2D requires a real GuiObject ancestor to know where/how to
+	-- render (Config:FindFirstAncestorWhichIsA("GuiObject")) -- whatever
+	-- "RareItemEffect" actually is in Studio (Model/Folder/Configuration
+	-- aren't GuiObjects), it can't satisfy that on its own. This Frame
+	-- guarantees valid ancestry unconditionally, and doubles as control
+	-- over where on screen the burst appears (centered on the reveal spot).
+	local rareEffectHost = Instance.new("Frame")
+	rareEffectHost.Size = RARE_EFFECT_HOST_SIZE
+	rareEffectHost.AnchorPoint = Vector2.new(0.5, 0.5)
+	rareEffectHost.Position = UDim2.new(0.5, 0, 0.42, 0)
+	rareEffectHost.BackgroundTransparency = 1
+	rareEffectHost.Parent = screenGui
+
+	-- Resolved once, lazily, off the main thread -- StarterGui clones into
+	-- PlayerGui asynchronously, and a missing/misnamed effect should never
+	-- block or error out the roll button itself.
+	local rareEffectEmitters: { [string]: Configuration } = {}
+	task.spawn(function()
+		local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+		local container = playerGui
+		for _, name in RARE_EFFECT_PATH do
+			local ok, child = pcall(function()
+				return container:WaitForChild(name, 10)
+			end)
+			container = ok and child or nil
+			if not container then
+				warn(string.format("[RollPanel] Rare item effect not found: PlayerGui.%s missing", table.concat(RARE_EFFECT_PATH, ".")))
+				return
+			end
+		end
+
+		for rarity, emitterName in RARE_EFFECT_EMITTER_NAMES do
+			local emitter = container:FindFirstChild(emitterName)
+			if emitter then
+				rareEffectEmitters[rarity] = emitter
+				-- Reparent into our known-good Frame -- fixes ValidAncestry
+				-- regardless of what RareItemEffect's actual class is.
+				emitter.Parent = rareEffectHost
+				-- Force the tag on ourselves instead of trusting it was
+				-- saved correctly in Studio -- the Emit/Clear/SetSeeds
+				-- children visible in the Explorer were created by the
+				-- Studio PLUGIN's own preview (which doesn't run during
+				-- Play/live gameplay), not necessarily by an actual
+				-- CollectionService tag the runtime loader would see.
+				CollectionService:AddTag(emitter, "Emitter2D")
+			else
+				warn(string.format("[RollPanel] Rare item effect missing emitter '%s' for %s", emitterName, rarity))
+			end
+		end
+	end)
+
+	local function playRareEffect(rarity: string)
+		local emitter = rareEffectEmitters[rarity]
+		local emit = emitter and emitter:FindFirstChild("Emit")
+		if emit then
+			emit:Fire(RARE_EFFECT_BURST_AMOUNT)
+		end
 	end
 
 	-- ===== Roll + Upgrade icon buttons, bottom-center =====
@@ -285,6 +359,7 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 			revealStroke.Color = finalColor
 		end
 		playSettleBounce()
+		playRareEffect(item.Rarity)
 
 		task.wait(RESULT_DISPLAY_SECONDS)
 		revealAnchor.Visible = false
