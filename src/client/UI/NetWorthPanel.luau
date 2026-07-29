@@ -1,13 +1,13 @@
 -- Portfolio breakdown: Cash, rolled-items value, owned Assets, owned
--- Investments, and the Net Worth total -- plus a Sell button on every
--- owned Asset/Investment row. Buying still only happens at the physical
--- stand (AssetShopPanel.luau); this is where you liquidate what you
--- already bought, with a confirmation popup first (same shared-instance
--- pattern as InventoryPanel's sell confirm) since a sell can be a very
--- large amount of value to lose to a misclick. The quantity-to-sell input
--- for Investments lives IN that popup (a full-size, non-scrolling
--- overlay), not as a tiny textbox squeezed into the scrolling row itself
--- -- much more reliable to tap/type into, especially on phones.
+-- Investments, and the Net Worth total. Assets are display-only here now
+-- (name + income/sec, no Sell -- that's being reworked into something
+-- else) -- Investments still get a Sell button, with a confirmation popup
+-- first (same shared-instance pattern as InventoryPanel's sell confirm)
+-- since a sell can be a very large amount of value to lose to a misclick.
+-- The quantity-to-sell input for Investments lives IN that popup (a
+-- full-size, non-scrolling overlay), not as a tiny textbox squeezed into
+-- the scrolling row itself -- much more reliable to tap/type into,
+-- especially on phones.
 --
 -- Computes the item/asset/investment breakdown client-side from data
 -- already flowing to the client (InventoryUpdated/AssetUpdated/
@@ -29,7 +29,6 @@ function NetWorthPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	local assetUpdated = remotes:WaitForChild("AssetUpdated")
 	local investmentUpdated = remotes:WaitForChild("InvestmentUpdated")
 	local statsUpdated = remotes:WaitForChild("StatsUpdated")
-	local sellAsset = remotes:WaitForChild("SellAsset")
 	local sellInvestment = remotes:WaitForChild("SellInvestment")
 
 	-- Anchored near the top (not dead-center) so it doesn't collide with
@@ -157,8 +156,8 @@ function NetWorthPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	end)
 	noButton.Activated:Connect(hideConfirm)
 
-	-- `maxQuantity` nil = Assets (always exactly 1, no input shown).
-	-- Otherwise shows the quantity box pre-filled with the full owned
+	-- Only Investments call this now (Assets have no Sell here anymore).
+	-- `maxQuantity` shows the quantity box pre-filled with the full owned
 	-- amount -- change it (e.g. "100" -> "50") to only sell part of it.
 	local function requestSell(maxQuantity: number?, fire: (number) -> ())
 		pendingSell = { MaxQuantity = maxQuantity, Fire = fire }
@@ -257,9 +256,10 @@ function NetWorthPanel.Create(screenGui: ScreenGui, remotes: Folder)
 					anyAssetOwned = true
 					assetsTotal += asset.Price
 					local equipped = table.find(equippedAssets, id) ~= nil
-					addOwnedRow(string.format("  %s: %s%s", asset.Name, NumberFormat.FormatCash(asset.Price), equipped and " (equipped)" or ""), nil, function(_)
-						sellAsset:FireServer(id)
-					end)
+					-- Display-only (no Sell here anymore) -- shows the
+					-- per-second income rate, not the Price, since that's
+					-- what this row is meant to communicate now.
+					addRow(string.format("  %s: +%s/s%s", asset.Name, NumberFormat.FormatCash(asset.IncomePerMinute / 60), equipped and " (equipped)" or ""))
 				end
 			end
 		end

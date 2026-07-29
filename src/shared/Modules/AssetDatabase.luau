@@ -30,6 +30,7 @@ export type Asset = {
 	Name: string,
 	Price: number,
 	IncomePerMinute: number,
+	Image: string,
 }
 
 local AssetDatabase = {}
@@ -38,17 +39,17 @@ local AssetDatabase = {}
 AssetDatabase.MaxEquipped = 2
 
 local assets: { [string]: Asset } = {
-	StudioApartment = { Id = "StudioApartment", Name = "Studio Apartment", Price = 2000, IncomePerMinute = 1440 },
-	DowntownCondo = { Id = "DowntownCondo", Name = "Downtown Condo", Price = 15000, IncomePerMinute = 12000 },
-	FamilyHouse = { Id = "FamilyHouse", Name = "Family House", Price = 120000, IncomePerMinute = 108000 },
-	LuxuryTownhouse = { Id = "LuxuryTownhouse", Name = "Luxury Townhouse", Price = 1000000, IncomePerMinute = 456000 },
-	BeachfrontVilla = { Id = "BeachfrontVilla", Name = "Beachfront Villa", Price = 8500000, IncomePerMinute = 3600000 },
-	PrivateEstate = { Id = "PrivateEstate", Name = "Private Estate", Price = 70000000, IncomePerMinute = 26400000 },
-	CountrysideMansion = { Id = "CountrysideMansion", Name = "Countryside Mansion", Price = 550000000, IncomePerMinute = 129000000 },
-	SkyscraperPenthouse = { Id = "SkyscraperPenthouse", Name = "Skyscraper Penthouse", Price = 4200000000, IncomePerMinute = 810000000 },
-	PrivateResort = { Id = "PrivateResort", Name = "Private Resort", Price = 32000000000, IncomePerMinute = 4680000000 },
-	LuxuryHotelChain = { Id = "LuxuryHotelChain", Name = "Luxury Hotel Chain", Price = 240000000000, IncomePerMinute = 25800000000 },
-	RealEstateEmpire = { Id = "RealEstateEmpire", Name = "Real Estate Empire", Price = 1800000000000, IncomePerMinute = 192000000000 },
+	StudioApartment = { Id = "StudioApartment", Name = "Studio Apartment", Price = 2000, IncomePerMinute = 1440, Image = "rbxassetid://128312083744745" },
+	DowntownCondo = { Id = "DowntownCondo", Name = "Downtown Condo", Price = 15000, IncomePerMinute = 12000, Image = "rbxassetid://136840210779575" },
+	FamilyHouse = { Id = "FamilyHouse", Name = "Family House", Price = 120000, IncomePerMinute = 108000, Image = "rbxassetid://120133323186928" },
+	LuxuryTownhouse = { Id = "LuxuryTownhouse", Name = "Luxury Townhouse", Price = 1000000, IncomePerMinute = 456000, Image = "rbxassetid://138923081012401" },
+	BeachfrontVilla = { Id = "BeachfrontVilla", Name = "Beachfront Villa", Price = 8500000, IncomePerMinute = 3600000, Image = "rbxassetid://119101496539944" },
+	PrivateEstate = { Id = "PrivateEstate", Name = "Private Estate", Price = 70000000, IncomePerMinute = 26400000, Image = "rbxassetid://85135894605780" },
+	CountrysideMansion = { Id = "CountrysideMansion", Name = "Countryside Mansion", Price = 550000000, IncomePerMinute = 129000000, Image = "rbxassetid://71246518719735" },
+	SkyscraperPenthouse = { Id = "SkyscraperPenthouse", Name = "Skyscraper Penthouse", Price = 4200000000, IncomePerMinute = 810000000, Image = "rbxassetid://85345447282599" },
+	PrivateResort = { Id = "PrivateResort", Name = "Private Resort", Price = 32000000000, IncomePerMinute = 4680000000, Image = "rbxassetid://115536352813894" },
+	LuxuryHotelChain = { Id = "LuxuryHotelChain", Name = "Luxury Hotel Chain", Price = 240000000000, IncomePerMinute = 25800000000, Image = "rbxassetid://120902816460043" },
+	RealEstateEmpire = { Id = "RealEstateEmpire", Name = "Real Estate Empire", Price = 1800000000000, IncomePerMinute = 192000000000, Image = "rbxassetid://97450504269002" },
 }
 
 function AssetDatabase.GetAsset(id: string?): Asset?

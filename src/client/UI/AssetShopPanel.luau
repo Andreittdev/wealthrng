@@ -26,7 +26,12 @@ local Theme = require(script.Parent.Theme)
 
 local AssetShopPanel = {}
 
-local CARD_SIZE = UDim2.new(0, 185, 0, 150)
+-- Taller than before (was 150) -- room for an icon image on Asset cards
+-- (AssetDatabase.Asset.Image) above the name/price/detail text. Investment
+-- cards don't have an Image field yet, so their cards just leave that top
+-- strip empty -- one CellSize for the whole grid either way, simpler than
+-- swapping it per tab.
+local CARD_SIZE = UDim2.new(0, 185, 0, 210)
 local INVESTMENT_QUANTITIES = { 1, 10, 100 }
 
 function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
@@ -95,11 +100,12 @@ function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		end
 	end
 
-	-- Square item card: name, price, an optional detail line (income/s for
-	-- Assets, "Owned: N" for Invest), and a footer slot for either a Buy/
-	-- Equip/Unequip button or a plain status badge. Flat Surface square, no
-	-- stroke/border -- reads as a catalog tile, not a bordered list row.
-	local function createCard(order: number, name: string, priceText: string, detailText: string?): Frame
+	-- Square item card: an optional icon image, name, price, an optional
+	-- detail line (income/s for Assets, "Owned: N" for Invest), and a
+	-- footer slot for either a Buy/Equip/Unequip button or a plain status
+	-- badge. Flat Surface square, no stroke/border -- reads as a catalog
+	-- tile, not a bordered list row.
+	local function createCard(order: number, name: string, priceText: string, detailText: string?, imageId: string?): Frame
 		local card = Instance.new("Frame")
 		card.LayoutOrder = order
 		card.BackgroundColor3 = Theme.Colors.Surface
@@ -115,16 +121,31 @@ function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		padding.PaddingBottom = UDim.new(0, 10)
 		padding.Parent = card
 
+		-- "rbxassetid://0" is the placeholder for items that don't have
+		-- real art yet (see AssetDatabase/ItemDatabase) -- skip reserving
+		-- the icon strip for those instead of showing an empty box.
+		local hasImage = imageId and imageId ~= "" and imageId ~= "rbxassetid://0"
+		local textTop = 0
+		if hasImage then
+			local icon = Instance.new("ImageLabel")
+			icon.Size = UDim2.new(1, 0, 0, 64)
+			icon.BackgroundTransparency = 1
+			icon.ScaleType = Enum.ScaleType.Fit
+			icon.Image = imageId :: string
+			icon.Parent = card
+			textTop = 68
+		end
+
 		local nameLabel = Theme.Label(card, UDim2.new(1, 0, 0, 20), name, true)
-		nameLabel.Position = UDim2.new(0, 0, 0, 0)
+		nameLabel.Position = UDim2.new(0, 0, 0, textTop)
 
 		local priceLabel = Theme.Label(card, UDim2.new(1, 0, 0, 20), priceText)
-		priceLabel.Position = UDim2.new(0, 0, 0, 24)
+		priceLabel.Position = UDim2.new(0, 0, 0, textTop + 24)
 		priceLabel.TextColor3 = Theme.Colors.Accent
 
 		if detailText then
 			local detailLabel = Theme.Label(card, UDim2.new(1, 0, 0, 18), detailText)
-			detailLabel.Position = UDim2.new(0, 0, 0, 46)
+			detailLabel.Position = UDim2.new(0, 0, 0, textTop + 46)
 			detailLabel.TextColor3 = Theme.Colors.Success
 		end
 
@@ -177,7 +198,7 @@ function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		local order = 0
 		for id, asset in AssetDatabase.GetAllAssets() do
 			order += 1
-			local card = createCard(order, asset.Name, NumberFormat.FormatCash(asset.Price), "+" .. NumberFormat.FormatCash(asset.IncomePerMinute) .. "/min")
+			local card = createCard(order, asset.Name, NumberFormat.FormatCash(asset.Price), "+" .. NumberFormat.FormatCash(asset.IncomePerMinute) .. "/min", asset.Image)
 
 			local owned = ownedAssets[id]
 			local equipped = table.find(equippedAssets, id) ~= nil
@@ -217,7 +238,8 @@ function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		for id, investment in InvestmentDatabase.GetAllInvestments() do
 			order += 1
 			local owned = countOwnedInvestments(id)
-			local card = createCard(order, investment.Name, NumberFormat.FormatCash(investment.Price), owned > 0 and string.format("Owned: %d", owned) or nil)
+			local card =
+				createCard(order, investment.Name, NumberFormat.FormatCash(investment.Price), owned > 0 and string.format("Owned: %d", owned) or nil, investment.Image)
 			addBuyQuantityButtons(card, function(quantity)
 				buyInvestment:FireServer(id, quantity)
 			end)

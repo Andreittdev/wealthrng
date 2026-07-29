@@ -35,6 +35,7 @@ export type Investment = {
 	Id: string,
 	Name: string,
 	Price: number,
+	Image: string,
 }
 
 local InvestmentDatabase = {}
@@ -47,17 +48,17 @@ local APPRECIATION_PERIOD_SECONDS = 3.5 * 24 * 60 * 60 -- ~3.5 days
 local MAX_APPRECIATION_PERIODS = 25
 
 local investments: { [string]: Investment } = {
-	CopperOre = { Id = "CopperOre", Name = "Copper Ore", Price = 100 },
-	IronOre = { Id = "IronOre", Name = "Iron Ore", Price = 800 },
-	SilverBar = { Id = "SilverBar", Name = "Silver Bar", Price = 6000 },
-	GoldBar = { Id = "GoldBar", Name = "Gold Bar", Price = 45000 },
-	PlatinumBar = { Id = "PlatinumBar", Name = "Platinum Bar", Price = 350000 },
-	DiamondOre = { Id = "DiamondOre", Name = "Diamond Ore", Price = 2500000 },
-	EmeraldOre = { Id = "EmeraldOre", Name = "Emerald Ore", Price = 18000000 },
-	RubyOre = { Id = "RubyOre", Name = "Ruby Ore", Price = 130000000 },
-	SapphireOre = { Id = "SapphireOre", Name = "Sapphire Ore", Price = 900000000 },
-	MeteoriteOre = { Id = "MeteoriteOre", Name = "Meteorite Ore", Price = 6000000000 },
-	CelestialCore = { Id = "CelestialCore", Name = "Celestial Core", Price = 40000000000 },
+	CopperOre = { Id = "CopperOre", Name = "Copper Ore", Price = 100, Image = "rbxassetid://85646899481683" },
+	IronOre = { Id = "IronOre", Name = "Iron Ore", Price = 800, Image = "rbxassetid://89229509277978" },
+	SilverBar = { Id = "SilverBar", Name = "Silver Bar", Price = 6000, Image = "rbxassetid://121708659018392" },
+	GoldBar = { Id = "GoldBar", Name = "Gold Bar", Price = 45000, Image = "rbxassetid://72838956813822" },
+	PlatinumBar = { Id = "PlatinumBar", Name = "Platinum Bar", Price = 350000, Image = "rbxassetid://82765577499842" },
+	DiamondOre = { Id = "DiamondOre", Name = "Diamond Ore", Price = 2500000, Image = "rbxassetid://104870970917124" },
+	EmeraldOre = { Id = "EmeraldOre", Name = "Emerald Ore", Price = 18000000, Image = "rbxassetid://128307788657328" },
+	RubyOre = { Id = "RubyOre", Name = "Ruby Ore", Price = 130000000, Image = "rbxassetid://73899233840909" },
+	SapphireOre = { Id = "SapphireOre", Name = "Sapphire Ore", Price = 900000000, Image = "rbxassetid://133438648565815" },
+	MeteoriteOre = { Id = "MeteoriteOre", Name = "Meteorite Ore", Price = 6000000000, Image = "rbxassetid://105175920707349" },
+	CelestialCore = { Id = "CelestialCore", Name = "Celestial Core", Price = 40000000000, Image = "rbxassetid://106239809107728" },
 }
 
 function InvestmentDatabase.GetInvestment(id: string): Investment?
