@@ -13,20 +13,23 @@
 -- Long-term appreciation: unlike Assets, Investments don't generate income,
 -- but holding one long enough still grows its value (real-world calendar
 -- time, keeps compounding while offline too) -- +10% every ~3.5 days held,
--- compounding for as long as it's kept. Net Worth and sell refunds both use
+-- compounding for as long as it's kept, up to a cap (see
+-- MAX_APPRECIATION_PERIODS below). Net Worth and sell refunds both use
 -- ComputeCurrentValue, not the flat Price, once an investment has been
 -- owned a while.
 --
 -- This is deliberately the *better* long-term play vs. an equal-price
--- Asset -- 10%/3.5 days compounds to roughly 2.3x in a month, ~11x in 3
--- months, ~135x in 6 months, keeps growing indefinitely even fully
--- offline. An Asset's price never grows and its income only accrues while
--- equipped and online. The trade-off runs the other way short-term: an
--- Investment's value doesn't step up at all until a full 3.5-day period
--- has elapsed (ComputeCurrentValue floors partial periods to 0), so it
--- earns nothing in the first few days while an Asset is paying out from
--- minute one -- Assets win for immediate/active income, Investments win
--- for patient/long-term/AFK wealth.
+-- Asset -- 10%/3.5 days compounds to roughly 2.3x in a month, ~9x by the
+-- time it caps out (~2.5 months held). An Asset's price never grows and
+-- its income only accrues while equipped and online. The trade-off runs
+-- the other way short-term: an Investment's value doesn't step up at all
+-- until a full 3.5-day period has elapsed (ComputeCurrentValue floors
+-- partial periods to 0), so it earns nothing in the first few days while
+-- an Asset is paying out from minute one -- Assets win for
+-- immediate/active income, Investments win for patient/long-term/AFK
+-- wealth, but the cap keeps a single early purchase from eventually
+-- dwarfing every other net-worth source on its own (uncapped, 10%/3.5
+-- days reaches ~135x in 6 months and keeps compounding forever).
 
 export type Investment = {
 	Id: string,
@@ -38,6 +41,10 @@ local InvestmentDatabase = {}
 
 local APPRECIATION_RATE = 0.10
 local APPRECIATION_PERIOD_SECONDS = 3.5 * 24 * 60 * 60 -- ~3.5 days
+-- Caps compounding at 25 periods (~87.5 days, ~2.5-3 months) so a single
+-- early purchase can't grow unbounded forever just by sitting there
+-- offline -- 1.1^25 =~ 10.8x the purchase price, then it holds flat.
+local MAX_APPRECIATION_PERIODS = 25
 
 local investments: { [string]: Investment } = {
 	CopperOre = { Id = "CopperOre", Name = "Copper Ore", Price = 100 },
@@ -63,7 +70,9 @@ end
 
 -- Current appreciated value of an owned investment: Price * 1.1^periodsHeld,
 -- stepping up once per full APPRECIATION_PERIOD_SECONDS elapsed since
--- purchase (real calendar time -- `now`/`purchasedAt` are both os.time()).
+-- purchase (real calendar time -- `now`/`purchasedAt` are both os.time()),
+-- capped at MAX_APPRECIATION_PERIODS so it plateaus instead of compounding
+-- forever.
 function InvestmentDatabase.ComputeCurrentValue(id: string, purchasedAt: number, now: number): number
 	local investment = investments[id]
 	if not investment then
@@ -71,7 +80,7 @@ function InvestmentDatabase.ComputeCurrentValue(id: string, purchasedAt: number,
 	end
 
 	local elapsedSeconds = math.max(now - purchasedAt, 0)
-	local periods = math.floor(elapsedSeconds / APPRECIATION_PERIOD_SECONDS)
+	local periods = math.min(math.floor(elapsedSeconds / APPRECIATION_PERIOD_SECONDS), MAX_APPRECIATION_PERIODS)
 	return investment.Price * (1 + APPRECIATION_RATE) ^ periods
 end
 

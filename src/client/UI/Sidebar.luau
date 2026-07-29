@@ -20,14 +20,13 @@ local BUTTONS = {
 	{ Key = "Trade", Text = "Trade", Image = "rbxassetid://76658423678176" },
 	{ Key = "Settings", Text = "Settings", Image = "rbxassetid://79545550325552" },
 	{ Key = "Profile", Text = "Profile", Image = "rbxassetid://139017666357301" },
-	{ Key = "Upgrades", Text = "Upgrades", Image = "rbxassetid://119321429785408" },
 }
 
 -- Caption overlaps the icon's lower portion (same treatment as
 -- RollPanel's ROLL/UPGRADE), not a separate label sitting fully below it.
 local ICON_SIZE = 96
 local START_X = 16
-local START_Y = 110
+local START_Y = 150
 local GAP_X = 2
 local GAP_Y = 4
 local COLUMNS = 2
@@ -42,7 +41,6 @@ export type PanelHandles = {
 	Trade: { Toggle: () -> () },
 	Settings: { Toggle: () -> () },
 	Profile: { Toggle: () -> () },
-	Upgrades: { Toggle: () -> () },
 }
 
 function Sidebar.Create(screenGui: ScreenGui, handles: PanelHandles)

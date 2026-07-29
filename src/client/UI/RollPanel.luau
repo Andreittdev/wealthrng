@@ -3,17 +3,18 @@
 -- after settling -- not a persistent small corner box. (Buy VIP moved to
 -- the sidebar's Shop panel, ShopPanel.luau.)
 --
--- Animation flow: on click the overlay pops in and cycles through random
--- items every SPIN_INTERVAL seconds. RollResult is buffered into
--- `pendingResult` instead of being shown immediately, so the spin always
--- runs for at least SPIN_MIN_DURATION *and* until the real result has
--- arrived, then settles on it with a bounce tween, holds for
--- RESULT_DISPLAY_SECONDS, then hides itself. The Roll button only
--- re-enables once BOTH the spin has finished AND the (VIP or base)
--- cooldown has elapsed -- VIP's cooldown (0.75s) is shorter than
--- SPIN_MIN_DURATION (0.9s), so without this the button would look
--- clickable mid-spin while clicks were silently dropped by the isSpinning
--- guard.
+-- Animation flow: every RollResult (from a manual click OR the Auto Roll
+-- gamepass rolling on its own timer server-side, see AUTO ROLL button
+-- below) is pushed onto `resultQueue`, drained one at a time by
+-- processQueue -- never handled by overwriting a single shared variable,
+-- which under Auto Roll's fast cooldown let one result silently clobber
+-- another before it was ever shown. The queue's front item gets the full
+-- drumroll-then-settle-then-hold treatment (playReveal) as long as it's
+-- the only one waiting; anything still queued up behind it plays a short
+-- "quick" reveal instead (no drumroll, brief hold) so a burst of Auto
+-- Rolls catches back up to real time instead of the display permanently
+-- lagging. The Roll button stays disabled for as long as the queue has
+-- anything left to show.
 --
 -- Both the button cluster and the reveal overlay get their own
 -- Theme.AutoScale UIScale (see Theme.luau) so they shrink toward their own
@@ -22,19 +23,23 @@
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
+local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
 local RarityConfig = require(ReplicatedStorage.Modules.RarityConfig)
-local RollConfig = require(ReplicatedStorage.Modules.RollConfig)
-local VIPConfig = require(ReplicatedStorage.Modules.VIPConfig)
+local AutoRollConfig = require(ReplicatedStorage.Modules.AutoRollConfig)
 local RollOdds = require(ReplicatedStorage.Modules.RollOdds)
 local Theme = require(script.Parent.Theme)
 
 local SPIN_MIN_DURATION = 0.9
 local SPIN_INTERVAL = 0.06
 local RESULT_DISPLAY_SECONDS = 1.8
+-- Backlog items (see processQueue) skip the drumroll and hold for this
+-- instead of RESULT_DISPLAY_SECONDS -- still long enough to actually read,
+-- short enough that a burst of Auto Rolls catches back up quickly.
+local QUICK_DISPLAY_SECONDS = 0.6
 
 -- Plain icon + text, no background/circle chrome -- and the text sits ON
 -- TOP of the icon's lower portion (overlapping it), not below it as a
@@ -49,6 +54,11 @@ local RESULT_DISPLAY_SECONDS = 1.8
 local ROLL_ICON_SIZE = 154
 local UPGRADE_ICON_SIZE = 88
 local ICON_GAP = -14
+-- Auto Roll is a text pill (no bespoke icon asset), not an icon+label like
+-- ROLL/UPGRADE -- mirrors UPGRADE's side offset/gap formula but to the
+-- LEFT of ROLL instead of the right.
+local AUTO_ROLL_BUTTON_WIDTH = 118
+local AUTO_ROLL_BUTTON_HEIGHT = 40
 local HUD_CONTAINER_SIZE = UDim2.new(0, 400, 0, ROLL_ICON_SIZE + 20)
 local HUD_BASELINE_Y = ROLL_ICON_SIZE + 10
 local HUD_REFERENCE_WIDTH = 900
@@ -132,10 +142,19 @@ local RollPanel = {}
 function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	local rollRequested = remotes:WaitForChild("RollRequested")
 	local rollResult = remotes:WaitForChild("RollResult")
+	local setAutoRoll = remotes:WaitForChild("SetAutoRoll")
+	local autoRollUpdated = remotes:WaitForChild("AutoRollUpdated")
 
+	-- NotRollable items (e.g. GroupRewardChest, exclusive to the Group
+	-- Rewards claim) never come out of an actual roll -- excluded here too
+	-- so the cosmetic random-cycling "drumroll" never flashes an item that
+	-- can't actually be the result, and RollOdds.GetOneInN never gets
+	-- asked for an odds figure that isn't well-defined for it.
 	local allItems = {}
 	for _, item in ItemDatabase.GetAllItems() do
-		table.insert(allItems, item)
+		if not item.NotRollable then
+			table.insert(allItems, item)
+		end
 	end
 
 	-- Emitter2D requires a real GuiObject ancestor to know where/how to
@@ -239,6 +258,68 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		upgradeLabel.Position = UDim2.new(0.5, 0, 1, -4)
 	end
 
+	-- ===== Auto Roll pill, to the LEFT of ROLL, same raised baseline as
+	-- UPGRADE. Not owned -> prompts the gamepass purchase. Owned -> toggles
+	-- the server-side auto-roll loop (AutoRollManager/RollManager.TryRoll).
+	local autoRollOffsetX = -(ROLL_ICON_SIZE / 2 + ICON_GAP + AUTO_ROLL_BUTTON_WIDTH / 2)
+
+	local autoRollButton = Instance.new("TextButton")
+	autoRollButton.Size = UDim2.new(0, AUTO_ROLL_BUTTON_WIDTH, 0, AUTO_ROLL_BUTTON_HEIGHT)
+	autoRollButton.AnchorPoint = Vector2.new(0.5, 1)
+	autoRollButton.Position = UDim2.new(0.5, autoRollOffsetX, 0, HUD_BASELINE_Y - 24)
+	autoRollButton.BackgroundColor3 = Theme.Colors.Surface
+	autoRollButton.BorderSizePixel = 0
+	autoRollButton.AutoButtonColor = false
+	autoRollButton.Text = "AUTO ROLL"
+	autoRollButton.Font = Theme.Fonts.Header
+	autoRollButton.TextScaled = true
+	autoRollButton.TextColor3 = LABEL_COLOR
+	autoRollButton.TextStrokeTransparency = 0
+	autoRollButton.TextStrokeColor3 = Color3.new(0, 0, 0)
+	autoRollButton.Parent = hudContainer
+	Theme.Round(autoRollButton, UDim.new(0, 10))
+	Theme.Stroke(autoRollButton, Color3.fromRGB(255, 215, 140), 1)
+
+	local autoRollTextPadding = Instance.new("UIPadding")
+	autoRollTextPadding.PaddingLeft = UDim.new(0.08, 0)
+	autoRollTextPadding.PaddingRight = UDim.new(0.08, 0)
+	autoRollTextPadding.PaddingTop = UDim.new(0.15, 0)
+	autoRollTextPadding.PaddingBottom = UDim.new(0.15, 0)
+	autoRollTextPadding.Parent = autoRollButton
+
+	local ownsAutoRoll = false
+	local autoRollEnabled = false
+
+	local function refreshAutoRollButton()
+		if not ownsAutoRoll then
+			autoRollButton.Text = "AUTO ROLL"
+			autoRollButton.BackgroundColor3 = Theme.Colors.Surface
+		elseif autoRollEnabled then
+			autoRollButton.Text = "AUTO ROLL: ON"
+			autoRollButton.BackgroundColor3 = Theme.Colors.Success
+		else
+			autoRollButton.Text = "AUTO ROLL: OFF"
+			autoRollButton.BackgroundColor3 = Theme.Colors.Surface
+		end
+	end
+	refreshAutoRollButton()
+
+	autoRollButton.Activated:Connect(function()
+		if not ownsAutoRoll then
+			MarketplaceService:PromptGamePassPurchase(Players.LocalPlayer, AutoRollConfig.GamepassId)
+			return
+		end
+		setAutoRoll:FireServer(not autoRollEnabled)
+	end)
+
+	-- Server echoes the actual state back (e.g. a toggle-on gets rejected
+	-- if ownership somehow lapsed) -- the button always reflects that, not
+	-- what was clicked.
+	autoRollUpdated.OnClientEvent:Connect(function(enabled: boolean)
+		autoRollEnabled = enabled
+		refreshAutoRollButton()
+	end)
+
 	-- ===== Reveal overlay, centered on screen -- hidden except during/right
 	-- after a spin =====
 	local revealAnchor = Instance.new("Frame")
@@ -291,12 +372,16 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	oddsLabel.TextStrokeTransparency = 0.5
 	oddsLabel.TextWrapped = true
 
-	local pendingResult = nil
-	rollResult.OnClientEvent:Connect(function(item)
-		pendingResult = item
-	end)
-
-	local isVIP = false
+	-- Every RollResult (manual click OR Auto Roll) lands here first instead
+	-- of a single shared variable -- Auto Roll's cooldown (0.75s VIP/1.5s
+	-- base) is faster than one full spin+hold cycle (~2.7s), so multiple
+	-- results routinely arrive before the previous one finishes showing.
+	-- A single `pendingResult` variable (the old design) just got
+	-- overwritten by whichever arrived last, silently discarding every
+	-- roll in between -- items/cash were still granted correctly server-
+	-- side, but the player would see no feedback for most of their rolls.
+	-- The queue guarantees every result eventually gets shown.
+	local resultQueue: { any } = {}
 	local isSpinning = false
 
 	local function setRollEnabled(enabled: boolean)
@@ -321,35 +406,32 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		end
 	end
 
-	-- Runs the spin, blocking until it settles on the real result and has
-	-- been shown for RESULT_DISPLAY_SECONDS. Caller decides how much
-	-- additional cooldown time (if any) to wait afterward.
-	local function runSpin()
-		isSpinning = true
-		pendingResult = nil
+	-- Shows one already-known item (unlike the old design, the item is
+	-- always known before this runs -- it only gets called once RollResult
+	-- has actually arrived, whether from a manual click or Auto Roll).
+	-- `quick` skips the random-cycling drumroll and shortens the hold --
+	-- used for backlog items so a queue built up during a burst of Auto
+	-- Rolls catches back up to real time instead of falling permanently
+	-- behind.
+	local function playReveal(item, quick: boolean)
 		revealAnchor.Visible = true
-		local startTime = os.clock()
 
-		while true do
-			local randomItem = allItems[math.random(1, #allItems)]
-			local randomColor = RarityConfig.GetColor(randomItem.Rarity)
-			revealLabel.Text = randomItem.Name
-			oddsLabel.Text = formatOdds(randomItem)
-			oddsLabel.TextColor3 = randomColor
-			revealIcon.Image = randomItem.Image
-			if revealStroke then
-				revealStroke.Color = randomColor
-			end
-
-			task.wait(SPIN_INTERVAL)
-
-			if os.clock() - startTime >= SPIN_MIN_DURATION and pendingResult then
-				break
+		if not quick then
+			local startTime = os.clock()
+			while os.clock() - startTime < SPIN_MIN_DURATION do
+				local randomItem = allItems[math.random(1, #allItems)]
+				local randomColor = RarityConfig.GetColor(randomItem.Rarity)
+				revealLabel.Text = randomItem.Name
+				oddsLabel.Text = formatOdds(randomItem)
+				oddsLabel.TextColor3 = randomColor
+				revealIcon.Image = randomItem.Image
+				if revealStroke then
+					revealStroke.Color = randomColor
+				end
+				task.wait(SPIN_INTERVAL)
 			end
 		end
 
-		local item = pendingResult
-		pendingResult = nil
 		local finalColor = RarityConfig.GetColor(item.Rarity)
 		revealLabel.Text = item.Name
 		oddsLabel.Text = formatOdds(item)
@@ -361,32 +443,42 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		playSettleBounce()
 		playRareEffect(item.Rarity)
 
-		task.wait(RESULT_DISPLAY_SECONDS)
+		task.wait(quick and QUICK_DISPLAY_SECONDS or RESULT_DISPLAY_SECONDS)
 		revealAnchor.Visible = false
+	end
+
+	-- Drains resultQueue one item at a time. Only the LAST item still
+	-- queued at the moment each one starts gets the full drumroll+hold --
+	-- everything ahead of it in a backlog plays "quick" instead, so a
+	-- burst of Auto Rolls catches up instead of the display lagging
+	-- further and further behind real time.
+	local function processQueue()
+		isSpinning = true
+		setRollEnabled(false)
+
+		while #resultQueue > 0 do
+			local item = table.remove(resultQueue, 1)
+			local quick = #resultQueue > 0
+			playReveal(item, quick)
+		end
 
 		isSpinning = false
+		setRollEnabled(true)
 	end
 
 	rollButton.Activated:Connect(function()
 		if isSpinning then
 			return
 		end
-
 		setRollEnabled(false)
-		local clickedAt = os.clock()
 		rollRequested:FireServer()
+	end)
 
-		task.spawn(function()
-			runSpin()
-
-			local cooldown = isVIP and VIPConfig.RollCooldownSeconds or RollConfig.BaseCooldownSeconds
-			local remaining = cooldown - (os.clock() - clickedAt)
-			if remaining > 0 then
-				task.wait(remaining)
-			end
-
-			setRollEnabled(true)
-		end)
+	rollResult.OnClientEvent:Connect(function(item)
+		table.insert(resultQueue, item)
+		if not isSpinning then
+			task.spawn(processQueue)
+		end
 	end)
 
 	local handle = {}
@@ -396,8 +488,9 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	-- cross-panel interactions" pattern as the modalFrames coordinator.
 	handle.UpgradeButton = upgradeButton
 
-	function handle.SetVIP(newIsVIP: boolean)
-		isVIP = newIsVIP
+	function handle.SetOwnsAutoRoll(owns: boolean)
+		ownsAutoRoll = owns
+		refreshAutoRollButton()
 	end
 
 	-- Hidden while any modal panel (shop, net worth, etc.) is open -- on

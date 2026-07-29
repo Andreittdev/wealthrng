@@ -8,7 +8,11 @@ local TextChatService = game:GetService("TextChatService")
 
 local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
 local MainUI = require(script.Parent.UI:WaitForChild("MainUI"))
+local NotificationToast = require(script.Parent.UI:WaitForChild("NotificationToast"))
+local NextUpdateCountdown = require(script.Parent.UI:WaitForChild("NextUpdateCountdown"))
 MainUI.Init()
+NotificationToast.Init()
+NextUpdateCountdown.Init()
 
 -- LeaderboardManager fires this only at the affected player (a rank
 -- change on one of the top-100 boards) -- DisplaySystemMessage called

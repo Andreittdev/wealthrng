@@ -21,10 +21,16 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local InventoryPanel = require(script.Parent.InventoryPanel)
 local CashHud = require(script.Parent.CashHud)
+local LuckSpeedHUD = require(script.Parent.LuckSpeedHUD)
+local BoardRankLabels = require(script.Parent.BoardRankLabels)
 local RollPanel = require(script.Parent.RollPanel)
 local AssetShopPanel = require(script.Parent.AssetShopPanel)
 local PotionShopPanel = require(script.Parent.PotionShopPanel)
 local ShopPanel = require(script.Parent.ShopPanel)
+local VIPProximityPanel = require(script.Parent.VIPProximityPanel)
+local GroupRewardsProximityPanel = require(script.Parent.GroupRewardsProximityPanel)
+local DailyRewardsProximityPanel = require(script.Parent.DailyRewardsProximityPanel)
+local PlaytimeRewardsProximityPanel = require(script.Parent.PlaytimeRewardsProximityPanel)
 local NetWorthPanel = require(script.Parent.NetWorthPanel)
 local SettingsPanel = require(script.Parent.SettingsPanel)
 local ProfilePanel = require(script.Parent.ProfilePanel)
@@ -40,6 +46,7 @@ function MainUI.Init()
 	local inventoryUpdated = remotesFolder:WaitForChild("InventoryUpdated")
 	local statsUpdated = remotesFolder:WaitForChild("StatsUpdated")
 	local potionUpdated = remotesFolder:WaitForChild("PotionUpdated")
+	local upgradesUpdated = remotesFolder:WaitForChild("UpgradesUpdated")
 	local clientReady = remotesFolder:WaitForChild("ClientReady")
 
 	local player = Players.LocalPlayer
@@ -54,10 +61,16 @@ function MainUI.Init()
 
 	local inventoryHandle = InventoryPanel.Create(screenGui, remotesFolder)
 	local cashHudHandle = CashHud.Create(screenGui)
+	local luckSpeedHudHandle = LuckSpeedHUD.Create(screenGui)
+	BoardRankLabels.Init(remotesFolder)
 	local rollHandle = RollPanel.Create(screenGui, remotesFolder)
 	local assetShopHandle = AssetShopPanel.Create(screenGui, remotesFolder)
 	local potionShopHandle = PotionShopPanel.Create(screenGui, remotesFolder)
 	local shopHandle = ShopPanel.Create(screenGui)
+	local vipProximityHandle = VIPProximityPanel.Create(screenGui)
+	local groupRewardsProximityHandle = GroupRewardsProximityPanel.Create(screenGui, remotesFolder)
+	local dailyRewardsProximityHandle = DailyRewardsProximityPanel.Create(screenGui, remotesFolder)
+	local playtimeRewardsProximityHandle = PlaytimeRewardsProximityPanel.Create(screenGui, remotesFolder)
 	local netWorthHandle = NetWorthPanel.Create(screenGui, remotesFolder)
 	local settingsHandle = SettingsPanel.Create(screenGui, remotesFolder)
 	local profileHandle = ProfilePanel.Create(screenGui)
@@ -65,8 +78,8 @@ function MainUI.Init()
 	local catalogHandle = CatalogPanel.Create(screenGui, remotesFolder)
 	local upgradesHandle = UpgradesPanel.Create(screenGui, remotesFolder)
 
-	-- RollPanel's circular UPGRADE button next to ROLL is just another
-	-- shortcut to the same panel the sidebar's Upgrades button opens.
+	-- RollPanel's circular UPGRADE button next to ROLL is the only way to
+	-- open UpgradesPanel now -- the sidebar no longer has its own entry.
 	rollHandle.UpgradeButton.Activated:Connect(upgradesHandle.Toggle)
 
 	Sidebar.Create(screenGui, {
@@ -76,7 +89,6 @@ function MainUI.Init()
 		Settings = settingsHandle,
 		Profile = profileHandle,
 		Trade = tradeHandle,
-		Upgrades = upgradesHandle,
 	})
 
 	local modalFrames = {
@@ -91,6 +103,10 @@ function MainUI.Init()
 		tradeHandle.TradeWindowFrame,
 		catalogHandle.Frame,
 		upgradesHandle.Frame,
+		vipProximityHandle.Frame,
+		groupRewardsProximityHandle.Frame,
+		dailyRewardsProximityHandle.Frame,
+		playtimeRewardsProximityHandle.Frame,
 	}
 
 	local function updateRollHud()
@@ -110,12 +126,19 @@ function MainUI.Init()
 
 	statsUpdated.OnClientEvent:Connect(function(stats)
 		profileHandle.Update(stats)
-		rollHandle.SetVIP(stats.IsVIP)
+		rollHandle.SetOwnsAutoRoll(stats.OwnsAutoRoll)
 		cashHudHandle.Update(stats.Cash)
+		vipProximityHandle.SetVIP(stats.IsVIP)
+		shopHandle.Update(stats)
+		luckSpeedHudHandle.SetVIP(stats.IsVIP)
 	end)
 
 	inventoryUpdated.OnClientEvent:Connect(inventoryHandle.Render)
-	potionUpdated.OnClientEvent:Connect(profileHandle.UpdatePotions)
+	potionUpdated.OnClientEvent:Connect(function(potions)
+		profileHandle.UpdatePotions(potions)
+		luckSpeedHudHandle.SetActivePotions(potions)
+	end)
+	upgradesUpdated.OnClientEvent:Connect(luckSpeedHudHandle.SetUpgrades)
 
 	-- Every panel above is built and every OnClientEvent listener above is
 	-- connected -- safe now to tell the server it can send the "here's your

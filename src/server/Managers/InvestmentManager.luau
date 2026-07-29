@@ -8,6 +8,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local InvestmentDatabase = require(ReplicatedStorage.Modules.InvestmentDatabase)
+local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
 local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local StatsManager = require(ServerScriptService.Managers.StatsManager)
@@ -16,6 +17,7 @@ local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManag
 local buyInvestment = RemotesBootstrap:WaitForChild("BuyInvestment")
 local sellInvestment = RemotesBootstrap:WaitForChild("SellInvestment")
 local investmentUpdated = RemotesBootstrap:WaitForChild("InvestmentUpdated")
+local systemMessage = RemotesBootstrap:WaitForChild("SystemMessage")
 
 local MAX_QUANTITY_PER_PURCHASE = 1000
 
@@ -48,6 +50,7 @@ buyInvestment.OnServerEvent:Connect(function(player: Player, investmentId: strin
 	session.NextInvestmentUid += 1
 	table.insert(session.Investments, { Uid = uid, Id = investment.Id, PurchasedAt = os.time(), Quantity = quantity })
 
+	systemMessage:FireClient(player, string.format("Bought %dx %s for %s!", quantity, investment.Name, NumberFormat.FormatCash(totalCost)))
 	investmentUpdated:FireClient(player, session.Investments)
 	StatsManager.Recompute(player)
 	LeaderboardManager.MarkDirty(player)
@@ -77,12 +80,18 @@ sellInvestment.OnServerEvent:Connect(function(player: Player, uid: number, quant
 			end
 
 			local perUnitValue = InvestmentDatabase.ComputeCurrentValue(entry.Id, entry.PurchasedAt, os.time())
-			session.Cash += math.floor(perUnitValue * sellQuantity * 0.5)
+			local payout = math.floor(perUnitValue * sellQuantity * 0.5)
+			session.Cash += payout
 
 			if sellQuantity >= entry.Quantity then
 				table.remove(session.Investments, index)
 			else
 				entry.Quantity -= sellQuantity
+			end
+
+			local investment = InvestmentDatabase.GetInvestment(entry.Id)
+			if investment then
+				systemMessage:FireClient(player, string.format("Sold %dx %s for %s!", sellQuantity, investment.Name, NumberFormat.FormatCash(payout)))
 			end
 
 			investmentUpdated:FireClient(player, session.Investments)

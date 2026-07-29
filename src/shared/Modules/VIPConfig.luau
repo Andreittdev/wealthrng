@@ -3,7 +3,7 @@
 
 local VIPConfig = {}
 
-VIPConfig.GamepassId = 1928251044
+VIPConfig.GamepassId = 1932254403
 
 -- Overrides RollConfig.BaseCooldownSeconds for VIP.
 VIPConfig.RollCooldownSeconds = 0.75

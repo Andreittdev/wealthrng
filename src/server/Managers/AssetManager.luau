@@ -10,6 +10,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local AssetDatabase = require(ReplicatedStorage.Modules.AssetDatabase)
+local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
 local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local StatsManager = require(ServerScriptService.Managers.StatsManager)
@@ -20,6 +21,7 @@ local sellAsset = RemotesBootstrap:WaitForChild("SellAsset")
 local equipAsset = RemotesBootstrap:WaitForChild("EquipAsset")
 local unequipAsset = RemotesBootstrap:WaitForChild("UnequipAsset")
 local assetUpdated = RemotesBootstrap:WaitForChild("AssetUpdated")
+local systemMessage = RemotesBootstrap:WaitForChild("SystemMessage")
 
 local function pushUpdate(player: Player, session)
 	assetUpdated:FireClient(player, { Owned = session.OwnedAssets, Equipped = session.EquippedAssets })
@@ -47,6 +49,7 @@ buyAsset.OnServerEvent:Connect(function(player: Player, assetId: string)
 	session.Cash -= asset.Price
 	session.OwnedAssets[assetId] = true
 
+	systemMessage:FireClient(player, string.format("Bought %s for %s!", asset.Name, NumberFormat.FormatCash(asset.Price)))
 	pushUpdate(player, session)
 	StatsManager.Recompute(player)
 	LeaderboardManager.MarkDirty(player)
@@ -115,7 +118,9 @@ sellAsset.OnServerEvent:Connect(function(player: Player, assetId: string)
 
 	local asset = AssetDatabase.GetAsset(assetId)
 	if asset then
-		session.Cash += math.floor(asset.Price * 0.5)
+		local payout = math.floor(asset.Price * 0.5)
+		session.Cash += payout
+		systemMessage:FireClient(player, string.format("Sold %s for %s!", asset.Name, NumberFormat.FormatCash(payout)))
 	end
 
 	session.OwnedAssets[assetId] = nil

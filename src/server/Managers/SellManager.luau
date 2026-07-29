@@ -11,6 +11,7 @@ local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
 local RarityConfig = require(ReplicatedStorage.Modules.RarityConfig)
 local VIPConfig = require(ReplicatedStorage.Modules.VIPConfig)
 local PotionConfig = require(ReplicatedStorage.Modules.PotionConfig)
+local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
 local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local InventoryManager = require(ServerScriptService.Managers.InventoryManager)
@@ -23,6 +24,7 @@ local setAutoSellDuplicate = RemotesBootstrap:WaitForChild("SetAutoSellDuplicate
 local inventoryUpdated = RemotesBootstrap:WaitForChild("InventoryUpdated")
 local equippedItemsUpdated = RemotesBootstrap:WaitForChild("EquippedItemsUpdated")
 local autoSellDuplicatesUpdated = RemotesBootstrap:WaitForChild("AutoSellDuplicatesUpdated")
+local systemMessage = RemotesBootstrap:WaitForChild("SystemMessage")
 
 local SellManager = {}
 
@@ -51,7 +53,9 @@ sellItem.OnServerEvent:Connect(function(player: Player, uid: number)
 
 	local item = ItemDatabase.GetItem(removed.ItemId)
 	if item then
-		session.Cash += SellManager.ComputeSellValue(session, VIPManager.IsVIP(player), item)
+		local payout = SellManager.ComputeSellValue(session, VIPManager.IsVIP(player), item)
+		session.Cash += payout
+		systemMessage:FireClient(player, string.format("Sold %s for %s!", item.Name, NumberFormat.FormatCash(payout)))
 	end
 
 	inventoryUpdated:FireClient(player, session.Inventory)

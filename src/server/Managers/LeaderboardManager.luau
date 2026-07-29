@@ -14,10 +14,13 @@ local DataStoreService = game:GetService("DataStoreService")
 local Workspace = game:GetService("Workspace")
 local ServerScriptService = game:GetService("ServerScriptService")
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
 local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local Leaderstats = require(ServerScriptService.Managers.Leaderstats)
 local StatsManager = require(ServerScriptService.Managers.StatsManager)
+local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
 
 -- Which BoardIndex's rank gets mirrored onto leaderstats.Rank (shown next
 -- to the player's name in Roblox's built-in PlayerList) -- Net Worth is
@@ -25,13 +28,22 @@ local StatsManager = require(ServerScriptService.Managers.StatsManager)
 local RANK_LEADERSTAT_BOARD_INDEX = 2
 
 local systemMessage = RemotesBootstrap:WaitForChild("SystemMessage")
+local playerRankUpdated = RemotesBootstrap:WaitForChild("PlayerRankUpdated")
 
 local LeaderboardManager = {}
 
 local SUBMIT_INTERVAL_SECONDS = 20
 local REFRESH_INTERVAL_SECONDS = 60
 local TOP_N = 100
-local ROW_HEIGHT = 26
+-- In SurfaceGui pixels, not studs -- MapBuilder's boards render at 100
+-- PixelsPerStud (explicit, see buildLeaderboard), so 110px =~ 1.1 studs
+-- tall per row. Tall enough for TextScaled to wrap a long "1. Name -
+-- $Value" onto 2 lines and still render at a legible size -- forcing
+-- everything onto one line in a narrow board was squeezing the font down
+-- to near-unreadable. Fewer rows fit on screen at once, but the list
+-- already scrolls (ScrollingFrame), so that's a fine trade for actually
+-- being able to read it.
+local ROW_HEIGHT = 110
 local RETRY_COUNT = 3
 local RETRY_BACKOFF_SECONDS = 2
 
@@ -98,9 +110,9 @@ end
 
 -- BoardIndex matches MapBuilder's LEADERBOARD_LABELS order (1=Cash, 2=NetWorth, 3=Rolls).
 local categories = {
-	{ BoardIndex = 1, Label = "Cash", Store = DataStoreService:GetOrderedDataStore("WealthRNG_TopCash"), GetValue = getCash },
-	{ BoardIndex = 2, Label = "Net Worth", Store = DataStoreService:GetOrderedDataStore("WealthRNG_TopNetWorth"), GetValue = getNetWorth },
-	{ BoardIndex = 3, Label = "Rolls", Store = DataStoreService:GetOrderedDataStore("WealthRNG_TopRolls"), GetValue = getTotalRolls },
+	{ BoardIndex = 1, Label = "Cash", Store = DataStoreService:GetOrderedDataStore("WealthRNG_TopCash"), GetValue = getCash, Format = NumberFormat.FormatCash },
+	{ BoardIndex = 2, Label = "Net Worth", Store = DataStoreService:GetOrderedDataStore("WealthRNG_TopNetWorth"), GetValue = getNetWorth, Format = NumberFormat.FormatCash },
+	{ BoardIndex = 3, Label = "Rolls", Store = DataStoreService:GetOrderedDataStore("WealthRNG_TopRolls"), GetValue = getTotalRolls, Format = NumberFormat.Format },
 }
 
 local dirtyPlayers: { [Player]: boolean } = {}
@@ -162,7 +174,7 @@ local function clearRows(rowsFrame: ScrollingFrame)
 	end
 end
 
-local function refreshBoard(boardIndex: number, label: string, store: OrderedDataStore)
+local function refreshBoard(boardIndex: number, label: string, store: OrderedDataStore, format: (number) -> string)
 	local mapFolder = Workspace:FindFirstChild("Map")
 	if not mapFolder then
 		return
@@ -213,10 +225,15 @@ local function refreshBoard(boardIndex: number, label: string, store: OrderedDat
 		row.Size = UDim2.new(1, 0, 0, ROW_HEIGHT)
 		row.BackgroundTransparency = 1
 		row.TextColor3 = RANK_COLORS[i] or DEFAULT_ROW_COLOR
-		row.Font = Enum.Font.LuckiestGuy
+		-- LuckiestGuy (the game's one decorative font, see Theme.luau) is too
+		-- bold/chunky to stay legible at this size crammed onto a 3D board
+		-- viewed from a distance/angle -- unlike the 2D screen UI, rows here
+		-- need a plain, high-legibility font instead.
+		row.Font = Enum.Font.GothamBold
 		row.TextScaled = true
+		row.TextWrapped = true
 		row.TextXAlignment = Enum.TextXAlignment.Left
-		row.Text = string.format("%d. %s - %s", i, name, tostring(entry.value))
+		row.Text = string.format("%d. %s - %s", i, name, format(entry.value))
 		row.Parent = rowsFrame
 
 		if userId then
@@ -226,6 +243,7 @@ local function refreshBoard(boardIndex: number, label: string, store: OrderedDat
 				if mirrorsToLeaderstat then
 					Leaderstats.SetRank(player, i)
 				end
+				playerRankUpdated:FireClient(player, boardIndex, label, i, entry.value)
 			end
 		end
 	end
@@ -253,7 +271,7 @@ task.spawn(function()
 	task.wait(5)
 	while true do
 		for _, category in categories do
-			refreshBoard(category.BoardIndex, category.Label, category.Store)
+			refreshBoard(category.BoardIndex, category.Label, category.Store, category.Format)
 		end
 		task.wait(REFRESH_INTERVAL_SECONDS)
 	end

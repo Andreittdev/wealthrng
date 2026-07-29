@@ -89,6 +89,11 @@ function NetWorthPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	confirmLabel.TextXAlignment = Enum.TextXAlignment.Center
 	confirmLabel.TextWrapped = true
 
+	local confirmLabelPadding = Instance.new("UIPadding")
+	confirmLabelPadding.PaddingTop = UDim.new(0, 6)
+	confirmLabelPadding.PaddingBottom = UDim.new(0, 6)
+	confirmLabelPadding.Parent = confirmLabel
+
 	local confirmQuantityBox = Instance.new("TextBox")
 	confirmQuantityBox.Size = UDim2.new(0, 120, 0, 34)
 	confirmQuantityBox.AnchorPoint = Vector2.new(0.5, 0)
@@ -100,6 +105,10 @@ function NetWorthPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	confirmQuantityBox.Font = Theme.Fonts.Body
 	confirmQuantityBox.TextScaled = true
 	confirmQuantityBox.ClearTextOnFocus = false
+
+	local confirmQuantityPadding = Instance.new("UIPadding")
+	confirmQuantityPadding.PaddingTop = UDim.new(0, 8)
+	confirmQuantityPadding.Parent = confirmQuantityBox
 	confirmQuantityBox.Visible = false
 	confirmQuantityBox.ZIndex = 21
 	confirmQuantityBox.Parent = confirmPopup
@@ -111,6 +120,18 @@ function NetWorthPanel.Create(screenGui: ScreenGui, remotes: Folder)
 
 	local noButton = Theme.Button(confirmPopup, UDim2.new(0, 68, 0, 68), UDim2.new(0.5, 10, 1, -84), "No")
 	noButton.BackgroundColor3 = Theme.Colors.Danger
+
+	-- Shrinks the Yes/No text a bit without shrinking the buttons
+	-- themselves (still a full 68x68 tap target) -- TextScaled fills
+	-- whatever space is left after padding.
+	for _, button in { yesButton, noButton } do
+		local buttonPadding = Instance.new("UIPadding")
+		buttonPadding.PaddingTop = UDim.new(0.18, 0)
+		buttonPadding.PaddingBottom = UDim.new(0.18, 0)
+		buttonPadding.PaddingLeft = UDim.new(0.12, 0)
+		buttonPadding.PaddingRight = UDim.new(0.12, 0)
+		buttonPadding.Parent = button
+	end
 
 	local pendingSell: { MaxQuantity: number?, Fire: (number) -> () }? = nil
 
@@ -245,7 +266,7 @@ function NetWorthPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		if not anyAssetOwned then
 			addRow("None yet")
 		else
-			addRow("Assets Total: " .. NumberFormat.FormatCash(assetsTotal))
+			addRow("Assets Total: " .. NumberFormat.FormatCash(assetsTotal), Color3.fromRGB(90, 160, 255))
 		end
 
 		addRow("Investments", Theme.Colors.Accent, true)
@@ -299,7 +320,7 @@ function NetWorthPanel.Create(screenGui: ScreenGui, remotes: Folder)
 				end)
 			end
 
-			addRow("Investments Total: " .. NumberFormat.FormatCash(investmentsTotal))
+			addRow("Investments Total: " .. NumberFormat.FormatCash(investmentsTotal), Color3.fromRGB(90, 160, 255))
 		end
 
 		addRow("Net Worth: " .. NumberFormat.FormatCash(currentNetWorth), Theme.Colors.Accent, true)

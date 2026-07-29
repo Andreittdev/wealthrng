@@ -41,6 +41,33 @@ export type Session = {
 	-- [trackId] = level, 0..UpgradeConfig.Tracks[trackId].MaxLevel. Missing
 	-- key means level 0 -- default empty table, not pre-filled zeros.
 	Upgrades: { [string]: number },
+	-- One-time claim, see GroupRewardsManager.luau -- true forever once
+	-- claimed, even if the player later leaves the Roblox group.
+	ClaimedGroupReward: boolean,
+	-- Daily Rewards (DailyRewardsManager.luau) -- Day is 1..7, which
+	-- reward is claimable next; wraps back to 1 after a Day-7 claim.
+	-- LastDailyRewardClaimAt is 0 until the very first claim (never
+	-- gated by the cooldown until then).
+	DailyRewardDay: number,
+	LastDailyRewardClaimAt: number,
+	-- Playtime Rewards (PlaytimeRewardsManager.luau) -- PlaytimeSeconds
+	-- accumulates by 1 every second the player is online (persists across
+	-- sessions, never resets). ClaimedPlaytimeMilestones is keyed by
+	-- tostring(1-based index into PlaytimeRewardsConfig.Milestones) --
+	-- string keys, not number, same convention as AutoSellDuplicates/
+	-- Upgrades below (every other persisted dict in this Session is
+	-- string-keyed; DataStore round-tripping of number-keyed tables isn't
+	-- worth relying on). Unlike Daily Rewards' single "next day" pointer,
+	-- every milestone here unlocks independently once PlaytimeSeconds
+	-- reaches CycleStartSeconds + its own ThresholdSeconds, so several can
+	-- be claimable (or sitting claimed) at once. Once every milestone in
+	-- the list is claimed, PlaytimeRewardsManager resets
+	-- ClaimedPlaytimeMilestones and advances PlaytimeRewardCycleStartSeconds
+	-- to the current PlaytimeSeconds, so the whole ladder loops instead of
+	-- being a one-time list.
+	PlaytimeSeconds: number,
+	ClaimedPlaytimeMilestones: { [string]: boolean },
+	PlaytimeRewardCycleStartSeconds: number,
 	LoadedOk: boolean,
 }
 
@@ -61,6 +88,12 @@ local function newDefaultSession(): Session
 		AutoSellDuplicates = {},
 		Preferences = { Music = true, SFX = true, VFX = true },
 		Upgrades = {},
+		ClaimedGroupReward = false,
+		DailyRewardDay = 1,
+		LastDailyRewardClaimAt = 0,
+		PlaytimeSeconds = 0,
+		ClaimedPlaytimeMilestones = {},
+		PlaytimeRewardCycleStartSeconds = 0,
 		LoadedOk = true,
 	}
 end
@@ -108,6 +141,12 @@ function DataManager.Load(player: Player): Session
 				AutoSellDuplicates = data.AutoSellDuplicates or {},
 				Preferences = data.Preferences or { Music = true, SFX = true, VFX = true },
 				Upgrades = data.Upgrades or {},
+				ClaimedGroupReward = data.ClaimedGroupReward or false,
+				DailyRewardDay = data.DailyRewardDay or 1,
+				LastDailyRewardClaimAt = data.LastDailyRewardClaimAt or 0,
+				PlaytimeSeconds = data.PlaytimeSeconds or 0,
+				ClaimedPlaytimeMilestones = data.ClaimedPlaytimeMilestones or {},
+				PlaytimeRewardCycleStartSeconds = data.PlaytimeRewardCycleStartSeconds or 0,
 				LoadedOk = true,
 			}
 		else
@@ -150,6 +189,12 @@ function DataManager.Save(player: Player)
 		AutoSellDuplicates = session.AutoSellDuplicates,
 		Preferences = session.Preferences,
 		Upgrades = session.Upgrades,
+		ClaimedGroupReward = session.ClaimedGroupReward,
+		DailyRewardDay = session.DailyRewardDay,
+		LastDailyRewardClaimAt = session.LastDailyRewardClaimAt,
+		PlaytimeSeconds = session.PlaytimeSeconds,
+		ClaimedPlaytimeMilestones = session.ClaimedPlaytimeMilestones,
+		PlaytimeRewardCycleStartSeconds = session.PlaytimeRewardCycleStartSeconds,
 	}
 
 	local ok = attempt(function()

@@ -28,6 +28,13 @@ export type Item = {
 	Value: number,
 	IncomePerSecond: number,
 	Image: string,
+	-- True only for items granted exclusively through some other means
+	-- (currently just GroupRewardChest, via GroupRewardsManager.luau) --
+	-- excluded from the normal weighted roll so it can't also come out of
+	-- a regular roll. GetItemsByRarity still returns it (CatalogPanel
+	-- should still be able to show it); GetRollableItemsByRarity is what
+	-- RollManager/RollOdds use instead.
+	NotRollable: boolean?,
 }
 
 local ItemDatabase = {}
@@ -69,7 +76,7 @@ local items: { [string]: Item } = {
 	FannyPack = { Id = "FannyPack", Name = "Fanny Pack", Rarity = "Common", Value = 138, IncomePerSecond = 7, Image = "rbxassetid://101453950089334" },
 	Rollerblades = { Id = "Rollerblades", Name = "Rollerblades", Rarity = "Common", Value = 162, IncomePerSecond = 8, Image = "rbxassetid://81873848590782" },
 	Longboard = { Id = "Longboard", Name = "Longboard", Rarity = "Common", Value = 174, IncomePerSecond = 9, Image = "rbxassetid://118768282186280" },
-	PocketKnife = { Id = "PocketKnife", Name = "Pocket Knife", Rarity = "Common", Value = 186, IncomePerSecond = 9, Image = "rbxassetid://0" },
+	PocketKnife = { Id = "PocketKnife", Name = "Fish", Rarity = "Common", Value = 186, IncomePerSecond = 9, Image = "rbxassetid://0" },
 	PearlNecklace = { Id = "PearlNecklace", Name = "Pearl Necklace", Rarity = "Common", Value = 210, IncomePerSecond = 11, Image = "rbxassetid://93076949097198" },
 
 	-- Rare
@@ -114,6 +121,11 @@ local items: { [string]: Item } = {
 	RaceKart = { Id = "RaceKart", Name = "Race Kart", Rarity = "Epic", Value = 2760, IncomePerSecond = 138, Image = "rbxassetid://0" },
 	LuxuryCamperVan = { Id = "LuxuryCamperVan", Name = "Luxury Camper Van", Rarity = "Epic", Value = 2940, IncomePerSecond = 147, Image = "rbxassetid://93436754598970" },
 	KartingTrackPass = { Id = "KartingTrackPass", Name = "Karting Track Pass", Rarity = "Epic", Value = 3300, IncomePerSecond = 165, Image = "rbxassetid://91608021557289" },
+	-- One-time Group Rewards claim (GroupRewardsConfig.luau/
+	-- GroupRewardsManager.luau) -- deliberately worth far more than a
+	-- normal Epic roll, since it's a free thank-you for joining the
+	-- group, not something pulled from the normal weighted roll table.
+	GroupRewardChest = { Id = "GroupRewardChest", Name = "Group Reward Chest", Rarity = "Epic", Value = 50000, IncomePerSecond = 2500, Image = "rbxassetid://0", NotRollable = true },
 
 	-- Legendary
 	PlatinumCrown = { Id = "PlatinumCrown", Name = "Platinum Crown", Rarity = "Legendary", Value = 7200, IncomePerSecond = 360, Image = "rbxassetid://118274687783850" },
@@ -179,6 +191,20 @@ function ItemDatabase.GetItemsByRarity(rarity: string): { Item }
 	local result = {}
 	for _, item in items do
 		if item.Rarity == rarity then
+			table.insert(result, item)
+		end
+	end
+	return result
+end
+
+-- Same as GetItemsByRarity but excludes NotRollable items (e.g.
+-- GroupRewardChest) -- what RollManager.pickItem and RollOdds.GetOneInN
+-- actually use, so an exclusive-claim item can't also come out of a normal
+-- roll. GetItemsByRarity itself stays unfiltered for browsing (CatalogPanel).
+function ItemDatabase.GetRollableItemsByRarity(rarity: string): { Item }
+	local result = {}
+	for _, item in items do
+		if item.Rarity == rarity and not item.NotRollable then
 			table.insert(result, item)
 		end
 	end

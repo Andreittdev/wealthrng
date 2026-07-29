@@ -3,6 +3,11 @@
 -- Luck/cooldown get boosted by VIP (permanent), an active Luck/Speed
 -- Potion (temporary, via PotionConfig), and the Luck/Roll Speed Upgrade
 -- tracks (permanent, via UpgradeConfig) -- all three stack multiplicatively.
+--
+-- The actual roll-performing logic is exposed as RollManager.TryRoll so
+-- AutoRollManager's on/off state (see the loop at the bottom of this file)
+-- can trigger the exact same roll a manual click would -- same cooldown
+-- enforcement, same odds, no separate code path to drift out of sync.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -21,10 +26,15 @@ local StatsManager = require(ServerScriptService.Managers.StatsManager)
 local VIPManager = require(ServerScriptService.Managers.VIPManager)
 local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManager)
 local SellManager = require(ServerScriptService.Managers.SellManager)
+local AutoRollManager = require(ServerScriptService.Managers.AutoRollManager)
 
 local rollRequested = RemotesBootstrap:WaitForChild("RollRequested")
 local rollResult = RemotesBootstrap:WaitForChild("RollResult")
 local inventoryUpdated = RemotesBootstrap:WaitForChild("InventoryUpdated")
+
+local RollManager = {}
+
+local AUTO_ROLL_TICK_SECONDS = 0.2
 
 local random = Random.new()
 local lastRollAt: { [Player]: number } = {}
@@ -56,7 +66,7 @@ end
 
 local function pickItem(session, isVIP: boolean, nowUnix: number)
 	local rarity = pickRarity(session, isVIP, nowUnix)
-	local candidates = ItemDatabase.GetItemsByRarity(rarity)
+	local candidates = ItemDatabase.GetRollableItemsByRarity(rarity)
 	if #candidates == 0 then
 		return nil
 	end
@@ -79,10 +89,16 @@ local function pickItem(session, isVIP: boolean, nowUnix: number)
 	return candidates[#candidates]
 end
 
-rollRequested.OnServerEvent:Connect(function(player: Player)
+-- Performs exactly one roll for `player` if their cooldown has elapsed --
+-- returns false (no-op) if there's no session, no items matched, or still
+-- on cooldown. Used by both the RollRequested handler (manual click) and
+-- the auto-roll loop below (AutoRollManager's on/off state) -- one code
+-- path, so auto-rolling can never get different odds/behavior than a
+-- manual roll.
+function RollManager.TryRoll(player: Player): boolean
 	local session = DataManager.Get(player)
 	if not session then
-		return
+		return false
 	end
 
 	local isVIP = VIPManager.IsVIP(player)
@@ -95,13 +111,13 @@ rollRequested.OnServerEvent:Connect(function(player: Player)
 	local nowClock = os.clock()
 	local last = lastRollAt[player]
 	if last and nowClock - last < cooldown then
-		return
+		return false
 	end
 	lastRollAt[player] = nowClock
 
 	local item = pickItem(session, isVIP, nowUnix)
 	if not item then
-		return
+		return false
 	end
 
 	-- Auto-sell duplicates (opt-in per rarity via SettingsPanel): if the
@@ -125,13 +141,13 @@ rollRequested.OnServerEvent:Connect(function(player: Player)
 			rollResult:FireClient(player, item)
 			StatsManager.Recompute(player)
 			LeaderboardManager.MarkDirty(player)
-			return
+			return true
 		end
 	end
 
 	local entry = InventoryManager.AddItem(player, item.Id)
 	if not entry then
-		return
+		return false
 	end
 
 	session.TotalRolls += 1
@@ -140,13 +156,28 @@ rollRequested.OnServerEvent:Connect(function(player: Player)
 	inventoryUpdated:FireClient(player, session.Inventory)
 	StatsManager.Recompute(player)
 	LeaderboardManager.MarkDirty(player)
+	return true
+end
+
+rollRequested.OnServerEvent:Connect(function(player: Player)
+	RollManager.TryRoll(player)
 end)
 
 Players.PlayerRemoving:Connect(function(player)
 	lastRollAt[player] = nil
 end)
 
--- Side-effect-only module (just connects OnServerEvent above) -- nothing to
--- export, but ModuleScripts must still return exactly one value or
--- require() errors and aborts the rest of Main.server.luau's execution.
-return true
+-- Auto Roll gamepass loop: every tick, try a roll for whichever players
+-- currently have it enabled (AutoRollManager.GetEnabledPlayers) -- TryRoll
+-- itself is a no-op if that player's cooldown hasn't elapsed yet, so this
+-- tick rate is just an upper bound on latency, not the actual roll rate.
+task.spawn(function()
+	while true do
+		task.wait(AUTO_ROLL_TICK_SECONDS)
+		for player in AutoRollManager.GetEnabledPlayers() do
+			RollManager.TryRoll(player)
+		end
+	end
+end)
+
+return RollManager

@@ -9,6 +9,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local PotionDatabase = require(ReplicatedStorage.Modules.PotionDatabase)
 local UpgradeConfig = require(ReplicatedStorage.Modules.UpgradeConfig)
+local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
 local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local StatsManager = require(ServerScriptService.Managers.StatsManager)
@@ -16,6 +17,7 @@ local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManag
 
 local buyPotion = RemotesBootstrap:WaitForChild("BuyPotion")
 local potionUpdated = RemotesBootstrap:WaitForChild("PotionUpdated")
+local systemMessage = RemotesBootstrap:WaitForChild("SystemMessage")
 
 buyPotion.OnServerEvent:Connect(function(player: Player, potionId: string)
 	if typeof(potionId) ~= "string" then
@@ -39,6 +41,7 @@ buyPotion.OnServerEvent:Connect(function(player: Player, potionId: string)
 	local duration = potion.DurationSeconds * UpgradeConfig.GetPotionDurationMultiplier(session.Upgrades.PotionBoost or 0)
 	session.ActivePotions[potionId] = math.max(currentExpiry, now) + duration
 
+	systemMessage:FireClient(player, string.format("Bought %s for %s!", potion.Name, NumberFormat.FormatCash(potion.Price)))
 	potionUpdated:FireClient(player, session.ActivePotions)
 	StatsManager.Recompute(player)
 	LeaderboardManager.MarkDirty(player)

@@ -31,7 +31,7 @@ function RollOdds.GetOneInN(itemId: string): number?
 		totalWeight += RarityConfig.Tiers[rarity].Weight
 	end
 
-	local itemsInRarity = ItemDatabase.GetItemsByRarity(item.Rarity)
+	local itemsInRarity = ItemDatabase.GetRollableItemsByRarity(item.Rarity)
 	if #itemsInRarity == 0 then
 		return nil
 	end

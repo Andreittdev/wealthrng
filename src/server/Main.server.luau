@@ -11,6 +11,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local VIPConfig = require(ReplicatedStorage.Modules.VIPConfig)
+local AutoRollConfig = require(ReplicatedStorage.Modules.AutoRollConfig)
 
 -- The Emitter2D particle system (src/client/Emitter2D.rbxm) blocks forever
 -- on require() waiting for this attribute -- it's normally set by the
@@ -31,11 +32,14 @@ local potionUpdated = remotesFolder:WaitForChild("PotionUpdated")
 local autoSellDuplicatesUpdated = remotesFolder:WaitForChild("AutoSellDuplicatesUpdated")
 local preferencesUpdated = remotesFolder:WaitForChild("PreferencesUpdated")
 local upgradesUpdated = remotesFolder:WaitForChild("UpgradesUpdated")
+local groupRewardStateUpdated = remotesFolder:WaitForChild("GroupRewardStateUpdated")
+local systemMessage = remotesFolder:WaitForChild("SystemMessage")
 local clientReady = remotesFolder:WaitForChild("ClientReady")
 
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local Leaderstats = require(ServerScriptService.Managers.Leaderstats)
 local VIPManager = require(ServerScriptService.Managers.VIPManager)
+local AutoRollManager = require(ServerScriptService.Managers.AutoRollManager)
 local StatsManager = require(ServerScriptService.Managers.StatsManager)
 
 local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManager)
@@ -49,6 +53,9 @@ require(ServerScriptService.Managers.EquipManager)
 require(ServerScriptService.Managers.TradeManager)
 require(ServerScriptService.Managers.PreferencesManager)
 require(ServerScriptService.Managers.UpgradeManager)
+require(ServerScriptService.Managers.GroupRewardsManager)
+local DailyRewardsManager = require(ServerScriptService.Managers.DailyRewardsManager)
+local PlaytimeRewardsManager = require(ServerScriptService.Managers.PlaytimeRewardsManager)
 
 -- Initial pushes (saved Inventory/Assets/Investments/etc.) fire TWICE, on
 -- purpose: once immediately after DataManager.Load (the old behavior --
@@ -76,11 +83,15 @@ local function sendInitialState(player: Player)
 	autoSellDuplicatesUpdated:FireClient(player, session.AutoSellDuplicates)
 	preferencesUpdated:FireClient(player, session.Preferences)
 	upgradesUpdated:FireClient(player, session.Upgrades)
+	groupRewardStateUpdated:FireClient(player, session.ClaimedGroupReward)
+	DailyRewardsManager.PushState(player)
+	PlaytimeRewardsManager.PushState(player)
 end
 
 local function onPlayerAdded(player: Player)
 	DataManager.Load(player)
 	VIPManager.Load(player)
+	AutoRollManager.Load(player)
 	Leaderstats.Create(player)
 	StatsManager.Recompute(player)
 	-- So a player shows up on the boards from their very first stats
@@ -101,8 +112,16 @@ for _, player in Players:GetPlayers() do
 end
 
 MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player: Player, gamePassId: number, wasPurchased: boolean)
-	if wasPurchased and gamePassId == VIPConfig.GamepassId then
+	if not wasPurchased then
+		return
+	end
+	if gamePassId == VIPConfig.GamepassId then
 		VIPManager.Grant(player)
+		systemMessage:FireClient(player, "VIP Gamepass Activated!")
+		StatsManager.Recompute(player)
+	elseif gamePassId == AutoRollConfig.GamepassId then
+		AutoRollManager.Grant(player)
+		systemMessage:FireClient(player, "Auto Roll Gamepass Activated!")
 		StatsManager.Recompute(player)
 	end
 end)
