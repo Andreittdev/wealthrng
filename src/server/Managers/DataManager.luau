@@ -27,10 +27,12 @@ export type Session = {
 	Investments: { { Uid: number, Id: string, PurchasedAt: number, Quantity: number } },
 	NextInvestmentUid: number,
 	ActivePotions: { [string]: number },
-	-- Per-rarity opt-in: missing/false means off. Defaults to all-off for
-	-- new players (see newDefaultSession) -- auto-selling is something a
-	-- player should turn on deliberately, not discover has been silently
-	-- eating their rolls.
+	-- Per-rarity opt-in: missing/false means off. Common/Rare/Epic default
+	-- to ON for new players (see newDefaultSession) -- those tiers are common
+	-- enough that duplicates are just clutter, not a loss worth protecting
+	-- against. Legendary/Ultra/Luxury default to OFF (missing) since those
+	-- are rare enough a player should decide deliberately whether to
+	-- auto-sell a repeat instead of it happening silently by default.
 	AutoSellDuplicates: { [string]: boolean },
 	-- Music/SFX/VFX on-off prefs -- default true (opposite of
 	-- AutoSellDuplicates: there's no downside to leaving these on, so
@@ -68,6 +70,15 @@ export type Session = {
 	PlaytimeSeconds: number,
 	ClaimedPlaytimeMilestones: { [string]: boolean },
 	PlaytimeRewardCycleStartSeconds: number,
+	-- Special Roll ladder (SpecialRollConfig.luau) -- every tier counts up
+	-- independently and simultaneously (keyed by tier Id, e.g. "Golden"),
+	-- not one shared sequential counter. Every normal roll increments each
+	-- tier's own progress by 1 (capped at that tier's Threshold once
+	-- reached, so it just sits "ready" instead of overflowing) until that
+	-- specific tier is claimed, which resets ONLY that tier's entry back
+	-- to 0 -- Golden/Diamond/Ruby/Emerald can all be sitting claimable at
+	-- the same time, each on its own repeating cycle.
+	SpecialRollProgress: { [string]: number },
 	LoadedOk: boolean,
 }
 
@@ -85,7 +96,7 @@ local function newDefaultSession(): Session
 		Investments = {},
 		NextInvestmentUid = 1,
 		ActivePotions = {},
-		AutoSellDuplicates = {},
+		AutoSellDuplicates = { Common = true, Rare = true, Epic = true },
 		Preferences = { Music = true, SFX = true, VFX = true },
 		Upgrades = {},
 		ClaimedGroupReward = false,
@@ -94,6 +105,7 @@ local function newDefaultSession(): Session
 		PlaytimeSeconds = 0,
 		ClaimedPlaytimeMilestones = {},
 		PlaytimeRewardCycleStartSeconds = 0,
+		SpecialRollProgress = {},
 		LoadedOk = true,
 	}
 end
@@ -147,6 +159,7 @@ function DataManager.Load(player: Player): Session
 				PlaytimeSeconds = data.PlaytimeSeconds or 0,
 				ClaimedPlaytimeMilestones = data.ClaimedPlaytimeMilestones or {},
 				PlaytimeRewardCycleStartSeconds = data.PlaytimeRewardCycleStartSeconds or 0,
+				SpecialRollProgress = data.SpecialRollProgress or {},
 				LoadedOk = true,
 			}
 		else
@@ -195,6 +208,7 @@ function DataManager.Save(player: Player)
 		PlaytimeSeconds = session.PlaytimeSeconds,
 		ClaimedPlaytimeMilestones = session.ClaimedPlaytimeMilestones,
 		PlaytimeRewardCycleStartSeconds = session.PlaytimeRewardCycleStartSeconds,
+		SpecialRollProgress = session.SpecialRollProgress,
 	}
 
 	local ok = attempt(function()

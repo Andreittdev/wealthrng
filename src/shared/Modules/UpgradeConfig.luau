@@ -53,19 +53,22 @@ end
 
 -- Luck: same "boost non-Common tiers more" shape as VIPConfig/PotionDatabase's
 -- Luck Potion, scaled linearly from 1x (level 0) to each rarity's max at
--- MaxLevel. Deliberately milder at the top than VIP's (6x Luxury) and the
--- Luck Potion's (3.5x Luxury) own multipliers -- those two ALREADY stack
--- to 21x on Luxury by themselves; a full 4x here on top would compound to
--- 84x (Luxury odds crashing from ~1-in-50k to ~1-in-1.4k), which guts the
--- "genuine rare moment" the whole Luxury tier exists for. This curve adds
--- a real, worth-buying boost without being the dominant multiplier.
+-- MaxLevel. Luxury deliberately milder than the other tiers' own ratios
+-- (1.3x, not the old 2x) -- it stacks multiplicatively with VIP's 6x and
+-- the (now also reduced, see PotionDatabase's Luck Potion comment) Luck
+-- Potion's 1.5x, and the old 6x*3.5x*2x = 42x combined stack pushed a
+-- fully built player's Luxury odds from ~1-in-50k down to ~1-in-2.4k (a
+-- Luxury every ~12 min of active rolling) -- guts the "genuine rare
+-- moment" the whole Luxury tier exists for. The new stack (6x*1.5x*1.3x =
+-- 11.7x) lands around ~1-in-8.6k, ~45 min at max roll speed -- still a
+-- real, worth-buying boost, just not the dominant multiplier.
 local maxLuckWeightMultiplier: { [string]: number } = {
 	Common = 1,
 	Rare = 1.15,
 	Epic = 1.3,
 	Legendary = 1.5,
 	Ultra = 1.75,
-	Luxury = 2,
+	Luxury = 1.3,
 }
 UpgradeConfig.MaxLuckWeightMultiplier = maxLuckWeightMultiplier
 

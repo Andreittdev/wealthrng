@@ -255,7 +255,12 @@ function PlaytimeRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Fol
 	task.spawn(function()
 		while true do
 			task.wait(1)
-			refresh()
+			-- Only the label text, so this was never expensive by itself --
+			-- still no reason to tick every second for the panel's whole
+			-- lifetime while it isn't even on screen.
+			if panel.Visible then
+				refresh()
+			end
 		end
 	end)
 

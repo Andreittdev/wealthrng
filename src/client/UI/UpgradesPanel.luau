@@ -12,6 +12,24 @@ local Theme = require(script.Parent.Theme)
 
 local UpgradesPanel = {}
 
+-- Rejected purchases (e.g. not enough cash) never echo anything back, so a
+-- click can't wait for server confirmation before re-enabling -- a short
+-- time-based cooldown instead, just enough to absorb an accidental
+-- double-click without blocking a genuine second attempt a moment later.
+local DEBOUNCE_SECONDS = 0.5
+
+local function debounce(fn: () -> ())
+	local lastFiredAt = 0
+	return function()
+		local now = os.clock()
+		if now - lastFiredAt < DEBOUNCE_SECONDS then
+			return
+		end
+		lastFiredAt = now
+		fn()
+	end
+end
+
 -- Per-track flavor text + a function describing the CURRENT effect at a
 -- given level, so the card shows something concrete ("-9% cooldown") not
 -- just an abstract level number.
@@ -133,9 +151,9 @@ function UpgradesPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		effectLabels[trackId] = effectLabel
 
 		local buyButton = Theme.Button(card, UDim2.new(1, 0, 0, 30), UDim2.new(0, 0, 1, -32), "Buy", true)
-		buyButton.Activated:Connect(function()
+		buyButton.Activated:Connect(debounce(function()
 			buyUpgrade:FireServer(trackId)
-		end)
+		end))
 		buyButtons[trackId] = buyButton
 
 		refreshCard(trackId)

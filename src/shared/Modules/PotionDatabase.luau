@@ -21,7 +21,14 @@ local potions: { [string]: Potion } = {
 		Name = "Luck Potion",
 		Price = 3000,
 		DurationSeconds = 600,
-		LuckWeightMultiplier = { Common = 1, Rare = 1.3, Epic = 1.6, Legendary = 2, Ultra = 2.5, Luxury = 3.5 },
+		-- Luxury deliberately milder (1.5x, not the old 3.5x) -- it stacks
+			-- multiplicatively with VIP's 6x and the Luck Upgrade's own max
+			-- Luxury multiplier, and the combined stack was pushing a fully
+			-- built player's Luxury odds from ~1-in-50k down to ~1-in-2.4k (a
+			-- Luxury every ~12 min of active rolling), which guts the
+			-- "genuine rare moment" the tier exists for. See UpgradeConfig's
+			-- matching comment for the other half of this same fix.
+			LuckWeightMultiplier = { Common = 1, Rare = 1.3, Epic = 1.6, Legendary = 2, Ultra = 2.5, Luxury = 1.5 },
 	},
 	SpeedPotion = {
 		Id = "SpeedPotion",

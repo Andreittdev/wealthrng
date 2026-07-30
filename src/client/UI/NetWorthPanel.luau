@@ -329,30 +329,48 @@ function NetWorthPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	local handle = {}
 	handle.Frame = panel
 
+	-- statsUpdated/inventoryUpdated both fire on every single roll
+	-- (including Auto Roll's continuous ones) -- rebuilding this panel's
+	-- rows every time regardless of whether it's even on screen was pure
+	-- wasted work. Now deferred until the panel is actually opened.
+	local pendingRefresh = false
+
 	function handle.Toggle()
 		panel.Visible = not panel.Visible
+		if panel.Visible and pendingRefresh then
+			pendingRefresh = false
+			refresh()
+		end
+	end
+
+	local function refreshIfVisible()
+		if panel.Visible then
+			refresh()
+		else
+			pendingRefresh = true
+		end
 	end
 
 	inventoryUpdated.OnClientEvent:Connect(function(inventory)
 		currentInventory = inventory
-		refresh()
+		refreshIfVisible()
 	end)
 
 	assetUpdated.OnClientEvent:Connect(function(payload: { Owned: { [string]: boolean }, Equipped: { string } })
 		ownedAssets = payload.Owned
 		equippedAssets = payload.Equipped
-		refresh()
+		refreshIfVisible()
 	end)
 
 	investmentUpdated.OnClientEvent:Connect(function(investments)
 		currentInvestments = investments
-		refresh()
+		refreshIfVisible()
 	end)
 
 	statsUpdated.OnClientEvent:Connect(function(stats)
 		currentCash = stats.Cash
 		currentNetWorth = stats.NetWorth
-		refresh()
+		refreshIfVisible()
 	end)
 
 	refresh()

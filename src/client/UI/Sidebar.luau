@@ -17,7 +17,7 @@ local BUTTONS = {
 	{ Key = "Shop", Text = "Store", Image = "rbxassetid://125269752712900" },
 	{ Key = "NetWorth", Text = "Net Worth", Image = "rbxassetid://110412138332805" },
 	{ Key = "Inventory", Text = "Inventory", Image = "rbxassetid://105522953472595" },
-	{ Key = "Trade", Text = "Trade", Image = "rbxassetid://76658423678176" },
+	{ Key = "Trade", Text = "Trade", Image = "rbxassetid://140723733393985" },
 	{ Key = "Settings", Text = "Settings", Image = "rbxassetid://79545550325552" },
 	{ Key = "Profile", Text = "Profile", Image = "rbxassetid://139017666357301" },
 }

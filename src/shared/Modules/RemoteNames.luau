@@ -5,7 +5,12 @@
 local RemoteNames = {
 	Events = {
 		"RollRequested", -- client -> server, no payload
-		"RollResult", -- server -> client, payload: Item
+		"RollResult", -- server -> client, payload: Item, SpecialRollTiers (see SpecialRollStateUpdated
+		-- below -- piggybacked on the SAME fire as this roll's item so RollPanel.luau can apply the
+		-- progress-badge snapshot at the exact moment IT shows this specific roll's reveal, not
+		-- before), isSpecial (boolean -- true only when this roll came from a claimed Special Roll
+		-- tier, not a normal roll; RollPanel.luau always shows the reveal for these even while Hide
+		-- Rolls is on, since they're the rare/exciting ones worth seeing regardless)
 		"SellItem", -- client -> server, payload: uid
 		"InventoryUpdated", -- server -> client, payload: { {Uid, ItemId} }
 		"EquipItem", -- client -> server, payload: uid
@@ -64,6 +69,16 @@ local RemoteNames = {
 		-- while online (so each milestone card's countdown keeps moving), and again after a successful
 		-- claim. CycleStartSeconds advances (and Claimed resets) once the whole ladder is claimed, so
 		-- it loops instead of being a one-time list.
+		"RollSpecial", -- client -> server, payload: tierId (string, e.g. "Golden") -- claims that
+		-- Special Roll tier (see SpecialRollConfig.luau); rejected server-side unless
+		-- session.SpecialRollProgress[tierId] has reached that tier's own Threshold. Golden/Diamond/
+		-- Ruby/Emerald progress independently and simultaneously -- more than one can be claimable
+		-- at once.
+		"SpecialRollStateUpdated", -- server -> client, payload: { { TierId, TierName, Threshold,
+		-- Color, Image, Progress, Available (boolean) }, ... } -- one entry per tier. ONLY fired once,
+		-- on join (see Main.server.luau's sendInitialState) -- every subsequent update rides along on
+		-- RollResult's 2nd argument instead (see its own comment above), so the client applies each
+		-- snapshot exactly when it shows that specific roll's reveal, not before.
 	},
 	Functions = {},
 }

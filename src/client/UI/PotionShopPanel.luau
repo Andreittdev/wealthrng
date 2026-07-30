@@ -29,6 +29,24 @@ local function formatDuration(seconds: number): string
 	return string.format("%d:%02d", seconds // 60, seconds % 60)
 end
 
+-- Rejected purchases (e.g. not enough cash) never echo anything back, so a
+-- click can't wait for server confirmation before re-enabling -- a short
+-- time-based cooldown instead, just enough to absorb an accidental
+-- double-click without blocking a genuine second attempt a moment later.
+local DEBOUNCE_SECONDS = 0.5
+
+local function debounce(fn: () -> ())
+	local lastFiredAt = 0
+	return function()
+		local now = os.clock()
+		if now - lastFiredAt < DEBOUNCE_SECONDS then
+			return
+		end
+		lastFiredAt = now
+		fn()
+	end
+end
+
 function PotionShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	local buyPotion = remotes:WaitForChild("BuyPotion")
 	local potionUpdated = remotes:WaitForChild("PotionUpdated")
@@ -107,9 +125,9 @@ function PotionShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 
 			local buyButton = Theme.Button(row, UDim2.new(0.32, 0, 0.6, 0), UDim2.new(1, -10, 0.5, 0), "Buy", true)
 			buyButton.AnchorPoint = Vector2.new(1, 0.5)
-			buyButton.Activated:Connect(function()
+			buyButton.Activated:Connect(debounce(function()
 				buyPotion:FireServer(id)
-			end)
+			end))
 		end
 	end
 

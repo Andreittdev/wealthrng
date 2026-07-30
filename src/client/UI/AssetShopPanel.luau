@@ -152,9 +152,28 @@ function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		return card
 	end
 
+	-- Rejected purchases (e.g. not enough cash) never echo anything back,
+	-- so a click can't wait for server confirmation before re-enabling --
+	-- a short time-based cooldown instead, just enough to absorb an
+	-- accidental double-click/fast double-tap without blocking a genuine
+	-- second attempt a moment later.
+	local DEBOUNCE_SECONDS = 0.5
+
+	local function debounce(fn: () -> ())
+		local lastFiredAt = 0
+		return function()
+			local now = os.clock()
+			if now - lastFiredAt < DEBOUNCE_SECONDS then
+				return
+			end
+			lastFiredAt = now
+			fn()
+		end
+	end
+
 	local function addActionButton(card: Frame, text: string, accent: boolean, onClick: () -> ())
 		local button = Theme.Button(card, UDim2.new(1, 0, 0, 30), UDim2.new(0, 0, 1, -30), text, accent)
-		button.Activated:Connect(onClick)
+		button.Activated:Connect(debounce(onClick))
 	end
 
 	-- Investments only -- x1/x10/x100 buttons instead of a single Buy, so
@@ -172,9 +191,9 @@ function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 				"x" .. quantity,
 				true
 			)
-			button.Activated:Connect(function()
+			button.Activated:Connect(debounce(function()
 				onBuy(quantity)
-			end)
+			end))
 		end
 	end
 
@@ -275,15 +294,27 @@ function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		switchTab("Invest")
 	end)
 
+	-- Only rebuilds the visible card grid while the shop is actually open --
+	-- AssetUpdated/InvestmentUpdated fire from other sources too (a Daily
+	-- Reward Asset claim, a completed trade), which used to trigger a full
+	-- destroy+recreate of every card even with the shop closed. Opening the
+	-- panel (below) always calls refresh() unconditionally, so data is never
+	-- stale once actually shown.
+	local function refreshIfVisible()
+		if panel.Visible then
+			refresh()
+		end
+	end
+
 	assetUpdated.OnClientEvent:Connect(function(payload: { Owned: { [string]: boolean }, Equipped: { string } })
 		ownedAssets = payload.Owned
 		equippedAssets = payload.Equipped
-		refresh()
+		refreshIfVisible()
 	end)
 
 	investmentUpdated.OnClientEvent:Connect(function(investments: { { Uid: number, Id: string, PurchasedAt: number, Quantity: number } })
 		currentInvestments = investments
-		refresh()
+		refreshIfVisible()
 	end)
 
 	ProximityPromptService.PromptTriggered:Connect(function(prompt: ProximityPrompt, player: Player)

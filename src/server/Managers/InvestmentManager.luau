@@ -66,6 +66,17 @@ sellInvestment.OnServerEvent:Connect(function(player: Player, uid: number, quant
 	if typeof(uid) ~= "number" then
 		return
 	end
+	-- nil (omitted) means "sell the whole entry" -- the original call
+	-- shape, kept for backward compatibility. Anything else must be a
+	-- valid positive integer; a PRESENT but invalid value (0, negative,
+	-- non-integer, wrong type) is rejected outright instead of silently
+	-- falling back to "sell everything" -- that used to be the behavior
+	-- for any invalid value, which meant an accidental bad value (e.g. a
+	-- UI bug computing quantity = 0) could sell a player's entire
+	-- investment instead of just failing as a no-op.
+	if quantity ~= nil and (typeof(quantity) ~= "number" or quantity ~= math.floor(quantity) or quantity < 1) then
+		return
+	end
 
 	local session = DataManager.Get(player)
 	if not session then
@@ -75,8 +86,8 @@ sellInvestment.OnServerEvent:Connect(function(player: Player, uid: number, quant
 	for index, entry in session.Investments do
 		if entry.Uid == uid then
 			local sellQuantity = entry.Quantity
-			if typeof(quantity) == "number" and quantity == math.floor(quantity) and quantity >= 1 then
-				sellQuantity = math.min(quantity, entry.Quantity)
+			if quantity ~= nil then
+				sellQuantity = math.min(quantity :: number, entry.Quantity)
 			end
 
 			local perUnitValue = InvestmentDatabase.ComputeCurrentValue(entry.Id, entry.PurchasedAt, os.time())

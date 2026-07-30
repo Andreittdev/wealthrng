@@ -300,7 +300,7 @@ function DailyRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Folder
 	task.spawn(function()
 		while true do
 			task.wait(1)
-			if not canClaim then
+			if panel.Visible and not canClaim then
 				refreshButton()
 			end
 		end

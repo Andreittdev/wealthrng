@@ -44,7 +44,7 @@ local StatsManager = require(ServerScriptService.Managers.StatsManager)
 
 local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManager)
 require(ServerScriptService.Managers.IncomeManager)
-require(ServerScriptService.Managers.RollManager)
+local RollManager = require(ServerScriptService.Managers.RollManager)
 require(ServerScriptService.Managers.SellManager)
 require(ServerScriptService.Managers.AssetManager)
 require(ServerScriptService.Managers.InvestmentManager)
@@ -86,6 +86,7 @@ local function sendInitialState(player: Player)
 	groupRewardStateUpdated:FireClient(player, session.ClaimedGroupReward)
 	DailyRewardsManager.PushState(player)
 	PlaytimeRewardsManager.PushState(player)
+	RollManager.PushSpecialRollState(player, session)
 end
 
 local function onPlayerAdded(player: Player)

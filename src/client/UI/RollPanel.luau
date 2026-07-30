@@ -3,18 +3,16 @@
 -- after settling -- not a persistent small corner box. (Buy VIP moved to
 -- the sidebar's Shop panel, ShopPanel.luau.)
 --
--- Animation flow: every RollResult (from a manual click OR the Auto Roll
--- gamepass rolling on its own timer server-side, see AUTO ROLL button
--- below) is pushed onto `resultQueue`, drained one at a time by
--- processQueue -- never handled by overwriting a single shared variable,
--- which under Auto Roll's fast cooldown let one result silently clobber
--- another before it was ever shown. The queue's front item gets the full
--- drumroll-then-settle-then-hold treatment (playReveal) as long as it's
--- the only one waiting; anything still queued up behind it plays a short
--- "quick" reveal instead (no drumroll, brief hold) so a burst of Auto
--- Rolls catches back up to real time instead of the display permanently
--- lagging. The Roll button stays disabled for as long as the queue has
--- anything left to show.
+-- Animation flow: every RollResult (from a manual click OR Auto Roll's
+-- own client-side continuation loop, see AUTO ROLL button below and
+-- performRoll/continueAutoRollIfNeeded) is pushed onto `resultQueue` and
+-- drained by processQueue with the SAME fixed-length drumroll every time.
+-- Auto Roll never requests its next roll until the current one's reveal
+-- has fully finished (continueAutoRollIfNeeded), so there is only ever
+-- one roll in flight -- "Auto Roll is a normal roll, just automatic, same
+-- cooldown, same everything," not a background process racing ahead of
+-- what's on screen. The Roll button stays disabled for as long as the
+-- queue has anything left to show.
 --
 -- Both the button cluster and the reveal overlay get their own
 -- Theme.AutoScale UIScale (see Theme.luau) so they shrink toward their own
@@ -31,15 +29,13 @@ local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
 local RarityConfig = require(ReplicatedStorage.Modules.RarityConfig)
 local AutoRollConfig = require(ReplicatedStorage.Modules.AutoRollConfig)
 local RollOdds = require(ReplicatedStorage.Modules.RollOdds)
+local SpecialRollConfig = require(ReplicatedStorage.Modules.SpecialRollConfig)
 local Theme = require(script.Parent.Theme)
 
 local SPIN_MIN_DURATION = 0.9
 local SPIN_INTERVAL = 0.06
 local RESULT_DISPLAY_SECONDS = 1.8
--- Backlog items (see processQueue) skip the drumroll and hold for this
--- instead of RESULT_DISPLAY_SECONDS -- still long enough to actually read,
--- short enough that a burst of Auto Rolls catches back up quickly.
-local QUICK_DISPLAY_SECONDS = 0.6
+local NORMAL_DICE_IMAGE = "rbxassetid://92855815758385"
 
 -- Plain icon + text, no background/circle chrome -- and the text sits ON
 -- TOP of the icon's lower portion (overlapping it), not below it as a
@@ -51,7 +47,7 @@ local QUICK_DISPLAY_SECONDS = 0.6
 -- the container (Scale 0.5, not a fixed pixel offset) so it lands on
 -- actual screen-center regardless of the container's total width;
 -- UPGRADE sits a fixed offset to its right.
-local ROLL_ICON_SIZE = 154
+local ROLL_ICON_SIZE = 190
 local UPGRADE_ICON_SIZE = 88
 local ICON_GAP = -14
 -- Auto Roll is a text pill (no bespoke icon asset), not an icon+label like
@@ -144,6 +140,8 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	local rollResult = remotes:WaitForChild("RollResult")
 	local setAutoRoll = remotes:WaitForChild("SetAutoRoll")
 	local autoRollUpdated = remotes:WaitForChild("AutoRollUpdated")
+	local rollSpecial = remotes:WaitForChild("RollSpecial")
+	local specialRollStateUpdated = remotes:WaitForChild("SpecialRollStateUpdated")
 
 	-- NotRollable items (e.g. GroupRewardChest, exclusive to the Group
 	-- Rewards claim) never come out of an actual roll -- excluded here too
@@ -225,6 +223,22 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	hudContainer.Parent = screenGui
 	Theme.AutoScale(screenGui, hudContainer, HUD_REFERENCE_WIDTH)
 
+	-- Declared up here (not down by the reveal overlay where it's mainly
+	-- used) so the Hide Rolls button below can reach into it too. Every
+	-- RollResult (manual click OR Auto Roll) lands here first -- see
+	-- processQueue further down for how it's drained.
+	local resultQueue: { any } = {}
+	local isSpinning = false
+
+	-- Forward-declared: assigned its real body much further down (once
+	-- ownsAutoRoll/autoRollEnabled/readyTierId all exist), but
+	-- autoRollUpdated's listener below needs to be able to call it the
+	-- moment Auto Roll gets toggled on, to kick off the very first roll of
+	-- the chain -- everything after that first one is self-perpetuating
+	-- (processQueue/the Hide Rolls branch call it again once each roll
+	-- finishes), this is only for starting it from a standing stop.
+	local continueAutoRollIfNeeded: () -> ()
+
 	local upgradeOffsetX = ROLL_ICON_SIZE / 2 + ICON_GAP + UPGRADE_ICON_SIZE / 2
 
 	local rollButton, rollIcon = createIconButton(
@@ -232,7 +246,7 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		ROLL_ICON_SIZE,
 		UDim2.new(0.5, 0, 0, 0),
 		HUD_BASELINE_Y,
-		"rbxassetid://92855815758385",
+		NORMAL_DICE_IMAGE,
 		"ROLL",
 		LABEL_COLOR
 	)
@@ -248,7 +262,7 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		hudContainer,
 		UPGRADE_ICON_SIZE,
 		UDim2.new(0.5, upgradeOffsetX, 0, 0),
-		HUD_BASELINE_Y - 24,
+		HUD_BASELINE_Y - 34,
 		"rbxassetid://119321429785408",
 		"UPGRADE",
 		LABEL_COLOR
@@ -258,48 +272,107 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		upgradeLabel.Position = UDim2.new(0.5, 0, 1, -4)
 	end
 
-	-- ===== Auto Roll pill, to the LEFT of ROLL, same raised baseline as
-	-- UPGRADE. Not owned -> prompts the gamepass purchase. Owned -> toggles
-	-- the server-side auto-roll loop (AutoRollManager/RollManager.TryRoll).
-	local autoRollOffsetX = -(ROLL_ICON_SIZE / 2 + ICON_GAP + AUTO_ROLL_BUTTON_WIDTH / 2)
+	-- ===== Auto Roll icon, to the LEFT of ROLL, same raised baseline and
+	-- icon+overlapping-label treatment as UPGRADE (via createIconButton) --
+	-- no more background pill. Not owned -> prompts the gamepass purchase.
+	-- Owned -> toggles server-side ownership state (AutoRollManager); the
+	-- actual rolling loop lives entirely on THIS client (see
+	-- continueAutoRollIfNeeded).
+	local AUTO_ROLL_ICON_SIZE = UPGRADE_ICON_SIZE
+	local autoRollOffsetX = -(ROLL_ICON_SIZE / 2 + ICON_GAP + AUTO_ROLL_ICON_SIZE / 2)
 
-	local autoRollButton = Instance.new("TextButton")
-	autoRollButton.Size = UDim2.new(0, AUTO_ROLL_BUTTON_WIDTH, 0, AUTO_ROLL_BUTTON_HEIGHT)
-	autoRollButton.AnchorPoint = Vector2.new(0.5, 1)
-	autoRollButton.Position = UDim2.new(0.5, autoRollOffsetX, 0, HUD_BASELINE_Y - 24)
-	autoRollButton.BackgroundColor3 = Theme.Colors.Surface
-	autoRollButton.BorderSizePixel = 0
-	autoRollButton.AutoButtonColor = false
-	autoRollButton.Text = "AUTO ROLL"
-	autoRollButton.Font = Theme.Fonts.Header
-	autoRollButton.TextScaled = true
-	autoRollButton.TextColor3 = LABEL_COLOR
-	autoRollButton.TextStrokeTransparency = 0
-	autoRollButton.TextStrokeColor3 = Color3.new(0, 0, 0)
-	autoRollButton.Parent = hudContainer
-	Theme.Round(autoRollButton, UDim.new(0, 10))
-	Theme.Stroke(autoRollButton, Color3.fromRGB(255, 215, 140), 1)
+	local autoRollButton, autoRollIcon = createIconButton(
+		hudContainer,
+		AUTO_ROLL_ICON_SIZE,
+		UDim2.new(0.5, autoRollOffsetX, 0, 0),
+		HUD_BASELINE_Y - 34,
+		"rbxassetid://115324216729484",
+		"AUTO ROLL",
+		LABEL_COLOR
+	)
+	local autoRollLabel = autoRollButton:FindFirstChildOfClass("TextLabel")
+	if autoRollLabel then
+		autoRollLabel.Position = UDim2.new(0.5, 0, 1, -4)
+	end
 
-	local autoRollTextPadding = Instance.new("UIPadding")
-	autoRollTextPadding.PaddingLeft = UDim.new(0.08, 0)
-	autoRollTextPadding.PaddingRight = UDim.new(0.08, 0)
-	autoRollTextPadding.PaddingTop = UDim.new(0.15, 0)
-	autoRollTextPadding.PaddingBottom = UDim.new(0.15, 0)
-	autoRollTextPadding.Parent = autoRollButton
+	-- ===== Hide Rolls pill, stacked right below AUTO ROLL -- only shown
+	-- while Auto Roll is actually ON (a manual roller never needs it).
+	-- Toggling it on stops DRAWING the drumroll/reveal popup for normal
+	-- rolls -- items/cash are still granted normally server-side, and
+	-- playReveal still waits the exact same total duration it always
+	-- would, just with nothing on screen (see playReveal's `show` param)
+	-- -- Hide Rolls is the same timer/mechanism as a visible roll, not a
+	-- separate faster path, so a long Auto Roll grind still paces exactly
+	-- like it would with the popup showing, just silent. Special Roll
+	-- claims (Golden/Diamond/Ruby/Emerald) are NOT hidden by this -- see
+	-- processQueue's IsSpecial check -- they're rare enough to always be
+	-- worth seeing. Turning Auto Roll back off resets it, so a manual
+	-- roll always shows its reveal again.
+	local hideRollsButton = Instance.new("TextButton")
+	hideRollsButton.Size = UDim2.new(0, AUTO_ROLL_BUTTON_WIDTH, 0, AUTO_ROLL_BUTTON_HEIGHT)
+	hideRollsButton.AnchorPoint = Vector2.new(0.5, 1)
+	hideRollsButton.Position = UDim2.new(0.5, autoRollOffsetX, 0, HUD_BASELINE_Y - 34 + AUTO_ROLL_BUTTON_HEIGHT + 6)
+	hideRollsButton.BackgroundColor3 = Theme.Colors.Surface
+	hideRollsButton.BorderSizePixel = 0
+	hideRollsButton.AutoButtonColor = false
+	hideRollsButton.Text = "HIDE ROLLS"
+	hideRollsButton.Font = Theme.Fonts.Header
+	hideRollsButton.TextScaled = true
+	hideRollsButton.TextColor3 = LABEL_COLOR
+	hideRollsButton.TextStrokeTransparency = 0
+	hideRollsButton.TextStrokeColor3 = Color3.new(0, 0, 0)
+	hideRollsButton.Visible = false
+	hideRollsButton.Parent = hudContainer
+	Theme.Round(hideRollsButton, UDim.new(0, 10))
+	Theme.Stroke(hideRollsButton, Color3.fromRGB(255, 215, 140), 1)
+
+	local hideRollsTextPadding = Instance.new("UIPadding")
+	hideRollsTextPadding.PaddingLeft = UDim.new(0.08, 0)
+	hideRollsTextPadding.PaddingRight = UDim.new(0.08, 0)
+	hideRollsTextPadding.PaddingTop = UDim.new(0.15, 0)
+	hideRollsTextPadding.PaddingBottom = UDim.new(0.15, 0)
+	hideRollsTextPadding.Parent = hideRollsButton
+
+	local hideRolls = false
+
+	local function refreshHideRollsButton()
+		if hideRolls then
+			hideRollsButton.Text = "ROLLS HIDDEN"
+			hideRollsButton.BackgroundColor3 = Theme.Colors.Success
+		else
+			hideRollsButton.Text = "HIDE ROLLS"
+			hideRollsButton.BackgroundColor3 = Theme.Colors.Surface
+		end
+	end
+	refreshHideRollsButton()
+
+	hideRollsButton.Activated:Connect(function()
+		hideRolls = not hideRolls
+		refreshHideRollsButton()
+		-- Flush anything already queued so toggling mid-grind doesn't
+		-- leave one last popup hanging around, or (turning it back off)
+		-- silently skip whatever the queue was still holding.
+		if hideRolls then
+			table.clear(resultQueue)
+		end
+	end)
 
 	local ownsAutoRoll = false
 	local autoRollEnabled = false
 
+	-- Label always just reads "AUTO ROLL" -- on/off is shown purely via
+	-- the icon's tint (green when enabled), not by changing the text.
 	local function refreshAutoRollButton()
-		if not ownsAutoRoll then
-			autoRollButton.Text = "AUTO ROLL"
-			autoRollButton.BackgroundColor3 = Theme.Colors.Surface
-		elseif autoRollEnabled then
-			autoRollButton.Text = "AUTO ROLL: ON"
-			autoRollButton.BackgroundColor3 = Theme.Colors.Success
+		if ownsAutoRoll and autoRollEnabled then
+			autoRollIcon.ImageColor3 = Theme.Colors.Success
 		else
-			autoRollButton.Text = "AUTO ROLL: OFF"
-			autoRollButton.BackgroundColor3 = Theme.Colors.Surface
+			autoRollIcon.ImageColor3 = Color3.new(1, 1, 1)
+		end
+
+		hideRollsButton.Visible = ownsAutoRoll and autoRollEnabled
+		if not hideRollsButton.Visible and hideRolls then
+			hideRolls = false
+			refreshHideRollsButton()
 		end
 	end
 	refreshAutoRollButton()
@@ -318,7 +391,290 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	autoRollUpdated.OnClientEvent:Connect(function(enabled: boolean)
 		autoRollEnabled = enabled
 		refreshAutoRollButton()
+		-- Kicks off the very first roll of the chain the instant Auto Roll
+		-- turns on from a standing stop (nothing else would trigger it --
+		-- there's no roll in flight yet for processQueue to continue from).
+		if not isSpinning then
+			continueAutoRollIfNeeded()
+		end
 	end)
+
+	-- ===== Special Roll badges, floating on top of the ROLL dice itself
+	-- (overlapping its top edge) -- one small icon+countdown badge per tier
+	-- (Golden/Diamond/Ruby/Emerald), all visible and counting down
+	-- simultaneously, no background box around the icon (just the item
+	-- image + a small colored number pill under it, matching the
+	-- reference exactly) -- NOT one badge that sequences through tiers one
+	-- at a time. Built once from SpecialRollConfig.Milestones (fixed
+	-- order/count), then just updated in place as SpecialRollStateUpdated
+	-- arrives. Parented to hudContainer (same as rollButton) so it
+	-- inherits the same AutoScale and hides automatically whenever
+	-- handle.SetHudVisible(false) hides the whole HUD; a higher ZIndex
+	-- than rollButton's (both are hudContainer's direct children, so
+	-- ZIndex order between them is compared directly under Roblox's
+	-- default Sibling ZIndexBehavior) makes the row render on top of the
+	-- dice instead of underneath it.
+	local SPECIAL_BADGE_ICON_SIZE = 34
+	local SPECIAL_BADGE_GAP = 1
+	local SPECIAL_BADGE_COUNT_HEIGHT = 13
+	local SPECIAL_BADGES_ZINDEX = 5
+
+	local specialBadgesContainer = Instance.new("Frame")
+	specialBadgesContainer.Size = UDim2.new(
+		0,
+		#SpecialRollConfig.Milestones * SPECIAL_BADGE_ICON_SIZE + (#SpecialRollConfig.Milestones - 1) * SPECIAL_BADGE_GAP,
+		0,
+		SPECIAL_BADGE_ICON_SIZE
+	)
+	specialBadgesContainer.AnchorPoint = Vector2.new(0.5, 0)
+	-- Small enough now (26px icons) to sit fully within the dice's own top
+	-- face instead of overhanging its edge -- HUD_BASELINE_Y - ROLL_ICON_SIZE
+	-- is the dice's top edge within hudContainer, offset down a bit further
+	-- so the row reads as "on" the die.
+	specialBadgesContainer.Position = UDim2.new(0.5, 0, 0, HUD_BASELINE_Y - ROLL_ICON_SIZE + 10)
+	specialBadgesContainer.BackgroundTransparency = 1
+	specialBadgesContainer.ZIndex = SPECIAL_BADGES_ZINDEX
+	specialBadgesContainer.Parent = hudContainer
+
+	local specialBadgesLayout = Instance.new("UIListLayout")
+	specialBadgesLayout.FillDirection = Enum.FillDirection.Horizontal
+	specialBadgesLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	specialBadgesLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+	specialBadgesLayout.Padding = UDim.new(0, SPECIAL_BADGE_GAP)
+	specialBadgesLayout.Parent = specialBadgesContainer
+
+	type SpecialBadge = {
+		Icon: ImageLabel,
+		CountLabel: TextLabel,
+		ClickTarget: TextButton,
+		WasAvailable: boolean,
+	}
+
+	local specialBadges: { [string]: SpecialBadge } = {}
+
+	-- Brief pop/scale tween, played once when a tier flips from locked to
+	-- available -- same idea as playSettleBounce, just enough motion to
+	-- draw the eye without it being a whole animation.
+	local function playSpecialBadgePop(target: GuiObject)
+		local baseSize = UDim2.new(0, SPECIAL_BADGE_ICON_SIZE, 0, SPECIAL_BADGE_ICON_SIZE)
+		target.Size = UDim2.new(0, SPECIAL_BADGE_ICON_SIZE * 1.2, 0, SPECIAL_BADGE_ICON_SIZE * 1.2)
+		TweenService:Create(target, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = baseSize }):Play()
+	end
+
+	for badgeOrder, tier in SpecialRollConfig.Milestones do
+		-- No visible background/border -- just an invisible click target
+		-- the same size as the icon, so the badge stays clickable without
+		-- drawing a box around it.
+		local clickTarget = Instance.new("TextButton")
+		clickTarget.Size = UDim2.new(0, SPECIAL_BADGE_ICON_SIZE, 0, SPECIAL_BADGE_ICON_SIZE)
+		clickTarget.LayoutOrder = badgeOrder
+		clickTarget.BackgroundTransparency = 1
+		clickTarget.AutoButtonColor = false
+		clickTarget.Text = ""
+		clickTarget.ZIndex = SPECIAL_BADGES_ZINDEX
+		clickTarget.Parent = specialBadgesContainer
+
+		local icon = Instance.new("ImageLabel")
+		icon.Size = UDim2.new(1, 0, 1, 0)
+		icon.BackgroundTransparency = 1
+		icon.ScaleType = Enum.ScaleType.Fit
+		icon.Image = tier.Image ~= "rbxassetid://0" and tier.Image or ""
+		icon.ImageTransparency = 0.3
+		icon.ZIndex = SPECIAL_BADGES_ZINDEX
+		icon.Parent = clickTarget
+
+		-- Plain text, no background pill -- white fill + black outline,
+		-- same look as every other number/label in this HUD.
+		local countLabel = Instance.new("TextLabel")
+		countLabel.Size = UDim2.new(0, SPECIAL_BADGE_ICON_SIZE + 4, 0, SPECIAL_BADGE_COUNT_HEIGHT)
+		countLabel.AnchorPoint = Vector2.new(0.5, 1)
+		countLabel.Position = UDim2.new(0.5, 0, 1, 2)
+		countLabel.BackgroundTransparency = 1
+		countLabel.Font = Theme.Fonts.Header
+		countLabel.TextScaled = true
+		countLabel.Text = tostring(tier.Threshold)
+		countLabel.TextColor3 = Color3.new(1, 1, 1)
+		countLabel.TextStrokeTransparency = 0
+		countLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+		countLabel.ZIndex = SPECIAL_BADGES_ZINDEX + 1
+		countLabel.Parent = clickTarget
+
+		specialBadges[tier.Id] = {
+			Icon = icon,
+			CountLabel = countLabel,
+			ClickTarget = clickTarget,
+			WasAvailable = false,
+		}
+
+		clickTarget.Activated:Connect(function()
+			-- Same reasoning as rollButton.Activated below -- while Auto
+			-- Roll is on, its own chain already claims ready tiers on its
+			-- own (performRoll checks readyTierId first); a manual tap on
+			-- a badge in between would fire an EXTRA RollSpecial request
+			-- on top of that, which is what made things look like several
+			-- rolls landing at once.
+			if autoRollEnabled then
+				return
+			end
+			local badge = specialBadges[tier.Id]
+			if badge and badge.WasAvailable then
+				rollSpecial:FireServer(tier.Id)
+			end
+		end)
+	end
+
+	local function refreshSpecialBadge(tierId: string, state)
+		local badge = specialBadges[tierId]
+		if not badge then
+			return
+		end
+
+		local hasImage = state.Image and state.Image ~= "" and state.Image ~= "rbxassetid://0"
+		badge.Icon.Image = hasImage and state.Image or ""
+
+		if state.Available then
+			badge.CountLabel.Text = "GO!"
+			badge.CountLabel.TextColor3 = state.Color
+			badge.Icon.ImageTransparency = 0
+			if not badge.WasAvailable then
+				playSpecialBadgePop(badge.ClickTarget)
+			end
+		else
+			local remaining = math.max(state.Threshold - state.Progress, 0)
+			badge.CountLabel.Text = tostring(remaining)
+			badge.CountLabel.TextColor3 = Color3.new(1, 1, 1)
+			badge.Icon.ImageTransparency = 0.35
+		end
+		badge.WasAvailable = state.Available
+	end
+
+	-- The big dice itself doubles as the claim button for whichever
+	-- Special Roll tier is ready -- swaps to that tier's image/color glow
+	-- until claimed, then reverts to the normal dice. If more than one
+	-- tier is ready at once (they progress independently and
+	-- simultaneously), the LAST entry in SpecialRollConfig.Milestones
+	-- (highest tier, e.g. Emerald over Golden) wins the dice's display;
+	-- the small badges above it still show every tier's own state
+	-- regardless of which one currently owns the dice.
+	local tierStates: { [string]: any } = {}
+	local readyTierId: string? = nil
+
+	-- Only the dice image itself swaps to the ready tier's icon -- no ring/
+	-- glow, and the label always stays "ROLL" (not the tier's name).
+	local function refreshReadyTier()
+		local best = nil
+		for _, tier in SpecialRollConfig.Milestones do
+			local state = tierStates[tier.Id]
+			if state and state.Available then
+				best = state
+			end
+		end
+
+		readyTierId = best and best.TierId or nil
+
+		if best then
+			local hasImage = best.Image and best.Image ~= "" and best.Image ~= "rbxassetid://0"
+			rollIcon.Image = hasImage and best.Image or NORMAL_DICE_IMAGE
+		else
+			rollIcon.Image = NORMAL_DICE_IMAGE
+		end
+	end
+
+	specialRollStateUpdated.OnClientEvent:Connect(function(tiers)
+		for _, state in tiers do
+			tierStates[state.TierId] = state
+			refreshSpecialBadge(state.TierId, state)
+		end
+		refreshReadyTier()
+	end)
+
+	-- Fires exactly the request a manual click would -- claims the ready
+	-- Special Roll tier if there is one, otherwise a normal roll. Auto
+	-- Roll below reuses this so it can never behave differently from a
+	-- human pressing the dice.
+	local function performRoll()
+		if readyTierId then
+			rollSpecial:FireServer(readyTierId)
+		else
+			rollRequested:FireServer()
+		end
+	end
+
+	-- Auto Roll is driven entirely from the CLIENT, one roll at a time --
+	-- there is deliberately no server-side timer requesting rolls on its
+	-- own anymore. This function is called only once the previous roll's
+	-- reveal has fully finished (see processQueue) or, while Hide Rolls is
+	-- on, once the previous result has been applied with no animation to
+	-- wait for -- so a new roll is never requested while one is still
+	-- being shown, exactly mirroring a player spamming the ROLL button as
+	-- fast as it re-enables. The server's own cooldown check (RollManager.
+	-- TryRoll) still guards every request regardless of who sent it.
+	--
+	-- Watchdog: if the request this call fires (normal or a Special Roll
+	-- claim) gets silently rejected server-side -- e.g. a Special Roll
+	-- tier that looked ready client-side but no longer is by the time the
+	-- request lands -- no RollResult ever comes back, and nothing would
+	-- ever call this again, permanently stalling Auto Roll (which looked
+	-- like Special Roll progress had simply stopped advancing, since
+	-- normal rolls stopped landing too). `generation` lets a stale
+	-- watchdog recognize a real reply already moved things forward and
+	-- skip retrying; otherwise it just tries again.
+	local autoRollGeneration = 0
+
+	-- A ready Special Roll tier (dice swapped to its image) held for this
+	-- long before Auto Roll actually claims it -- otherwise a tier could
+	-- become ready and get auto-claimed within the same instant, so the
+	-- player would never actually get to see the dice change before it
+	-- was gone again.
+	local SPECIAL_ROLL_AUTO_DELAY_SECONDS = 1.5
+
+	-- True from the moment a request is fired until its response has been
+	-- handled. While Hide Rolls is on there's no animation (isSpinning
+	-- never turns true) to naturally stop a second chain from starting --
+	-- e.g. autoRollUpdated firing more than once (a fast double-click on
+	-- AUTO ROLL) could each independently call continueAutoRollIfNeeded,
+	-- and with nothing gating them, TWO+ request/response chains would run
+	-- in parallel, each triggering its own next roll -- which looked
+	-- exactly like "10 rolls in a second" even though each individual
+	-- chain was still cooldown-paced correctly. This flag makes it
+	-- impossible for more than one chain to be active at a time,
+	-- regardless of how many times continueAutoRollIfNeeded gets called.
+	local autoRollRequestPending = false
+
+	continueAutoRollIfNeeded = function()
+		if not (ownsAutoRoll and autoRollEnabled) then
+			return
+		end
+		if autoRollRequestPending then
+			return
+		end
+		autoRollRequestPending = true
+
+		autoRollGeneration += 1
+		local thisGeneration = autoRollGeneration
+
+		local function fire()
+			if thisGeneration ~= autoRollGeneration or not (ownsAutoRoll and autoRollEnabled) then
+				autoRollRequestPending = false
+				return
+			end
+
+			performRoll()
+
+			task.delay(2, function()
+				if thisGeneration == autoRollGeneration and ownsAutoRoll and autoRollEnabled and not isSpinning then
+					autoRollRequestPending = false
+					continueAutoRollIfNeeded()
+				end
+			end)
+		end
+
+		if readyTierId then
+			task.delay(SPECIAL_ROLL_AUTO_DELAY_SECONDS, fire)
+		else
+			fire()
+		end
+	end
 
 	-- ===== Reveal overlay, centered on screen -- hidden except during/right
 	-- after a spin =====
@@ -372,21 +728,17 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	oddsLabel.TextStrokeTransparency = 0.5
 	oddsLabel.TextWrapped = true
 
-	-- Every RollResult (manual click OR Auto Roll) lands here first instead
-	-- of a single shared variable -- Auto Roll's cooldown (0.75s VIP/1.5s
-	-- base) is faster than one full spin+hold cycle (~2.7s), so multiple
-	-- results routinely arrive before the previous one finishes showing.
-	-- A single `pendingResult` variable (the old design) just got
-	-- overwritten by whichever arrived last, silently discarding every
-	-- roll in between -- items/cash were still granted correctly server-
-	-- side, but the player would see no feedback for most of their rolls.
-	-- The queue guarantees every result eventually gets shown.
-	local resultQueue: { any } = {}
-	local isSpinning = false
-
+	-- Also disables every Special Roll badge while a reveal is animating --
+	-- claiming one mid-animation used to queue its result straight behind
+	-- whatever was still playing, showing the new item before the current
+	-- reveal had actually finished. Now a badge simply can't be tapped
+	-- until the dice itself is free again, same as ROLL.
 	local function setRollEnabled(enabled: boolean)
 		rollButton.Active = enabled
 		rollIcon.ImageTransparency = enabled and 0 or 0.6
+		for _, badge in specialBadges do
+			badge.ClickTarget.Active = enabled
+		end
 	end
 
 	local function playSettleBounce()
@@ -409,27 +761,37 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	-- Shows one already-known item (unlike the old design, the item is
 	-- always known before this runs -- it only gets called once RollResult
 	-- has actually arrived, whether from a manual click or Auto Roll).
-	-- `quick` skips the random-cycling drumroll and shortens the hold --
-	-- used for backlog items so a queue built up during a burst of Auto
-	-- Rolls catches back up to real time instead of falling permanently
-	-- behind.
-	local function playReveal(item, quick: boolean)
+	-- Always the same fixed-length drumroll+settle+hold, exactly like a
+	-- single manual roll -- there is no "catch up" logic anymore because
+	-- there is nothing to catch up on: Auto Roll only ever requests the
+	-- next roll after this one has fully finished (see
+	-- continueAutoRollIfNeeded), so at most one result is ever in flight.
+	-- `show = false` (Hide Rolls, see the button above, for non-Special
+	-- rolls) skips every visible mutation but still waits the EXACT same
+	-- total duration -- Hide Rolls uses the identical timer/mechanism as a
+	-- normal roll, just with nothing drawn, instead of a separate
+	-- untimed/instant path (which was only bounded by network round-trip +
+	-- cooldown and could fire far faster than a real roll ever paces).
+	local function playReveal(item, show: boolean)
+		if not show then
+			task.wait(SPIN_MIN_DURATION + RESULT_DISPLAY_SECONDS)
+			return
+		end
+
 		revealAnchor.Visible = true
 
-		if not quick then
-			local startTime = os.clock()
-			while os.clock() - startTime < SPIN_MIN_DURATION do
-				local randomItem = allItems[math.random(1, #allItems)]
-				local randomColor = RarityConfig.GetColor(randomItem.Rarity)
-				revealLabel.Text = randomItem.Name
-				oddsLabel.Text = formatOdds(randomItem)
-				oddsLabel.TextColor3 = randomColor
-				revealIcon.Image = randomItem.Image
-				if revealStroke then
-					revealStroke.Color = randomColor
-				end
-				task.wait(SPIN_INTERVAL)
+		local startTime = os.clock()
+		while os.clock() - startTime < SPIN_MIN_DURATION do
+			local randomItem = allItems[math.random(1, #allItems)]
+			local randomColor = RarityConfig.GetColor(randomItem.Rarity)
+			revealLabel.Text = randomItem.Name
+			oddsLabel.Text = formatOdds(randomItem)
+			oddsLabel.TextColor3 = randomColor
+			revealIcon.Image = randomItem.Image
+			if revealStroke then
+				revealStroke.Color = randomColor
 			end
+			task.wait(SPIN_INTERVAL)
 		end
 
 		local finalColor = RarityConfig.GetColor(item.Rarity)
@@ -443,39 +805,69 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		playSettleBounce()
 		playRareEffect(item.Rarity)
 
-		task.wait(quick and QUICK_DISPLAY_SECONDS or RESULT_DISPLAY_SECONDS)
+		task.wait(RESULT_DISPLAY_SECONDS)
 		revealAnchor.Visible = false
 	end
 
-	-- Drains resultQueue one item at a time. Only the LAST item still
-	-- queued at the moment each one starts gets the full drumroll+hold --
-	-- everything ahead of it in a backlog plays "quick" instead, so a
-	-- burst of Auto Rolls catches up instead of the display lagging
-	-- further and further behind real time.
+	-- FIFO, one at a time -- in practice never holds more than a single
+	-- entry, since Auto Roll only requests the next roll once this loop
+	-- has finished (see continueAutoRollIfNeeded), so nothing new arrives
+	-- while something is already queued. Kept as a queue (not a single
+	-- variable) only as a safety net for the rare edge case of a
+	-- request landing right as Auto Roll gets toggled off/on.
 	local function processQueue()
 		isSpinning = true
 		setRollEnabled(false)
 
 		while #resultQueue > 0 do
-			local item = table.remove(resultQueue, 1)
-			local quick = #resultQueue > 0
-			playReveal(item, quick)
+			local entry = table.remove(resultQueue, 1)
+			-- Special Roll claims always show, even with Hide Rolls on --
+			-- everything else respects it.
+			playReveal(entry.Item, not hideRolls or entry.IsSpecial == true)
+			-- Applied only now that THIS roll's reveal has actually
+			-- finished playing -- not when the server originally sent it
+			-- -- so the progress badges advance by exactly 1 per roll the
+			-- player actually sees.
+			if entry.Tiers then
+				for _, state in entry.Tiers do
+					tierStates[state.TierId] = state
+					refreshSpecialBadge(state.TierId, state)
+				end
+				refreshReadyTier()
+			end
 		end
 
 		isSpinning = false
 		setRollEnabled(true)
+		autoRollRequestPending = false
+		continueAutoRollIfNeeded()
 	end
 
 	rollButton.Activated:Connect(function()
 		if isSpinning then
 			return
 		end
+		-- While Auto Roll is on, the chain (continueAutoRollIfNeeded)
+		-- already requests every roll on its own -- a manual tap on the
+		-- dice in between two auto rolls used to ALSO fire performRoll(),
+		-- injecting an extra request on top of the automatic one. That's
+		-- exactly what made it look like several rolls were happening at
+		-- once: one from the auto chain, one from the click. Auto Roll
+		-- being on means the dice isn't a manual trigger anymore.
+		if autoRollEnabled then
+			return
+		end
 		setRollEnabled(false)
-		rollRequested:FireServer()
+		performRoll()
 	end)
 
-	rollResult.OnClientEvent:Connect(function(item)
-		table.insert(resultQueue, item)
+	-- Every result goes through the SAME queue/isSpinning pipeline
+	-- regardless of Hide Rolls -- see playReveal's `show` parameter for
+	-- where hiding actually happens (same timer, nothing drawn), instead
+	-- of a separate untimed path that let Auto Roll fire far faster than
+	-- a real roll's pacing while hidden.
+	rollResult.OnClientEvent:Connect(function(item, tiers, isSpecial: boolean?)
+		table.insert(resultQueue, { Item = item, Tiers = tiers, IsSpecial = isSpecial })
 		if not isSpinning then
 			task.spawn(processQueue)
 		end

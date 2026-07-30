@@ -219,8 +219,21 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	local handle = {}
 	handle.Frame = panel
 
+	-- Set whenever Render/equip updates arrive while the panel is closed
+	-- -- rebuilding the full item-row list (destroy + recreate one Frame
+	-- per item) is expensive and used to run on EVERY inventoryUpdated
+	-- fire (i.e. every single roll, including Auto Roll's continuous
+	-- ones) even with the panel not on screen. Now that work is deferred
+	-- until the panel is actually opened.
+	local pendingRerender = false
+
 	function handle.Toggle()
 		panel.Visible = not panel.Visible
+		if panel.Visible and pendingRerender then
+			pendingRerender = false
+			renderList()
+			renderDetail()
+		end
 	end
 
 	local renderDetail
@@ -385,15 +398,28 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 			selectedUid = nil
 		end
 		statusLabel.Text = string.format("%d/%d equipped", #equippedUids, ItemDatabase.MaxEquipped)
-		renderList()
-		renderDetail()
+		-- The actual row-by-row rebuild (destroy + recreate one Frame per
+		-- item) only matters while the panel is on screen -- with Auto
+		-- Roll firing this on every single roll, rebuilding it unseen was
+		-- pure wasted work that scaled with however large the inventory
+		-- had grown. handle.Toggle catches up on open.
+		if panel.Visible then
+			renderList()
+			renderDetail()
+		else
+			pendingRerender = true
+		end
 	end
 
 	equippedItemsUpdated.OnClientEvent:Connect(function(uids: { number })
 		equippedUids = uids
 		statusLabel.Text = string.format("%d/%d equipped", #equippedUids, ItemDatabase.MaxEquipped)
-		renderList()
-		renderDetail()
+		if panel.Visible then
+			renderList()
+			renderDetail()
+		else
+			pendingRerender = true
+		end
 	end)
 
 	return handle

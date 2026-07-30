@@ -30,6 +30,14 @@ local function attempt(fn): (boolean, any)
 	return false, nil
 end
 
+-- If every attempt fails (a transient MarketplaceService outage, not "the
+-- player genuinely isn't VIP"), retry once more in the background after a
+-- longer cooldown instead of leaving a real VIP incorrectly cached as
+-- non-VIP -- silently losing their sell bonus/income bonus/luck/cooldown
+-- perks for the rest of the session with no way to recover short of
+-- rejoining.
+local FAILURE_RETRY_DELAY_SECONDS = 15
+
 function VIPManager.Load(player: Player)
 	local ok, owns = attempt(function()
 		return MarketplaceService:UserOwnsGamePassAsync(player.UserId, VIPConfig.GamepassId)
@@ -37,10 +45,23 @@ function VIPManager.Load(player: Player)
 
 	if ok then
 		vipCache[player] = owns == true
-	else
-		vipCache[player] = false
-		warn(string.format("[VIPManager] Failed to check VIP gamepass for %s (%d) after %d attempts", player.Name, player.UserId, RETRY_COUNT))
+		return
 	end
+
+	vipCache[player] = false
+	warn(string.format("[VIPManager] Failed to check VIP gamepass for %s (%d) after %d attempts", player.Name, player.UserId, RETRY_COUNT))
+
+	task.delay(FAILURE_RETRY_DELAY_SECONDS, function()
+		if not player.Parent then
+			return
+		end
+		local retryOk, retryOwns = attempt(function()
+			return MarketplaceService:UserOwnsGamePassAsync(player.UserId, VIPConfig.GamepassId)
+		end)
+		if retryOk then
+			vipCache[player] = retryOwns == true
+		end
+	end)
 end
 
 function VIPManager.IsVIP(player: Player): boolean

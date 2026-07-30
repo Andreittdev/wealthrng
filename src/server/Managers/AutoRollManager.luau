@@ -1,11 +1,14 @@
--- Auto Roll gamepass ownership + on/off toggle state, cached per session.
--- Ownership check mirrors VIPManager's shape exactly. Deliberately does NOT
--- require RollManager (which is what actually performs the repeated rolls,
--- via a loop living in RollManager.luau itself) -- StatsManager needs to
--- read Owns() for the StatsUpdated payload, and RollManager already
--- requires StatsManager, so this module has to stay a leaf or that becomes
--- a require cycle (StatsManager -> AutoRollManager -> RollManager ->
--- StatsManager).
+-- Auto Roll gamepass ownership, cached per session. Ownership check
+-- mirrors VIPManager's shape exactly. The actual auto-rolling loop lives
+-- entirely on the client (RollPanel.luau) once it's confirmed enabled here
+-- -- this module only validates the SetAutoRoll toggle (rejecting it if
+-- the player doesn't actually own the gamepass) and echoes the real state
+-- back via AutoRollUpdated; it doesn't need to remember whether a player
+-- currently has it on for anything else. Deliberately does NOT require
+-- RollManager -- StatsManager needs to read Owns() for the StatsUpdated
+-- payload, and RollManager already requires StatsManager, so this module
+-- has to stay a leaf or that becomes a require cycle (StatsManager ->
+-- AutoRollManager -> RollManager -> StatsManager).
 
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
@@ -22,7 +25,6 @@ local RETRY_COUNT = 3
 local RETRY_BACKOFF_SECONDS = 2
 
 local ownsCache: { [Player]: boolean } = {}
-local enabledCache: { [Player]: boolean } = {}
 
 local setAutoRoll = RemotesBootstrap:WaitForChild("SetAutoRoll")
 local autoRollUpdated = RemotesBootstrap:WaitForChild("AutoRollUpdated")
@@ -63,18 +65,6 @@ end
 
 function AutoRollManager.Release(player: Player)
 	ownsCache[player] = nil
-	enabledCache[player] = nil
-end
-
-function AutoRollManager.IsEnabled(player: Player): boolean
-	return enabledCache[player] == true
-end
-
--- Exposes the full { [Player]: true } table (enabled players only, not a
--- copy) so RollManager's loop can iterate it directly without this module
--- needing to know anything about how rolling actually happens.
-function AutoRollManager.GetEnabledPlayers(): { [Player]: boolean }
-	return enabledCache
 end
 
 setAutoRoll.OnServerEvent:Connect(function(player: Player, enabled: unknown)
@@ -88,11 +78,6 @@ setAutoRoll.OnServerEvent:Connect(function(player: Player, enabled: unknown)
 		return
 	end
 
-	if enabled then
-		enabledCache[player] = true
-	else
-		enabledCache[player] = nil
-	end
 	autoRollUpdated:FireClient(player, enabled)
 end)
 
