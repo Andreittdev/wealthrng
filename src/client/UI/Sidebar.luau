@@ -43,7 +43,7 @@ export type PanelHandles = {
 	Profile: { Toggle: () -> () },
 }
 
-function Sidebar.Create(screenGui: ScreenGui, handles: PanelHandles)
+function Sidebar.Create(screenGui: ScreenGui, handles: PanelHandles, cashHudFrame: Frame?)
 	local rows = math.ceil(#BUTTONS / COLUMNS)
 	local containerWidth = COLUMNS * ICON_SIZE + (COLUMNS - 1) * GAP_X
 	local containerHeight = rows * ICON_SIZE + (rows - 1) * GAP_Y
@@ -96,6 +96,18 @@ function Sidebar.Create(screenGui: ScreenGui, handles: PanelHandles)
 			button.Activated:Connect(function()
 				panelHandle.Toggle()
 			end)
+		end
+
+		-- Cash HUD moved here from its old fixed top-right corner spot --
+		-- reparented into this same AutoScale container so it scales as one
+		-- unit with the rest of the grid on narrow screens, positioned
+		-- directly under whichever button is "Profile" (found by Key, not a
+		-- hardcoded index, so this still lands correctly if BUTTONS is ever
+		-- reordered).
+		if cashHudFrame and buttonData.Key == "Profile" then
+			cashHudFrame.Parent = container
+			cashHudFrame.AnchorPoint = Vector2.new(0.5, 0)
+			cashHudFrame.Position = UDim2.new(0, x + ICON_SIZE / 2, 0, y + ICON_SIZE + GAP_Y)
 		end
 	end
 end

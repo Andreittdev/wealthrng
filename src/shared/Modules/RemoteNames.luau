@@ -61,14 +61,6 @@ local RemoteNames = {
 		-- (session.LastDailyRewardClaimAt + DailyRewardsConfig.ClaimIntervalSeconds).
 		"DailyRewardStateUpdated", -- server -> client, payload: { Day (1-7), CanClaim (boolean),
 		-- SecondsRemaining (number) } -- pushed on join and again after a successful claim.
-		"ClaimPlaytimeReward", -- client -> server, payload: milestoneIndex (number, 1-based index into
-		-- PlaytimeRewardsConfig.Milestones) -- rejected server-side unless PlaytimeSeconds has reached
-		-- that milestone's ThresholdSeconds and it hasn't already been claimed.
-		"PlaytimeRewardStateUpdated", -- server -> client, payload: { PlaytimeSeconds (number),
-		-- Claimed: {[milestoneIndex]: true}, CycleStartSeconds (number) } -- pushed on join, every ~5s
-		-- while online (so each milestone card's countdown keeps moving), and again after a successful
-		-- claim. CycleStartSeconds advances (and Claimed resets) once the whole ladder is claimed, so
-		-- it loops instead of being a one-time list.
 		"RollSpecial", -- client -> server, payload: tierId (string, e.g. "Golden") -- claims that
 		-- Special Roll tier (see SpecialRollConfig.luau); rejected server-side unless
 		-- session.SpecialRollProgress[tierId] has reached that tier's own Threshold. Golden/Diamond/

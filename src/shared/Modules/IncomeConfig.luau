@@ -19,8 +19,7 @@ local AssetDatabase = require(ReplicatedStorage.Modules.AssetDatabase)
 local IncomeConfig = {}
 
 type SessionSlice = {
-	Inventory: { { Uid: number, ItemId: string } },
-	EquippedItemUids: { number },
+	EquippedItemId: string?,
 	EquippedAssets: { string },
 }
 
@@ -35,22 +34,19 @@ local function combineBonusPercent(isVIP: boolean, vipBonusPercent: number, poti
 end
 
 function IncomeConfig.ComputeItemsRatePerSecond(session: SessionSlice, isVIP: boolean, vipBonusPercent: number, potionBonusPercent: number): number
-	local total = 0
-
 	-- Only equipped items earn income -- unequipped ones still count their
 	-- Value toward Net Worth via InventoryManager.GetValue, just not this.
-	local equippedItemUids: { [number]: boolean } = {}
-	for _, uid in session.EquippedItemUids do
-		equippedItemUids[uid] = true
-	end
-
-	for _, entry in session.Inventory do
-		if equippedItemUids[entry.Uid] then
-			local item = ItemDatabase.GetItem(entry.ItemId)
-			if item then
-				total += item.IncomePerSecond
-			end
-		end
+	-- Reads session.EquippedItemId directly (kept in sync by
+	-- InventoryManager.Equip/Unequip/RemoveItem) instead of scanning the
+	-- full Inventory array for whichever entry matches EquippedItemUids --
+	-- this ran on every single roll (via StatsManager.Recompute), so an
+	-- O(n)-over-Inventory scan here got measurably slower the longer a
+	-- session went on. Only valid because ItemDatabase.MaxEquipped is 1 --
+	-- would need to go back to a real list if that ever changes.
+	local total = 0
+	local item = session.EquippedItemId and ItemDatabase.GetItem(session.EquippedItemId)
+	if item then
+		total = item.IncomePerSecond
 	end
 
 	total *= 1 + combineBonusPercent(isVIP, vipBonusPercent, potionBonusPercent) / 100

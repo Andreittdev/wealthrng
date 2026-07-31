@@ -40,4 +40,23 @@ function NumberFormat.FormatCash(n: number): string
 	return "$" .. NumberFormat.Format(n)
 end
 
+-- "3d 4h" / "4h 12m" / "12m" -- one bigger unit + one smaller, never all
+-- three at once (that's more precision than a leaderboard row needs).
+-- Below a minute just reads "0m" rather than switching to seconds -- the
+-- Top Time board (LeaderboardManager.luau) is the only current caller and
+-- nobody's total playtime is meaningfully under a minute.
+function NumberFormat.FormatDuration(totalSeconds: number): string
+	local seconds = math.max(math.floor(totalSeconds), 0)
+	local days = seconds // 86400
+	local hours = (seconds % 86400) // 3600
+	local minutes = (seconds % 3600) // 60
+
+	if days > 0 then
+		return string.format("%dd %dh", days, hours)
+	elseif hours > 0 then
+		return string.format("%dh %dm", hours, minutes)
+	end
+	return string.format("%dm", minutes)
+end
+
 return NumberFormat

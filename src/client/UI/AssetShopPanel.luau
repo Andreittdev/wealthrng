@@ -64,9 +64,24 @@ function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	-- Both created plain (accent=false, no baked-in gold gradient) --
 	-- highlightTabs() toggles their flat BackgroundColor3/TextColor3 to show
 	-- which is active, and a permanent gradient on one but not the other
-	-- would look inconsistent once they swap states.
-	local assetsTabButton = Theme.Button(panel, UDim2.new(0.5, -20, 0, 32), UDim2.new(0, 16, 0, 50), "Assets")
+	-- would look inconsistent once they swap states. "Estates" is just the
+	-- displayed label -- category id ("Assets"), the AssetDatabase module,
+	-- and every remote/variable name underneath stay as-is, only the text
+	-- players see changed.
+	local assetsTabButton = Theme.Button(panel, UDim2.new(0.5, -20, 0, 32), UDim2.new(0, 16, 0, 50), "Estates")
 	local investTabButton = Theme.Button(panel, UDim2.new(0.5, -20, 0, 32), UDim2.new(0.5, 4, 0, 50), "Investments")
+
+	-- TextScaled fills the whole button by default -- Theme.Button doesn't
+	-- expose a font-size knob, so a UITextSizeConstraint on top is the only
+	-- way to cap these two specifically without shrinking the buttons
+	-- themselves or affecting every other Theme.Button in the game.
+	local TAB_MAX_TEXT_SIZE = 18
+	local assetsTabTextConstraint = Instance.new("UITextSizeConstraint")
+	assetsTabTextConstraint.MaxTextSize = TAB_MAX_TEXT_SIZE
+	assetsTabTextConstraint.Parent = assetsTabButton
+	local investTabTextConstraint = Instance.new("UITextSizeConstraint")
+	investTabTextConstraint.MaxTextSize = TAB_MAX_TEXT_SIZE
+	investTabTextConstraint.Parent = investTabButton
 
 	local statusLabel = Theme.Label(panel, UDim2.new(1, -32, 0, 18), "")
 	statusLabel.Position = UDim2.new(0, 16, 0, 86)
@@ -207,6 +222,22 @@ function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		badge.TextXAlignment = Enum.TextXAlignment.Center
 	end
 
+	-- GetAllAssets/GetAllInvestments return plain dicts -- iterating one
+	-- directly has no defined order (Lua hash order), so the shop's card
+	-- grid would shuffle around between sessions/reloads. Sort by Price
+	-- ascending (cheapest first) every render instead of depending on
+	-- declaration order in the database module.
+	local function sortedIdsByPrice(all: { [string]: { Price: number } }): { string }
+		local ids = {}
+		for id in all do
+			table.insert(ids, id)
+		end
+		table.sort(ids, function(a, b)
+			return all[a].Price < all[b].Price
+		end)
+		return ids
+	end
+
 	local function renderAssets()
 		clearContent()
 
@@ -214,8 +245,10 @@ function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		statusLabel.Text = string.format("Equipped: %d/%d", equippedCount, AssetDatabase.MaxEquipped)
 		statusLabel.TextColor3 = Theme.Colors.TextSecondary
 
+		local allAssets = AssetDatabase.GetAllAssets()
 		local order = 0
-		for id, asset in AssetDatabase.GetAllAssets() do
+		for _, id in sortedIdsByPrice(allAssets) do
+			local asset = allAssets[id]
 			order += 1
 			local card = createCard(order, asset.Name, NumberFormat.FormatCash(asset.Price), "+" .. NumberFormat.FormatCash(asset.IncomePerMinute) .. "/min", asset.Image)
 
@@ -253,8 +286,10 @@ function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		statusLabel.Text = "Investment Value increases by 10% every 3.5 days! (Grows Offline)"
 		statusLabel.TextColor3 = Theme.Colors.Success
 
+		local allInvestments = InvestmentDatabase.GetAllInvestments()
 		local order = 0
-		for id, investment in InvestmentDatabase.GetAllInvestments() do
+		for _, id in sortedIdsByPrice(allInvestments) do
+			local investment = allInvestments[id]
 			order += 1
 			local owned = countOwnedInvestments(id)
 			local card =

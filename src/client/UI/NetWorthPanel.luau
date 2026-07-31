@@ -30,6 +30,7 @@ function NetWorthPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	local investmentUpdated = remotes:WaitForChild("InvestmentUpdated")
 	local statsUpdated = remotes:WaitForChild("StatsUpdated")
 	local sellInvestment = remotes:WaitForChild("SellInvestment")
+	local playerRankUpdated = remotes:WaitForChild("PlayerRankUpdated")
 
 	-- Anchored near the top (not dead-center) so it doesn't collide with
 	-- RollPanel's bottom-anchored reveal window/button on shorter viewports.
@@ -178,6 +179,11 @@ function NetWorthPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	local currentInvestments: { { Uid: number, Id: string, PurchasedAt: number, Quantity: number } } = {}
 	local currentNetWorth = 0
 	local currentCash = 0
+	-- nil until the first PlayerRankUpdated for the Net Worth board (index
+	-- 2, see LeaderboardManager.luau's `categories`) arrives -- only fires
+	-- at all for players currently in the top 100, so nil also just means
+	-- "not on the board," which is exactly when this row should stay hidden.
+	local currentNetWorthRank: number? = nil
 
 	-- UIListLayout with SortOrder left at its default doesn't reliably sort
 	-- by insertion order once children have equal (unset) LayoutOrder --
@@ -324,6 +330,9 @@ function NetWorthPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		end
 
 		addRow("Net Worth: " .. NumberFormat.FormatCash(currentNetWorth), Theme.Colors.Accent, true)
+		if currentNetWorthRank then
+			addRow("Leaderboard Rank: #" .. currentNetWorthRank, Color3.fromRGB(255, 215, 0))
+		end
 	end
 
 	local handle = {}
@@ -371,6 +380,16 @@ function NetWorthPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		currentCash = stats.Cash
 		currentNetWorth = stats.NetWorth
 		refreshIfVisible()
+	end)
+
+	-- BoardIndex 2 = Net Worth (see LeaderboardManager.luau's `categories`)
+	-- -- ignore rank pushes for the Time/Rolls boards, this panel only cares
+	-- about its own stat.
+	playerRankUpdated.OnClientEvent:Connect(function(boardIndex: number, _label: string, rank: number, _value: number)
+		if boardIndex == 2 then
+			currentNetWorthRank = rank
+			refreshIfVisible()
+		end
 	end)
 
 	refresh()

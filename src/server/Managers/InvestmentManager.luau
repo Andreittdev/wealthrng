@@ -1,17 +1,23 @@
 -- Flex-purchase collection ("Invest" in the UI): buy any number of
 -- Investments (via x1/x10/x100 quantity buttons -- one purchase = one
 -- entry with a Quantity, not N separate entries), sell any owned entry
--- back at a 50% loss. Server-authoritative price lookups, same shape as
--- AssetManager. Never required by StatsManager -- see IncomeConfig's header.
+-- back at a 50% loss (before VIP's permanent + an active Fortune Potion's
+-- temporary cash bonus, same as SellManager.ComputeSellValue -- see the
+-- sellInvestment handler below). Server-authoritative price lookups, same
+-- shape as AssetManager. Never required by StatsManager -- see
+-- IncomeConfig's header.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local InvestmentDatabase = require(ReplicatedStorage.Modules.InvestmentDatabase)
+local VIPConfig = require(ReplicatedStorage.Modules.VIPConfig)
+local PotionConfig = require(ReplicatedStorage.Modules.PotionConfig)
 local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
 local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local StatsManager = require(ServerScriptService.Managers.StatsManager)
+local VIPManager = require(ServerScriptService.Managers.VIPManager)
 local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManager)
 
 local buyInvestment = RemotesBootstrap:WaitForChild("BuyInvestment")
@@ -90,8 +96,18 @@ sellInvestment.OnServerEvent:Connect(function(player: Player, uid: number, quant
 				sellQuantity = math.min(quantity :: number, entry.Quantity)
 			end
 
+			-- VIP's permanent sell bonus and an active Fortune Potion's
+			-- temporary one now apply here too (same formula as SellManager.
+			-- ComputeSellValue) -- Investments used to be the one payout path
+			-- that ignored both entirely, which made Fortune Potion feel
+			-- pointless for anyone whose main income was Investments rather
+			-- than Item sells/Asset rent.
 			local perUnitValue = InvestmentDatabase.ComputeCurrentValue(entry.Id, entry.PurchasedAt, os.time())
-			local payout = math.floor(perUnitValue * sellQuantity * 0.5)
+			local bonusPercent = PotionConfig.GetCashBonusPercent(session, os.time())
+			if VIPManager.IsVIP(player) then
+				bonusPercent += VIPConfig.SellBonusPercent
+			end
+			local payout = math.floor(perUnitValue * sellQuantity * 0.5 * (1 + bonusPercent / 100))
 			session.Cash += payout
 
 			if sellQuantity >= entry.Quantity then

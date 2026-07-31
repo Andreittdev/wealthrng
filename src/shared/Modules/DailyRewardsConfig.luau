@@ -4,10 +4,13 @@
 -- prototype) -- each entry's Type says what DailyRewardsManager.luau grants
 -- and what DailyRewardsProximityPanel.luau shows on that day's card:
 --   Cash             -- Amount credited directly.
---   RandomEpicItem   -- one item chosen at claim time from
---                       ItemDatabase.GetRollableItemsByRarity("Epic")
---                       (same exclusion as a normal roll -- can't hand out
---                       GroupRewardChest, which is Group Rewards-exclusive).
+--   Item             -- ItemId granted outright via InventoryManager.AddItem
+--                       (same as pulling it from a roll, just guaranteed).
+--                       Day 2 uses this with a dedicated NotRollable item
+--                       (ItemDatabase.Day2SpecialItem) instead of a random
+--                       Epic pull, so every player gets the exact same,
+--                       nameable Day 2 reward instead of whatever the RNG
+--                       happened to land on.
 --   Asset            -- AssetId granted outright (same effect as buying it
 --                       from AssetShopPanel, just free) -- a no-op if
 --                       already owned, not a refund.
@@ -23,7 +26,7 @@ local DailyRewardsConfig = {}
 -- prize (a paid gamepass, normally Robux-only).
 DailyRewardsConfig.Days = {
 	{ Type = "Cash", Amount = 500 },
-	{ Type = "RandomEpicItem" },
+	{ Type = "Item", ItemId = "Day2SpecialItem" },
 	{ Type = "Cash", Amount = 2000 },
 	{ Type = "Asset", AssetId = "LuxuryTownhouse" },
 	{ Type = "Cash", Amount = 8000 },

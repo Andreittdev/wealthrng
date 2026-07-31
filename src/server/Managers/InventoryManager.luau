@@ -1,5 +1,15 @@
 -- Pure table manipulation over a player's DataManager session -- no
 -- Instance-per-item, the client just gets a payload over InventoryUpdated.
+--
+-- Also the ONLY place that mutates session.Inventory/EquippedItemUids, so
+-- it's the one place responsible for keeping the 3 derived fields
+-- (OwnedItemCounts, InventoryTotalValue, EquippedItemId -- see DataManager.
+-- Session's comment) in sync incrementally, rather than every caller
+-- (RollManager's auto-sell-duplicates check, IncomeConfig's item-income
+-- lookup, StatsManager's Net Worth) re-scanning the full Inventory array
+-- on every single roll. Get out of sync here and every one of those goes
+-- quietly wrong, so every mutation below updates them in the same breath
+-- as the underlying array.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
@@ -20,6 +30,13 @@ function InventoryManager.AddItem(player: Player, itemId: string)
 
 	local entry = { Uid = uid, ItemId = itemId }
 	table.insert(session.Inventory, entry)
+
+	session.OwnedItemCounts[itemId] = (session.OwnedItemCounts[itemId] or 0) + 1
+	local item = ItemDatabase.GetItem(itemId)
+	if item then
+		session.InventoryTotalValue += item.Value
+	end
+
 	return entry
 end
 
@@ -33,11 +50,25 @@ function InventoryManager.RemoveItem(player: Player, uid: number)
 		if entry.Uid == uid then
 			table.remove(session.Inventory, index)
 
+			local currentCount = session.OwnedItemCounts[entry.ItemId]
+			if currentCount then
+				if currentCount <= 1 then
+					session.OwnedItemCounts[entry.ItemId] = nil
+				else
+					session.OwnedItemCounts[entry.ItemId] = currentCount - 1
+				end
+			end
+			local item = ItemDatabase.GetItem(entry.ItemId)
+			if item then
+				session.InventoryTotalValue -= item.Value
+			end
+
 			-- A sold item can't stay "equipped" earning income it no
 			-- longer holds -- drop it from the equipped set too.
 			local equippedIndex = table.find(session.EquippedItemUids, uid)
 			if equippedIndex then
 				table.remove(session.EquippedItemUids, equippedIndex)
+				session.EquippedItemId = nil
 			end
 
 			return entry
@@ -57,14 +88,14 @@ function InventoryManager.Equip(player: Player, uid: number): boolean
 		return false
 	end
 
-	local owned = false
+	local ownedItemId: string? = nil
 	for _, entry in session.Inventory do
 		if entry.Uid == uid then
-			owned = true
+			ownedItemId = entry.ItemId
 			break
 		end
 	end
-	if not owned then
+	if not ownedItemId then
 		return false
 	end
 
@@ -80,6 +111,9 @@ function InventoryManager.Equip(player: Player, uid: number): boolean
 	end
 
 	table.insert(session.EquippedItemUids, uid)
+	-- Only meaningful while MaxEquipped stays 1 -- see EquippedItemId's
+	-- comment in DataManager.luau.
+	session.EquippedItemId = ownedItemId
 	return true
 end
 
@@ -95,23 +129,19 @@ function InventoryManager.Unequip(player: Player, uid: number): boolean
 	end
 
 	table.remove(session.EquippedItemUids, index)
+	session.EquippedItemId = nil
 	return true
 end
 
+-- O(1) -- session.InventoryTotalValue is kept in sync incrementally by
+-- AddItem/RemoveItem above instead of re-summing the full Inventory array
+-- on every call (this runs via StatsManager.Recompute on every roll).
 function InventoryManager.GetValue(player: Player): number
 	local session = DataManager.Get(player)
 	if not session then
 		return 0
 	end
-
-	local total = 0
-	for _, entry in session.Inventory do
-		local item = ItemDatabase.GetItem(entry.ItemId)
-		if item then
-			total += item.Value
-		end
-	end
-	return total
+	return session.InventoryTotalValue
 end
 
 return InventoryManager

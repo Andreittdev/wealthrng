@@ -6,9 +6,19 @@
 -- Named distinctly from ItemDatabase's roll items (this is a shop
 -- purchase, not something you can roll) to avoid confusion in the UI.
 --
--- 11 tiers spanning $100 to $40B (~8x per tier, same idea as
+-- 11 tiers spanning $100 to $5T (~8x per tier, same idea as
 -- AssetDatabase's ladder) so there's an entry point at every stage of the
 -- game, not just once a player has hundreds of thousands to spare.
+--
+-- Priced to stay roughly ~20x cheaper than the same-index AssetDatabase
+-- tier, all the way up through the 2nd-to-last tier (MeteoriteOre vs
+-- LuxuryHotelChain) -- the top tier (CelestialCore) is the one exception,
+-- deliberately kept at that same ~20x-cheaper ratio against
+-- AssetDatabase's NEW top tier (RealEstateEmpire, now $100T -- see that
+-- file's header) instead of against the old $1.8T one, so it's still a
+-- genuine multi-day "what do I do with my spare cash" capstone purchase
+-- rather than becoming trivial pocket change the moment RealEstateEmpire
+-- got its own capstone price bump.
 --
 -- Long-term appreciation: unlike Assets, Investments don't generate income,
 -- but holding one long enough still grows its value (real-world calendar
@@ -55,10 +65,10 @@ local investments: { [string]: Investment } = {
 	PlatinumBar = { Id = "PlatinumBar", Name = "Platinum Bar", Price = 350000, Image = "rbxassetid://82765577499842" },
 	DiamondOre = { Id = "DiamondOre", Name = "Diamond Ore", Price = 2500000, Image = "rbxassetid://104870970917124" },
 	EmeraldOre = { Id = "EmeraldOre", Name = "Emerald Ore", Price = 18000000, Image = "rbxassetid://128307788657328" },
-	RubyOre = { Id = "RubyOre", Name = "Ruby Ore", Price = 130000000, Image = "rbxassetid://73899233840909" },
-	SapphireOre = { Id = "SapphireOre", Name = "Sapphire Ore", Price = 900000000, Image = "rbxassetid://133438648565815" },
-	MeteoriteOre = { Id = "MeteoriteOre", Name = "Meteorite Ore", Price = 6000000000, Image = "rbxassetid://105175920707349" },
-	CelestialCore = { Id = "CelestialCore", Name = "Celestial Core", Price = 40000000000, Image = "rbxassetid://106239809107728" },
+	RubyOre = { Id = "RubyOre", Name = "Ruby Ore", Price = 210000000, Image = "rbxassetid://73899233840909" },
+	SapphireOre = { Id = "SapphireOre", Name = "Sapphire Ore", Price = 1600000000, Image = "rbxassetid://133438648565815" },
+	MeteoriteOre = { Id = "MeteoriteOre", Name = "Meteorite Ore", Price = 12000000000, Image = "rbxassetid://105175920707349" },
+	CelestialCore = { Id = "CelestialCore", Name = "Celestial Core", Price = 5000000000000, Image = "rbxassetid://106239809107728" },
 }
 
 function InvestmentDatabase.GetInvestment(id: string): Investment?

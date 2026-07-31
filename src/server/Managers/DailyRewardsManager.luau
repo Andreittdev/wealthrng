@@ -26,8 +26,6 @@ local systemMessage = RemotesBootstrap:WaitForChild("SystemMessage")
 
 local DailyRewardsManager = {}
 
-local random = Random.new()
-
 -- Shared by the initial push (Main.server.luau) and after a successful
 -- claim, so both always agree on the exact same CanClaim/SecondsRemaining
 -- math.
@@ -52,12 +50,11 @@ local function grantReward(player: Player, session, reward): string?
 	if reward.Type == "Cash" then
 		session.Cash += reward.Amount
 		return NumberFormat.FormatCash(reward.Amount)
-	elseif reward.Type == "RandomEpicItem" then
-		local candidates = ItemDatabase.GetRollableItemsByRarity("Epic")
-		if #candidates == 0 then
+	elseif reward.Type == "Item" then
+		local item = ItemDatabase.GetItem(reward.ItemId)
+		if not item then
 			return nil
 		end
-		local item = candidates[random:NextInteger(1, #candidates)]
 		local entry = InventoryManager.AddItem(player, item.Id)
 		if not entry then
 			return nil

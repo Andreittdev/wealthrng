@@ -13,10 +13,14 @@ local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
 
 local BoardRankLabels = {}
 
--- BoardIndex -> whether that board's values are Cash-formatted ($) --
--- must match LeaderboardManager.luau's `categories` table (1=Cash,
--- 2=Net Worth, 3=Rolls).
-local IS_CASH_BY_BOARD: { [number]: boolean } = { [1] = true, [2] = true, [3] = false }
+-- BoardIndex -> which formatter that board's values need -- must match
+-- LeaderboardManager.luau's `categories` table (1=Time, 2=Net Worth,
+-- 3=Rolls).
+local FORMATTER_BY_BOARD: { [number]: (number) -> string } = {
+	[1] = NumberFormat.FormatDuration,
+	[2] = NumberFormat.FormatCash,
+	[3] = NumberFormat.Format,
+}
 
 local function findYourRankLabel(boardIndex: number): TextLabel?
 	local mapFolder = Workspace:FindFirstChild("Map")
@@ -47,7 +51,8 @@ function BoardRankLabels.Init(remotes: Folder)
 			return
 		end
 
-		local formattedValue = IS_CASH_BY_BOARD[boardIndex] and NumberFormat.FormatCash(value) or NumberFormat.Format(value)
+		local formatter = FORMATTER_BY_BOARD[boardIndex] or NumberFormat.Format
+		local formattedValue = formatter(value)
 		target.Text = string.format("You: #%d (%s)", rank, formattedValue)
 	end)
 end

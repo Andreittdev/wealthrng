@@ -35,6 +35,24 @@ local Theme = require(script.Parent.Theme)
 local SPIN_MIN_DURATION = 0.9
 local SPIN_INTERVAL = 0.06
 local RESULT_DISPLAY_SECONDS = 1.8
+-- Legendary/Ultra/Luxury results linger longer than a normal 1.8s reveal,
+-- escalating with rarity -- Ultra/Luxury especially are the "post it in
+-- chat" pulls, worth actually savoring. Auto Roll naturally pauses for
+-- this too (it only requests the next roll once playReveal finishes),
+-- which is exactly the showcase moment intended here. Rarities not listed
+-- here fall through to RESULT_DISPLAY_SECONDS (see playReveal).
+local RARE_RESULT_DISPLAY_SECONDS: { [string]: number } = {
+	Legendary = 3,
+	Ultra = 10,
+	Luxury = 10,
+}
+-- Which rarities get playRareHold's continuous pulsing glow (Legendary just
+-- gets the longer plain hold above, no extra animation) -- Luxury alone
+-- additionally gets a rotating rainbow shimmer on top of the pulse, the
+-- single biggest visual escalation in the game, reserved for its one
+-- rarest tier.
+local RARE_HOLD_ANIMATION_RARITIES = { Ultra = true, Luxury = true }
+local REVEAL_ICON_SIZE = UDim2.new(0, 150, 0, 150)
 local NORMAL_DICE_IMAGE = "rbxassetid://92855815758385"
 
 -- Plain icon + text, no background/circle chrome -- and the text sits ON
@@ -405,15 +423,28 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	-- simultaneously, no background box around the icon (just the item
 	-- image + a small colored number pill under it, matching the
 	-- reference exactly) -- NOT one badge that sequences through tiers one
-	-- at a time. Built once from SpecialRollConfig.Milestones (fixed
-	-- order/count), then just updated in place as SpecialRollStateUpdated
-	-- arrives. Parented to hudContainer (same as rollButton) so it
-	-- inherits the same AutoScale and hides automatically whenever
-	-- handle.SetHudVisible(false) hides the whole HUD; a higher ZIndex
-	-- than rollButton's (both are hudContainer's direct children, so
-	-- ZIndex order between them is compared directly under Roblox's
-	-- default Sibling ZIndexBehavior) makes the row render on top of the
-	-- dice instead of underneath it.
+	-- at a time. Built once from HUD_MILESTONES (fixed order/count), then
+	-- just updated in place as SpecialRollStateUpdated arrives. Parented to
+	-- hudContainer (same as rollButton) so it inherits the same AutoScale
+	-- and hides automatically whenever handle.SetHudVisible(false) hides
+	-- the whole HUD; a higher ZIndex than rollButton's (both are
+	-- hudContainer's direct children, so ZIndex order between them is
+	-- compared directly under Roblox's default Sibling ZIndexBehavior)
+	-- makes the row render on top of the dice instead of underneath it.
+	--
+	-- Lucky Roll's 6 SecondsStage tiers deliberately excluded here -- they
+	-- have their own dedicated 3D zone + proximity panel
+	-- (LuckyRollProximityPanel.luau) to claim from, so they don't also
+	-- show up on the dice HUD or factor into refreshReadyTier's
+	-- dice-image-swap below. Filtered by Kind (not a specific Id list) so
+	-- this stays correct regardless of how many Lucky stages exist.
+	local HUD_MILESTONES = {}
+	for _, tier in SpecialRollConfig.Milestones do
+		if tier.Kind ~= "SecondsStage" then
+			table.insert(HUD_MILESTONES, tier)
+		end
+	end
+
 	local SPECIAL_BADGE_ICON_SIZE = 34
 	local SPECIAL_BADGE_GAP = 1
 	local SPECIAL_BADGE_COUNT_HEIGHT = 13
@@ -422,7 +453,7 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	local specialBadgesContainer = Instance.new("Frame")
 	specialBadgesContainer.Size = UDim2.new(
 		0,
-		#SpecialRollConfig.Milestones * SPECIAL_BADGE_ICON_SIZE + (#SpecialRollConfig.Milestones - 1) * SPECIAL_BADGE_GAP,
+		#HUD_MILESTONES * SPECIAL_BADGE_ICON_SIZE + (#HUD_MILESTONES - 1) * SPECIAL_BADGE_GAP,
 		0,
 		SPECIAL_BADGE_ICON_SIZE
 	)
@@ -461,7 +492,7 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		TweenService:Create(target, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = baseSize }):Play()
 	end
 
-	for badgeOrder, tier in SpecialRollConfig.Milestones do
+	for badgeOrder, tier in HUD_MILESTONES do
 		-- No visible background/border -- just an invisible click target
 		-- the same size as the icon, so the badge stays clickable without
 		-- drawing a box around it.
@@ -523,6 +554,14 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		end)
 	end
 
+	-- Every tier that still reaches this badge row is "Rolls"-kind (Lucky
+	-- Roll's "SecondsStage" tiers are filtered out of HUD_MILESTONES
+	-- entirely, see above), so this is always a plain roll count now -- no
+	-- more MM:SS branch needed here.
+	local function formatRemaining(remaining: number): string
+		return tostring(remaining)
+	end
+
 	local function refreshSpecialBadge(tierId: string, state)
 		local badge = specialBadges[tierId]
 		if not badge then
@@ -541,7 +580,7 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 			end
 		else
 			local remaining = math.max(state.Threshold - state.Progress, 0)
-			badge.CountLabel.Text = tostring(remaining)
+			badge.CountLabel.Text = formatRemaining(remaining)
 			badge.CountLabel.TextColor3 = Color3.new(1, 1, 1)
 			badge.Icon.ImageTransparency = 0.35
 		end
@@ -552,10 +591,11 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	-- Special Roll tier is ready -- swaps to that tier's image/color glow
 	-- until claimed, then reverts to the normal dice. If more than one
 	-- tier is ready at once (they progress independently and
-	-- simultaneously), the LAST entry in SpecialRollConfig.Milestones
-	-- (highest tier, e.g. Emerald over Golden) wins the dice's display;
-	-- the small badges above it still show every tier's own state
-	-- regardless of which one currently owns the dice.
+	-- simultaneously), the LAST entry in HUD_MILESTONES (highest tier, e.g.
+	-- Emerald over Golden) wins the dice's display; the small badges above
+	-- it still show every tier's own state regardless of which one
+	-- currently owns the dice. Lucky is excluded from HUD_MILESTONES
+	-- entirely (see its own claim flow), so it can never win this either.
 	local tierStates: { [string]: any } = {}
 	local readyTierId: string? = nil
 
@@ -563,7 +603,7 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	-- glow, and the label always stays "ROLL" (not the tier's name).
 	local function refreshReadyTier()
 		local best = nil
-		for _, tier in SpecialRollConfig.Milestones do
+		for _, tier in HUD_MILESTONES do
 			local state = tierStates[tier.Id]
 			if state and state.Available then
 				best = state
@@ -705,7 +745,7 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	end
 
 	local revealIcon = Instance.new("ImageLabel")
-	revealIcon.Size = UDim2.new(0, 150, 0, 150)
+	revealIcon.Size = REVEAL_ICON_SIZE
 	revealIcon.AnchorPoint = Vector2.new(0.5, 0)
 	revealIcon.Position = UDim2.new(0.5, 0, 0, 20)
 	revealIcon.BackgroundTransparency = 1
@@ -758,6 +798,82 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		end
 	end
 
+	-- Ultra/Luxury's extended hold (see RARE_RESULT_DISPLAY_SECONDS) gets a
+	-- continuous pulsing glow instead of just sitting there static after
+	-- playSettleBounce's one-shot flash fades -- Luxury additionally gets a
+	-- rotating rainbow shimmer on the border on top of that pulse. Tweens
+	-- are explicit RepeatCount=-1 loops, so they're Cancel()ed and every
+	-- property reset to its resting state before this returns --
+	-- revealStroke/revealIcon are reused by every future reveal, a dangling
+	-- infinite tween left running would bleed into a later Common's reveal.
+	local function playRareHold(rarity: string, durationSeconds: number)
+		local activeTweens: { Tween } = {}
+		local shimmerGradient: UIGradient? = nil
+
+		-- Setup + the wait both run inside the pcall -- if anything errors
+		-- partway through (a nil index, a bad TweenInfo, etc.), the RepeatCount
+		-- = -1 tweens created before the error would otherwise keep looping on
+		-- revealStroke/revealIcon forever in the background (both are reused
+		-- by every future reveal), silently corrupting every reveal after this
+		-- one. The cleanup below always runs regardless, success or error.
+		local ok = pcall(function()
+			if revealStroke then
+				revealStroke.Thickness = 10
+				local pulseTween = TweenService:Create(
+					revealStroke,
+					TweenInfo.new(0.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+					{ Transparency = 0.05 }
+				)
+				pulseTween:Play()
+				table.insert(activeTweens, pulseTween)
+			end
+
+			local iconPulseTween = TweenService:Create(
+				revealIcon,
+				TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+				{ Size = UDim2.new(0, REVEAL_ICON_SIZE.X.Offset * 1.12, 0, REVEAL_ICON_SIZE.Y.Offset * 1.12) }
+			)
+			iconPulseTween:Play()
+			table.insert(activeTweens, iconPulseTween)
+
+			if rarity == "Luxury" and revealStroke then
+				shimmerGradient = Instance.new("UIGradient")
+				shimmerGradient.Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 170)),
+					ColorSequenceKeypoint.new(0.33, Color3.fromRGB(255, 230, 80)),
+					ColorSequenceKeypoint.new(0.66, Color3.fromRGB(80, 200, 255)),
+					ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 170)),
+				})
+				shimmerGradient.Parent = revealStroke
+				local shimmerTween = TweenService:Create(
+					shimmerGradient,
+					TweenInfo.new(1.5, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1, false),
+					{ Rotation = 360 }
+				)
+				shimmerTween:Play()
+				table.insert(activeTweens, shimmerTween)
+			end
+
+			task.wait(durationSeconds)
+		end)
+
+		if not ok then
+			warn("[RollPanel] playRareHold errored mid-animation, cleaning up early")
+		end
+
+		for _, tween in activeTweens do
+			tween:Cancel()
+		end
+		if shimmerGradient then
+			shimmerGradient:Destroy()
+		end
+		if revealStroke then
+			revealStroke.Thickness = 6
+			revealStroke.Transparency = 0.35
+		end
+		revealIcon.Size = REVEAL_ICON_SIZE
+	end
+
 	-- Shows one already-known item (unlike the old design, the item is
 	-- always known before this runs -- it only gets called once RollResult
 	-- has actually arrived, whether from a manual click or Auto Roll).
@@ -773,8 +889,10 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	-- untimed/instant path (which was only bounded by network round-trip +
 	-- cooldown and could fire far faster than a real roll ever paces).
 	local function playReveal(item, show: boolean)
+		local resultDisplaySeconds = RARE_RESULT_DISPLAY_SECONDS[item.Rarity] or RESULT_DISPLAY_SECONDS
+
 		if not show then
-			task.wait(SPIN_MIN_DURATION + RESULT_DISPLAY_SECONDS)
+			task.wait(SPIN_MIN_DURATION + resultDisplaySeconds)
 			return
 		end
 
@@ -805,7 +923,11 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		playSettleBounce()
 		playRareEffect(item.Rarity)
 
-		task.wait(RESULT_DISPLAY_SECONDS)
+		if RARE_HOLD_ANIMATION_RARITIES[item.Rarity] then
+			playRareHold(item.Rarity, resultDisplaySeconds)
+		else
+			task.wait(resultDisplaySeconds)
+		end
 		revealAnchor.Visible = false
 	end
 

@@ -1,16 +1,36 @@
 -- Canonical item schema, one shape for every rarity tier:
 -- { Id, Name, Rarity, Value, IncomePerSecond, Image }
 -- IncomePerSecond is passive cash earned per second while the item sits
--- unsold in inventory (roughly Value/20 -- deliberately a worse ratio than
--- AssetDatabase's tiers, since rolled items are meant to be an early/mid-
--- game bootstrap and a fun variance hit, not the long-term income engine;
--- Assets carry that job once affordable). Values top out around
+-- unsold in inventory. Common/Rare/Epic stay at the original ~Value/20
+-- ratio (deliberately a worse ratio than AssetDatabase's tiers, since a
+-- rolled item is meant to be an early-game bootstrap for those 3 tiers,
+-- not a long-term income engine). Legendary/Ultra/Luxury are DIFFERENT --
+-- see the "endgame relevance" note below. Values top out around
 -- AssetDatabase's tier3-4 range (a lucky Luxury roll should feel like a
 -- genuine windfall, not a rounding error) but the *average* roll stays
 -- far below that -- see AssetDatabase's header for the overall pacing
 -- target this economy is tuned around (~30 min to Millionaire, ~2h to
 -- Billionaire, ~4-5h to Trillionaire); rolling should feel rewarding
 -- without being able to reliably shortcut that curve.
+--
+-- Endgame relevance (Legendary/Ultra/Luxury only): Value (and therefore
+-- sell price, roll-within-rarity odds, and the pacing curve above) is
+-- UNCHANGED from the ~Value/20 baseline for these 3 tiers too -- only
+-- IncomePerSecond got an extra multiplier on top (Legendary x30, Ultra
+-- x300, Luxury x1500) specifically so equipping one of these still means
+-- something once a player has real Assets, instead of being a rounding
+-- error. Before this, the single best possible item (a Luxury pull) paid
+-- ~$2.7M/min -- about 0.0007% of two maxed-out Assets' combined income
+-- ($384B/min) -- meaning days of grinding for a Luxury item bought
+-- literally nothing once a player had decent Assets equipped. Now a
+-- Luxury item pays ~$4B/min (~1% of that same 2-maxed-Assets income,
+-- roughly matching AssetDatabase's PrivateResort tier on its own) and an
+-- Ultra item pays enough to sit around CountrysideMansion/SkyscraperPenthouse
+-- territory -- still clearly secondary to Assets (which stay the real
+-- long-term engine, unlike Items only 1 of which can ever be equipped at
+-- once, see MaxEquipped below), but no longer invisible. Items and Assets
+-- pay out independently and stack additively (IncomeManager ticks both),
+-- not competing for the same equip slot.
 --
 -- Personal-flex items only (watches, jewelry, vehicles, boats, jets) --
 -- deliberately no real estate/commercial space (that's AssetDatabase's
@@ -54,7 +74,9 @@ ItemDatabase.MaxEquipped = 1
 -- too small to be exciting for a game whose whole point is rolling) --
 -- IncomePerSecond re-derived from the new Value at the same ~Value/20
 -- ratio, not just multiplied along, to keep that documented relationship
--- accurate.
+-- accurate. Legendary/Ultra/Luxury's IncomePerSecond then got the extra
+-- endgame-relevance multiplier on top (see header comment) -- their Value
+-- fields were NOT touched by that pass.
 local items: { [string]: Item } = {
 	-- Common
 	Watch = { Id = "Watch", Name = "Wrist Watch", Rarity = "Common", Value = 30, IncomePerSecond = 2, Image = "rbxassetid://119741941418230" },
@@ -126,57 +148,69 @@ local items: { [string]: Item } = {
 	-- normal Epic roll, since it's a free thank-you for joining the
 	-- group, not something pulled from the normal weighted roll table.
 	GroupRewardChest = { Id = "GroupRewardChest", Name = "Group Reward Chest", Rarity = "Epic", Value = 50000, IncomePerSecond = 2500, Image = "rbxassetid://0", NotRollable = true },
+	-- Day 2's fixed Daily Rewards item (DailyRewardsConfig.luau, replaces
+	-- the old "random Epic item" pull so every player gets the same,
+	-- nameable thing on Day 2) -- Value/IncomePerSecond sit right in the
+	-- middle of the normal Epic range above (~Value/20 ratio, same as every
+	-- other Common/Rare/Epic item), just not part of the roll pool.
+	Day2SpecialItem = { Id = "Day2SpecialItem", Name = "Day 2 Treasure Case", Rarity = "Epic", Value = 1800, IncomePerSecond = 90, Image = "rbxassetid://121292786068518", NotRollable = true },
 
-	-- Legendary
-	PlatinumCrown = { Id = "PlatinumCrown", Name = "Platinum Crown", Rarity = "Legendary", Value = 7200, IncomePerSecond = 360, Image = "rbxassetid://118274687783850" },
-	LuxuryMotorhome = { Id = "LuxuryMotorhome", Name = "Luxury Motorhome", Rarity = "Legendary", Value = 9000, IncomePerSecond = 450, Image = "rbxassetid://134406694125426" },
-	Helicopter = { Id = "Helicopter", Name = "Helicopter", Rarity = "Legendary", Value = 11400, IncomePerSecond = 570, Image = "rbxassetid://134380255700329" },
-	ArmoredSUV = { Id = "ArmoredSUV", Name = "Armored SUV", Rarity = "Legendary", Value = 14400, IncomePerSecond = 720, Image = "rbxassetid://131870391152073" },
-	Yacht = { Id = "Yacht", Name = "Yacht", Rarity = "Legendary", Value = 18000, IncomePerSecond = 900, Image = "rbxassetid://74535569916987" },
-	PrivateJet = { Id = "PrivateJet", Name = "Private Jet", Rarity = "Legendary", Value = 22200, IncomePerSecond = 1110, Image = "rbxassetid://79217095167961" },
-	SupercarCollection = { Id = "SupercarCollection", Name = "Supercar Collection", Rarity = "Legendary", Value = 27000, IncomePerSecond = 1350, Image = "rbxassetid://77189238810491" },
-	Submarine = { Id = "Submarine", Name = "Submarine", Rarity = "Legendary", Value = 33000, IncomePerSecond = 1650, Image = "rbxassetid://78547934005857" },
-	VintageCarCollection = { Id = "VintageCarCollection", Name = "Vintage Car Collection", Rarity = "Legendary", Value = 6300, IncomePerSecond = 315, Image = "rbxassetid://132265333375267" },
-	CustomChopper = { Id = "CustomChopper", Name = "Custom Chopper", Rarity = "Legendary", Value = 6900, IncomePerSecond = 345, Image = "rbxassetid://114868414654130" },
-	ArmoredLimoFleet = { Id = "ArmoredLimoFleet", Name = "Armored Limo Fleet", Rarity = "Legendary", Value = 7800, IncomePerSecond = 390, Image = "rbxassetid://104569131723695" },
-	PrivateHelicopterFleet = { Id = "PrivateHelicopterFleet", Name = "Private Helicopter Fleet", Rarity = "Legendary", Value = 8400, IncomePerSecond = 420, Image = "rbxassetid://105237585382462" },
-	LuxurySailboat = { Id = "LuxurySailboat", Name = "Luxury Sailboat", Rarity = "Legendary", Value = 9900, IncomePerSecond = 495, Image = "rbxassetid://131716131069927" },
-	MonsterTruck = { Id = "MonsterTruck", Name = "Monster Truck", Rarity = "Legendary", Value = 10500, IncomePerSecond = 525, Image = "rbxassetid://117547471625050" },
-	AmphibiousVehicle = { Id = "AmphibiousVehicle", Name = "Amphibious Vehicle", Rarity = "Legendary", Value = 12600, IncomePerSecond = 630, Image = "rbxassetid://90695834851129" },
-	PrivateJetCharter = { Id = "PrivateJetCharter", Name = "Private Jet Charter", Rarity = "Legendary", Value = 15600, IncomePerSecond = 780, Image = "rbxassetid://107096565207004" },
-	LuxuryTrainCar = { Id = "LuxuryTrainCar", Name = "Luxury Train Car", Rarity = "Legendary", Value = 19200, IncomePerSecond = 960, Image = "rbxassetid://125126553435784" },
-	StealthSpeedboat = { Id = "StealthSpeedboat", Name = "Stealth Speedboat", Rarity = "Legendary", Value = 24000, IncomePerSecond = 1200, Image = "rbxassetid://130440675883566" },
-	CustomYacht = { Id = "CustomYacht", Name = "Custom Yacht", Rarity = "Legendary", Value = 28800, IncomePerSecond = 1440, Image = "rbxassetid://97115338393502" },
-	PrivateAirship = { Id = "PrivateAirship", Name = "Private Airship", Rarity = "Legendary", Value = 36000, IncomePerSecond = 1800, Image = "rbxassetid://103535495210510" },
+	-- Legendary -- IncomePerSecond x30 over the ~Value/20 baseline (see
+	-- header's "endgame relevance" note); Value itself unchanged.
+	PlatinumCrown = { Id = "PlatinumCrown", Name = "Platinum Crown", Rarity = "Legendary", Value = 7200, IncomePerSecond = 10800, Image = "rbxassetid://118274687783850" },
+	LuxuryMotorhome = { Id = "LuxuryMotorhome", Name = "Luxury Motorhome", Rarity = "Legendary", Value = 9000, IncomePerSecond = 13500, Image = "rbxassetid://134406694125426" },
+	Helicopter = { Id = "Helicopter", Name = "Helicopter", Rarity = "Legendary", Value = 11400, IncomePerSecond = 17100, Image = "rbxassetid://134380255700329" },
+	ArmoredSUV = { Id = "ArmoredSUV", Name = "Armored SUV", Rarity = "Legendary", Value = 14400, IncomePerSecond = 21600, Image = "rbxassetid://131870391152073" },
+	Yacht = { Id = "Yacht", Name = "Yacht", Rarity = "Legendary", Value = 18000, IncomePerSecond = 27000, Image = "rbxassetid://74535569916987" },
+	PrivateJet = { Id = "PrivateJet", Name = "Private Jet", Rarity = "Legendary", Value = 22200, IncomePerSecond = 33300, Image = "rbxassetid://79217095167961" },
+	SupercarCollection = { Id = "SupercarCollection", Name = "Supercar Collection", Rarity = "Legendary", Value = 27000, IncomePerSecond = 40500, Image = "rbxassetid://77189238810491" },
+	Submarine = { Id = "Submarine", Name = "Submarine", Rarity = "Legendary", Value = 33000, IncomePerSecond = 49500, Image = "rbxassetid://78547934005857" },
+	VintageCarCollection = { Id = "VintageCarCollection", Name = "Vintage Car Collection", Rarity = "Legendary", Value = 6300, IncomePerSecond = 9450, Image = "rbxassetid://132265333375267" },
+	CustomChopper = { Id = "CustomChopper", Name = "Custom Chopper", Rarity = "Legendary", Value = 6900, IncomePerSecond = 10350, Image = "rbxassetid://114868414654130" },
+	ArmoredLimoFleet = { Id = "ArmoredLimoFleet", Name = "Armored Limo Fleet", Rarity = "Legendary", Value = 7800, IncomePerSecond = 11700, Image = "rbxassetid://104569131723695" },
+	PrivateHelicopterFleet = { Id = "PrivateHelicopterFleet", Name = "Private Helicopter Fleet", Rarity = "Legendary", Value = 8400, IncomePerSecond = 12600, Image = "rbxassetid://105237585382462" },
+	LuxurySailboat = { Id = "LuxurySailboat", Name = "Luxury Sailboat", Rarity = "Legendary", Value = 9900, IncomePerSecond = 14850, Image = "rbxassetid://131716131069927" },
+	MonsterTruck = { Id = "MonsterTruck", Name = "Monster Truck", Rarity = "Legendary", Value = 10500, IncomePerSecond = 15750, Image = "rbxassetid://117547471625050" },
+	AmphibiousVehicle = { Id = "AmphibiousVehicle", Name = "Amphibious Vehicle", Rarity = "Legendary", Value = 12600, IncomePerSecond = 18900, Image = "rbxassetid://90695834851129" },
+	PrivateJetCharter = { Id = "PrivateJetCharter", Name = "Private Jet Charter", Rarity = "Legendary", Value = 15600, IncomePerSecond = 23400, Image = "rbxassetid://107096565207004" },
+	LuxuryTrainCar = { Id = "LuxuryTrainCar", Name = "Luxury Train Car", Rarity = "Legendary", Value = 19200, IncomePerSecond = 28800, Image = "rbxassetid://125126553435784" },
+	StealthSpeedboat = { Id = "StealthSpeedboat", Name = "Stealth Speedboat", Rarity = "Legendary", Value = 24000, IncomePerSecond = 36000, Image = "rbxassetid://130440675883566" },
+	CustomYacht = { Id = "CustomYacht", Name = "Custom Yacht", Rarity = "Legendary", Value = 28800, IncomePerSecond = 43200, Image = "rbxassetid://97115338393502" },
+	PrivateAirship = { Id = "PrivateAirship", Name = "Private Airship", Rarity = "Legendary", Value = 36000, IncomePerSecond = 54000, Image = "rbxassetid://103535495210510" },
 
-	-- Ultra
-	DiamondCrown = { Id = "DiamondCrown", Name = "Diamond Crown", Rarity = "Ultra", Value = 48000, IncomePerSecond = 2400, Image = "rbxassetid://100113265333060" },
-	GoldenTrophy = { Id = "GoldenTrophy", Name = "Golden Trophy", Rarity = "Ultra", Value = 66000, IncomePerSecond = 3300, Image = "rbxassetid://91270016875367" },
-	MegaYacht = { Id = "MegaYacht", Name = "Mega Yacht", Rarity = "Ultra", Value = 90000, IncomePerSecond = 4500, Image = "rbxassetid://76537381301012" },
-	ArmoredLimousine = { Id = "ArmoredLimousine", Name = "Armored Limousine", Rarity = "Ultra", Value = 120000, IncomePerSecond = 6000, Image = "rbxassetid://131943850468806" },
-	Hypercar = { Id = "Hypercar", Name = "Hypercar", Rarity = "Ultra", Value = 162000, IncomePerSecond = 8100, Image = "rbxassetid://123620891280974" },
-	GoldenPrivateJet = { Id = "GoldenPrivateJet", Name = "Golden Private Jet", Rarity = "Ultra", Value = 210000, IncomePerSecond = 10500, Image = "rbxassetid://127950076146933" },
-	PrivateRocket = { Id = "PrivateRocket", Name = "Private Rocket", Rarity = "Ultra", Value = 270000, IncomePerSecond = 13500, Image = "rbxassetid://0" },
-	DiamondSupercar = { Id = "DiamondSupercar", Name = "Diamond Supercar", Rarity = "Ultra", Value = 348000, IncomePerSecond = 17400, Image = "rbxassetid://129814625035916" },
-	RaceCar = { Id = "RaceCar", Name = "Race Car", Rarity = "Ultra", Value = 42000, IncomePerSecond = 2100, Image = "rbxassetid://105809267920652" },
-	JeweledScepter = { Id = "JeweledScepter", Name = "Jeweled Scepter", Rarity = "Ultra", Value = 54000, IncomePerSecond = 2700, Image = "rbxassetid://135861272860998" },
-	GoldenStatue = { Id = "GoldenStatue", Name = "Golden Statue", Rarity = "Ultra", Value = 78000, IncomePerSecond = 3900, Image = "rbxassetid://100268876990404" },
-	DiamondYacht = { Id = "DiamondYacht", Name = "Diamond Yacht", Rarity = "Ultra", Value = 105000, IncomePerSecond = 5250, Image = "rbxassetid://129984270026433" },
-	ArmoredConvoy = { Id = "ArmoredConvoy", Name = "Armored Convoy", Rarity = "Ultra", Value = 138000, IncomePerSecond = 6900, Image = "rbxassetid://87942635740431" },
-	GoldenHypercar = { Id = "GoldenHypercar", Name = "Golden Hypercar", Rarity = "Ultra", Value = 186000, IncomePerSecond = 9300, Image = "rbxassetid://127318987809600" },
-	DiamondStuddedJet = { Id = "DiamondStuddedJet", Name = "Diamond-Studded Jet", Rarity = "Ultra", Value = 234000, IncomePerSecond = 11700, Image = "rbxassetid://99005604986380" },
-	PrivateSuperyacht = { Id = "PrivateSuperyacht", Name = "Private Superyacht", Rarity = "Ultra", Value = 300000, IncomePerSecond = 15000, Image = "rbxassetid://132599504761379" },
-	GoldenSubmarine = { Id = "GoldenSubmarine", Name = "Golden Submarine", Rarity = "Ultra", Value = 318000, IncomePerSecond = 15900, Image = "rbxassetid://99673268017035" },
-	OrbitalShuttle = { Id = "OrbitalShuttle", Name = "Orbital Shuttle", Rarity = "Ultra", Value = 390000, IncomePerSecond = 19500, Image = "rbxassetid://103514008772036" },
-	DiamondSpaceRocket = { Id = "DiamondSpaceRocket", Name = "Diamond Space Rocket", Rarity = "Ultra", Value = 420000, IncomePerSecond = 21000, Image = "rbxassetid://79469039857485" },
-	GoldenFighterJet = { Id = "GoldenFighterJet", Name = "Golden Fighter Jet", Rarity = "Ultra", Value = 450000, IncomePerSecond = 22500, Image = "rbxassetid://92307710118432" },
+	-- Ultra -- IncomePerSecond x300 over the ~Value/20 baseline; Value unchanged.
+	DiamondCrown = { Id = "DiamondCrown", Name = "Diamond Crown", Rarity = "Ultra", Value = 48000, IncomePerSecond = 720000, Image = "rbxassetid://100113265333060" },
+	GoldenTrophy = { Id = "GoldenTrophy", Name = "Golden Trophy", Rarity = "Ultra", Value = 66000, IncomePerSecond = 990000, Image = "rbxassetid://91270016875367" },
+	MegaYacht = { Id = "MegaYacht", Name = "Mega Yacht", Rarity = "Ultra", Value = 90000, IncomePerSecond = 1350000, Image = "rbxassetid://76537381301012" },
+	ArmoredLimousine = { Id = "ArmoredLimousine", Name = "Armored Limousine", Rarity = "Ultra", Value = 120000, IncomePerSecond = 1800000, Image = "rbxassetid://131943850468806" },
+	Hypercar = { Id = "Hypercar", Name = "Hypercar", Rarity = "Ultra", Value = 162000, IncomePerSecond = 2430000, Image = "rbxassetid://123620891280974" },
+	GoldenPrivateJet = { Id = "GoldenPrivateJet", Name = "Golden Private Jet", Rarity = "Ultra", Value = 210000, IncomePerSecond = 3150000, Image = "rbxassetid://127950076146933" },
+	PrivateRocket = { Id = "PrivateRocket", Name = "Private Rocket", Rarity = "Ultra", Value = 270000, IncomePerSecond = 4050000, Image = "rbxassetid://0" },
+	DiamondSupercar = { Id = "DiamondSupercar", Name = "Diamond Supercar", Rarity = "Ultra", Value = 348000, IncomePerSecond = 5220000, Image = "rbxassetid://129814625035916" },
+	RaceCar = { Id = "RaceCar", Name = "Race Car", Rarity = "Ultra", Value = 42000, IncomePerSecond = 630000, Image = "rbxassetid://105809267920652" },
+	JeweledScepter = { Id = "JeweledScepter", Name = "Jeweled Scepter", Rarity = "Ultra", Value = 54000, IncomePerSecond = 810000, Image = "rbxassetid://135861272860998" },
+	GoldenStatue = { Id = "GoldenStatue", Name = "Golden Statue", Rarity = "Ultra", Value = 78000, IncomePerSecond = 1170000, Image = "rbxassetid://100268876990404" },
+	DiamondYacht = { Id = "DiamondYacht", Name = "Diamond Yacht", Rarity = "Ultra", Value = 105000, IncomePerSecond = 1575000, Image = "rbxassetid://129984270026433" },
+	ArmoredConvoy = { Id = "ArmoredConvoy", Name = "Armored Convoy", Rarity = "Ultra", Value = 138000, IncomePerSecond = 2070000, Image = "rbxassetid://87942635740431" },
+	GoldenHypercar = { Id = "GoldenHypercar", Name = "Golden Hypercar", Rarity = "Ultra", Value = 186000, IncomePerSecond = 2790000, Image = "rbxassetid://127318987809600" },
+	DiamondStuddedJet = { Id = "DiamondStuddedJet", Name = "Diamond-Studded Jet", Rarity = "Ultra", Value = 234000, IncomePerSecond = 3510000, Image = "rbxassetid://99005604986380" },
+	PrivateSuperyacht = { Id = "PrivateSuperyacht", Name = "Private Superyacht", Rarity = "Ultra", Value = 300000, IncomePerSecond = 4500000, Image = "rbxassetid://132599504761379" },
+	GoldenSubmarine = { Id = "GoldenSubmarine", Name = "Golden Submarine", Rarity = "Ultra", Value = 318000, IncomePerSecond = 4770000, Image = "rbxassetid://99673268017035" },
+	OrbitalShuttle = { Id = "OrbitalShuttle", Name = "Orbital Shuttle", Rarity = "Ultra", Value = 390000, IncomePerSecond = 5850000, Image = "rbxassetid://103514008772036" },
+	DiamondSpaceRocket = { Id = "DiamondSpaceRocket", Name = "Diamond Space Rocket", Rarity = "Ultra", Value = 420000, IncomePerSecond = 6300000, Image = "rbxassetid://79469039857485" },
+	GoldenFighterJet = { Id = "GoldenFighterJet", Name = "Golden Fighter Jet", Rarity = "Ultra", Value = 450000, IncomePerSecond = 6750000, Image = "rbxassetid://92307710118432" },
 
 	-- Luxury -- the true chase tier, above Ultra. Only 2 items on purpose
 	-- (see RarityConfig's header comment): a normal session shouldn't
 	-- realistically produce one, so pulling either is meant to be a
 	-- genuine "post it in chat" moment, not just the top of the grind.
-	DiamondStarCruiser = { Id = "DiamondStarCruiser", Name = "Ancient Pyramid", Rarity = "Luxury", Value = 900000, IncomePerSecond = 45000, Image = "rbxassetid://74654052867804" },
-	CrownJewelCollection = { Id = "CrownJewelCollection", Name = "Ruby Skyscraper", Rarity = "Luxury", Value = 600000, IncomePerSecond = 30000, Image = "rbxassetid://138288535175001" },
+	-- IncomePerSecond x1500 over the ~Value/20 baseline (the biggest
+	-- endgame-relevance jump of any tier, see header comment) -- puts
+	-- these roughly on par with AssetDatabase's PrivateResort tier (~$4.68B/
+	-- min) on their own, while still leaving 2 maxed-out Assets far ahead
+	-- overall. Value itself unchanged.
+	DiamondStarCruiser = { Id = "DiamondStarCruiser", Name = "Ancient Pyramid", Rarity = "Luxury", Value = 900000, IncomePerSecond = 67500000, Image = "rbxassetid://74654052867804" },
+	CrownJewelCollection = { Id = "CrownJewelCollection", Name = "Ruby Skyscraper", Rarity = "Luxury", Value = 600000, IncomePerSecond = 45000000, Image = "rbxassetid://138288535175001" },
 }
 
 function ItemDatabase.GetItem(id: string): Item?

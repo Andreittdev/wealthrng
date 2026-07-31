@@ -2,7 +2,11 @@
 -- by DataManager, has no sorted-query API). Two loops:
 --   - submit (every ~20s): pushes dirty players' current stats into the 3
 --     ordered stores. Throttled via a dirty-flag instead of writing on every
---     roll/sell, to stay well inside OrderedDataStore write-rate budgets.
+--     roll/sell, to stay well inside OrderedDataStore write-rate budgets --
+--     except Time (see `AlwaysSubmit` on its category below), which
+--     resubmits every online player every cycle regardless of the dirty
+--     flag, since playtime changes every second on its own, not in
+--     response to a roll/sell/buy-type event.
 --   - refresh (every ~60s): pulls top 100 from each store, (re)paints them
 --     into the matching board's scrolling row list (built by MapBuilder,
 --     ranks 1/2/3 colored gold/silver/bronze), and -- reusing that same
@@ -85,9 +89,9 @@ local function attempt(fn): (boolean, any)
 	return false, nil
 end
 
-local function getCash(player: Player): number?
+local function getTotalPlaytimeSeconds(player: Player): number?
 	local session = DataManager.Get(player)
-	return session and session.Cash
+	return session and session.TotalPlaytimeSeconds
 end
 
 local function getNetWorth(player: Player): number?
@@ -108,9 +112,21 @@ local function getTotalRolls(player: Player): number?
 	return session and session.TotalRolls
 end
 
--- BoardIndex matches MapBuilder's LEADERBOARD_LABELS order (1=Cash, 2=NetWorth, 3=Rolls).
+-- BoardIndex matches MapBuilder's LEADERBOARD_LABELS order (1=Time, 2=NetWorth, 3=Rolls).
+-- AlwaysSubmit (Time only): unlike Cash/NetWorth/Rolls, playtime changes
+-- every second for every online player regardless of any action they take
+-- -- MarkDirty only ever fires from roll/sell/buy-type events, so an AFK
+-- player would never get resubmitted here without this, and their Top Time
+-- entry would go stale the moment they stopped actively doing something.
 local categories = {
-	{ BoardIndex = 1, Label = "Cash", Store = DataStoreService:GetOrderedDataStore("WealthRNG_TopCash"), GetValue = getCash, Format = NumberFormat.FormatCash },
+	{
+		BoardIndex = 1,
+		Label = "Time",
+		Store = DataStoreService:GetOrderedDataStore("WealthRNG_TopPlaytime"),
+		GetValue = getTotalPlaytimeSeconds,
+		Format = NumberFormat.FormatDuration,
+		AlwaysSubmit = true,
+	},
 	{ BoardIndex = 2, Label = "Net Worth", Store = DataStoreService:GetOrderedDataStore("WealthRNG_TopNetWorth"), GetValue = getNetWorth, Format = NumberFormat.FormatCash },
 	{ BoardIndex = 3, Label = "Rolls", Store = DataStoreService:GetOrderedDataStore("WealthRNG_TopRolls"), GetValue = getTotalRolls, Format = NumberFormat.Format },
 }
@@ -125,14 +141,18 @@ function LeaderboardManager.MarkDirty(player: Player)
 	dirtyPlayers[player] = true
 end
 
+local function submitCategoryForPlayer(category, player: Player)
+	local value = category.GetValue(player)
+	if value then
+		attempt(function()
+			category.Store:SetAsync(tostring(player.UserId), math.floor(value))
+		end)
+	end
+end
+
 local function submitPlayer(player: Player)
 	for _, category in categories do
-		local value = category.GetValue(player)
-		if value then
-			attempt(function()
-				category.Store:SetAsync(tostring(player.UserId), math.floor(value))
-			end)
-		end
+		submitCategoryForPlayer(category, player)
 	end
 end
 
@@ -260,6 +280,13 @@ task.spawn(function()
 			submitPlayer(player)
 			dirtyPlayers[player] = nil
 		end
+		for _, category in categories do
+			if category.AlwaysSubmit then
+				for _, player in Players:GetPlayers() do
+					submitCategoryForPlayer(category, player)
+				end
+			end
+		end
 		task.wait(SUBMIT_INTERVAL_SECONDS)
 	end
 end)
@@ -281,6 +308,16 @@ Players.PlayerRemoving:Connect(function(player)
 	if dirtyPlayers[player] then
 		submitPlayer(player)
 		dirtyPlayers[player] = nil
+	else
+		-- Time (AlwaysSubmit) still needs a final snapshot on leave even if
+		-- nothing else ever marked this player dirty this session (e.g. an
+		-- AFK player who never rolled/sold/bought anything) -- otherwise
+		-- their playtime for this session never makes it into the store.
+		for _, category in categories do
+			if category.AlwaysSubmit then
+				submitCategoryForPlayer(category, player)
+			end
+		end
 	end
 	lastAnnouncedRank[player] = nil
 end)

@@ -30,7 +30,7 @@ local ShopPanel = require(script.Parent.ShopPanel)
 local VIPProximityPanel = require(script.Parent.VIPProximityPanel)
 local GroupRewardsProximityPanel = require(script.Parent.GroupRewardsProximityPanel)
 local DailyRewardsProximityPanel = require(script.Parent.DailyRewardsProximityPanel)
-local PlaytimeRewardsProximityPanel = require(script.Parent.PlaytimeRewardsProximityPanel)
+local LuckyRollProximityPanel = require(script.Parent.LuckyRollProximityPanel)
 local NetWorthPanel = require(script.Parent.NetWorthPanel)
 local SettingsPanel = require(script.Parent.SettingsPanel)
 local ProfilePanel = require(script.Parent.ProfilePanel)
@@ -70,7 +70,7 @@ function MainUI.Init()
 	local vipProximityHandle = VIPProximityPanel.Create(screenGui)
 	local groupRewardsProximityHandle = GroupRewardsProximityPanel.Create(screenGui, remotesFolder)
 	local dailyRewardsProximityHandle = DailyRewardsProximityPanel.Create(screenGui, remotesFolder)
-	local playtimeRewardsProximityHandle = PlaytimeRewardsProximityPanel.Create(screenGui, remotesFolder)
+	local luckyRollProximityHandle = LuckyRollProximityPanel.Create(screenGui, remotesFolder)
 	local netWorthHandle = NetWorthPanel.Create(screenGui, remotesFolder)
 	local settingsHandle = SettingsPanel.Create(screenGui, remotesFolder)
 	local profileHandle = ProfilePanel.Create(screenGui)
@@ -89,7 +89,7 @@ function MainUI.Init()
 		Settings = settingsHandle,
 		Profile = profileHandle,
 		Trade = tradeHandle,
-	})
+	}, cashHudHandle.Frame)
 
 	local modalFrames = {
 		inventoryHandle.Frame,
@@ -106,7 +106,7 @@ function MainUI.Init()
 		vipProximityHandle.Frame,
 		groupRewardsProximityHandle.Frame,
 		dailyRewardsProximityHandle.Frame,
-		playtimeRewardsProximityHandle.Frame,
+		luckyRollProximityHandle.Frame,
 	}
 
 	local function updateRollHud()

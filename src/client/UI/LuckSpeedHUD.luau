@@ -36,7 +36,7 @@ local BADGE_GAP = 12
 -- Same dice image RollPanel.luau's ROLL button uses -- reused here so the
 -- speed badge visually reads as "the same dice" rather than a different icon.
 local DICE_IMAGE = "rbxassetid://92855815758385"
-local CLOVER_ICON_TEXT = "\u{1F340}"
+local LUCK_ICON = "rbxassetid://76273108449466"
 
 local function createImageBadge(parent: Instance, position: UDim2, imageId: string): TextLabel
 	local container = Instance.new("Frame")
@@ -68,36 +68,6 @@ local function createImageBadge(parent: Instance, position: UDim2, imageId: stri
 	return valueLabel
 end
 
-local function createTextIconBadge(parent: Instance, position: UDim2, iconText: string): TextLabel
-	local container = Instance.new("Frame")
-	container.Size = UDim2.new(0, BADGE_WIDTH, 0, ICON_SIZE + VALUE_HEIGHT)
-	container.Position = position
-	container.BackgroundTransparency = 1
-	container.Parent = parent
-
-	local icon = Instance.new("TextLabel")
-	icon.Size = UDim2.new(0, ICON_SIZE, 0, ICON_SIZE)
-	icon.AnchorPoint = Vector2.new(0.5, 0)
-	icon.Position = UDim2.new(0.5, 0, 0, 0)
-	icon.BackgroundTransparency = 1
-	icon.Text = iconText
-	icon.TextScaled = true
-	icon.Parent = container
-
-	local valueLabel = Instance.new("TextLabel")
-	valueLabel.Size = UDim2.new(1, 0, 0, VALUE_HEIGHT)
-	valueLabel.Position = UDim2.new(0, 0, 0, ICON_SIZE)
-	valueLabel.BackgroundTransparency = 1
-	valueLabel.Font = Theme.Fonts.Header
-	valueLabel.TextScaled = true
-	valueLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-	valueLabel.TextStrokeTransparency = 0
-	valueLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
-	valueLabel.Parent = container
-
-	return valueLabel
-end
-
 function LuckSpeedHUD.Create(screenGui: ScreenGui)
 	local container = Instance.new("Frame")
 	container.Size = UDim2.new(0, BADGE_WIDTH * 2 + BADGE_GAP, 0, ICON_SIZE + VALUE_HEIGHT)
@@ -106,7 +76,7 @@ function LuckSpeedHUD.Create(screenGui: ScreenGui)
 	container.BackgroundTransparency = 1
 	container.Parent = screenGui
 
-	local luckValueLabel = createTextIconBadge(container, UDim2.new(0, 0, 0, 0), CLOVER_ICON_TEXT)
+	local luckValueLabel = createImageBadge(container, UDim2.new(0, 0, 0, 0), LUCK_ICON)
 	local speedValueLabel = createImageBadge(container, UDim2.new(0, BADGE_WIDTH + BADGE_GAP, 0, 0), DICE_IMAGE)
 
 	local isVIP = false

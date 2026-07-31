@@ -22,6 +22,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local DailyRewardsConfig = require(ReplicatedStorage.Modules.DailyRewardsConfig)
 local AssetDatabase = require(ReplicatedStorage.Modules.AssetDatabase)
+local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
 local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
 local Theme = require(script.Parent.Theme)
 
@@ -43,11 +44,14 @@ local LOCKED_COLOR = Color3.fromRGB(80, 80, 92)
 local LOCKED_TEXT_COLOR = Color3.fromRGB(120, 120, 132)
 
 local MONEY_ICON = "\u{1F4B0}" -- money bag, Cash
-local GIFT_ICON = "\u{1F381}" -- gift, RandomEpicItem
+local GIFT_ICON = "\u{1F381}" -- gift, Item
 local HOUSE_ICON = "\u{1F3E0}" -- house, Asset
 local BOLT_ICON = "\u{26A1}" -- lightning bolt, AutoRollGamepass
-local CROWN_ICON = "\u{1F451}" -- crown, Day 7's showcase icon
 local CHECK_ICON = "\u{2714}"
+-- Day 7's showcase icon -- the actual Auto Roll gamepass icon (same asset
+-- RollPanel.luau's AUTO ROLL button uses), not a generic crown emoji like
+-- every other day's plain-text icon, since Day 7 IS the Auto Roll gamepass.
+local AUTO_ROLL_ICON = "rbxassetid://115324216729484"
 
 -- One place mapping a reward (see DailyRewardsConfig.Days) to what a card
 -- shows -- both the per-day grid cards and the bottom Claim button pull
@@ -55,8 +59,9 @@ local CHECK_ICON = "\u{2714}"
 local function describeReward(reward): (string, string)
 	if reward.Type == "Cash" then
 		return "+" .. NumberFormat.FormatCash(reward.Amount), MONEY_ICON
-	elseif reward.Type == "RandomEpicItem" then
-		return "Epic Item", GIFT_ICON
+	elseif reward.Type == "Item" then
+		local item = ItemDatabase.GetItem(reward.ItemId)
+		return item and item.Name or "Item", GIFT_ICON
 	elseif reward.Type == "Asset" then
 		local asset = AssetDatabase.GetAsset(reward.AssetId)
 		return asset and NumberFormat.FormatCash(asset.Price) .. " Asset" or "Asset", HOUSE_ICON
@@ -181,7 +186,25 @@ function DailyRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Folder
 		return dayLabel, icon, amountLabel
 	end
 
-	local dayCards: { [number]: { Stroke: UIStroke, Icon: TextLabel, Amount: TextLabel, DayLabel: TextLabel } } = {}
+	-- Real image instead of a TextLabel icon's plain-text glyph -- same
+	-- size/position/ZIndex, drawn on top (the TextLabel `icon` stays
+	-- underneath, still used for the CHECK_ICON glyph once that day is
+	-- actually claimed -- see refreshCards, which hides this and shows that
+	-- instead once claimed).
+	local function addIconImage(card: Frame, icon: TextLabel, imageId: string): ImageLabel
+		local image = Instance.new("ImageLabel")
+		image.Size = icon.Size
+		image.AnchorPoint = icon.AnchorPoint
+		image.Position = icon.Position
+		image.BackgroundTransparency = 1
+		image.ScaleType = Enum.ScaleType.Fit
+		image.Image = imageId
+		image.ZIndex = icon.ZIndex
+		image.Parent = card
+		return image
+	end
+
+	local dayCards: { [number]: { Stroke: UIStroke, Icon: TextLabel, IconImage: ImageLabel?, Amount: TextLabel, DayLabel: TextLabel } } = {}
 
 	for day = 1, 6 do
 		local card = Instance.new("Frame")
@@ -193,11 +216,25 @@ function DailyRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Folder
 		local stroke = Theme.Stroke(card, LOCKED_COLOR, 2)
 
 		local dayLabel, icon, amountLabel = createCard(card, day, "DAY " .. day, 46, 28)
-		dayCards[day] = { Stroke = stroke, Icon = icon, Amount = amountLabel, DayLabel = dayLabel }
+
+		-- Day 2's fixed item (see DailyRewardsConfig.Days) gets its real
+		-- item image instead of the generic GIFT_ICON emoji every other
+		-- "Item"/"Asset"/etc. reward type still falls back to.
+		local iconImage: ImageLabel? = nil
+		if day == 2 then
+			local day2Item = ItemDatabase.GetItem("Day2SpecialItem")
+			if day2Item then
+				iconImage = addIconImage(card, icon, day2Item.Image)
+			end
+		end
+
+		dayCards[day] = { Stroke = stroke, Icon = icon, IconImage = iconImage, Amount = amountLabel, DayLabel = dayLabel }
 	end
 
 	local bigDayLabel, bigIcon, bigAmount = createCard(bigCard, 7, "DAY 7", 60, 34)
-	dayCards[7] = { Stroke = bigStroke, Icon = bigIcon, Amount = bigAmount, DayLabel = bigDayLabel }
+	local bigIconImage = addIconImage(bigCard, bigIcon, AUTO_ROLL_ICON)
+
+	dayCards[7] = { Stroke = bigStroke, Icon = bigIcon, IconImage = bigIconImage, Amount = bigAmount, DayLabel = bigDayLabel }
 
 	local bottomButton = Theme.Button(panel, UDim2.new(1, -32, 0, 44), UDim2.new(0, 16, 1, -60), "...", true)
 	Theme.Round(bottomButton, UDim.new(0, 12))
@@ -221,27 +258,37 @@ function DailyRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Folder
 			local card = dayCards[day]
 			local reward = DailyRewardsConfig.Days[day]
 			local amountText, rewardIcon = describeReward(reward)
-			local icon = day == 7 and CROWN_ICON or rewardIcon
 
 			if day == 7 then
 				bigGradient.Enabled = day <= currentDay
 			end
 
-			if day < currentDay then
+			local claimed = day < currentDay
+			local current = day == currentDay
+
+			if card.IconImage then
+				-- Day 7: real Auto Roll image instead of a text glyph --
+				-- shown while not yet claimed, swapped for the same plain
+				-- CHECK_ICON text every other day uses once it has been.
+				card.IconImage.Visible = not claimed
+				card.IconImage.ImageColor3 = current and Color3.fromRGB(255, 255, 255) or LOCKED_TEXT_COLOR
+				card.Icon.Text = claimed and CHECK_ICON or ""
+			else
+				card.Icon.Text = claimed and CHECK_ICON or rewardIcon
+			end
+
+			if claimed then
 				card.Stroke.Color = CLAIMED_COLOR
-				card.Icon.Text = CHECK_ICON
 				card.Icon.TextColor3 = CLAIMED_COLOR
 				card.DayLabel.TextColor3 = Theme.Colors.TextSecondary
 				card.Amount.TextColor3 = Theme.Colors.TextSecondary
-			elseif day == currentDay then
+			elseif current then
 				card.Stroke.Color = CURRENT_COLOR
-				card.Icon.Text = icon
 				card.Icon.TextColor3 = Color3.fromRGB(255, 255, 255)
 				card.DayLabel.TextColor3 = CURRENT_COLOR
 				card.Amount.TextColor3 = CURRENT_COLOR
 			else
 				card.Stroke.Color = LOCKED_COLOR
-				card.Icon.Text = icon
 				card.Icon.TextColor3 = LOCKED_TEXT_COLOR
 				card.DayLabel.TextColor3 = LOCKED_TEXT_COLOR
 				card.Amount.TextColor3 = LOCKED_TEXT_COLOR

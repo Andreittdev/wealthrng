@@ -4,6 +4,9 @@
 
 local Players = game:GetService("Players")
 local DataStoreService = game:GetService("DataStoreService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
 
 local DataManager = {}
 
@@ -52,33 +55,44 @@ export type Session = {
 	-- gated by the cooldown until then).
 	DailyRewardDay: number,
 	LastDailyRewardClaimAt: number,
-	-- Playtime Rewards (PlaytimeRewardsManager.luau) -- PlaytimeSeconds
-	-- accumulates by 1 every second the player is online (persists across
-	-- sessions, never resets). ClaimedPlaytimeMilestones is keyed by
-	-- tostring(1-based index into PlaytimeRewardsConfig.Milestones) --
-	-- string keys, not number, same convention as AutoSellDuplicates/
-	-- Upgrades below (every other persisted dict in this Session is
-	-- string-keyed; DataStore round-tripping of number-keyed tables isn't
-	-- worth relying on). Unlike Daily Rewards' single "next day" pointer,
-	-- every milestone here unlocks independently once PlaytimeSeconds
-	-- reaches CycleStartSeconds + its own ThresholdSeconds, so several can
-	-- be claimable (or sitting claimed) at once. Once every milestone in
-	-- the list is claimed, PlaytimeRewardsManager resets
-	-- ClaimedPlaytimeMilestones and advances PlaytimeRewardCycleStartSeconds
-	-- to the current PlaytimeSeconds, so the whole ladder loops instead of
-	-- being a one-time list.
-	PlaytimeSeconds: number,
-	ClaimedPlaytimeMilestones: { [string]: boolean },
-	PlaytimeRewardCycleStartSeconds: number,
 	-- Special Roll ladder (SpecialRollConfig.luau) -- every tier counts up
 	-- independently and simultaneously (keyed by tier Id, e.g. "Golden"),
-	-- not one shared sequential counter. Every normal roll increments each
-	-- tier's own progress by 1 (capped at that tier's Threshold once
-	-- reached, so it just sits "ready" instead of overflowing) until that
-	-- specific tier is claimed, which resets ONLY that tier's entry back
-	-- to 0 -- Golden/Diamond/Ruby/Emerald can all be sitting claimable at
-	-- the same time, each on its own repeating cycle.
+	-- not one shared sequential counter. Roll-count tiers (Golden/Diamond/
+	-- Ruby/Emerald) advance by 1 per normal roll; the time tier (Lucky)
+	-- advances by 1 per second the player is online (see RollManager.luau's
+	-- per-second loop) -- both kinds are capped at that tier's Threshold
+	-- once reached, so it just sits "ready" instead of overflowing, until
+	-- that specific tier is claimed, which resets ONLY that tier's entry
+	-- back to 0. All 5 tiers can be sitting claimable at the same time,
+	-- each on its own repeating cycle.
 	SpecialRollProgress: { [string]: number },
+	-- Lucky Roll's 6 SecondsStage tiers (SpecialRollConfig.luau) share ONE
+	-- progress counter (SpecialRollProgress["Lucky"]) but each stage still
+	-- needs its OWN "already claimed this cycle" flag -- otherwise nothing
+	-- would stop claiming Stage I again once Stage III is reached, since
+	-- the shared counter never resets between stages. Keyed by tier Id
+	-- (e.g. "Lucky3"). Cleared entirely (see RollManager.TrySpecialRoll)
+	-- only when the final stage (Lucky6) is claimed, alongside resetting
+	-- the shared counter back to 0 -- that's what starts a fresh 90-min climb.
+	ClaimedLuckyStages: { [string]: boolean },
+	-- Total seconds ever spent online, across every session, never resets --
+	-- +1/sec for every currently-loaded session (see the per-second loop
+	-- near the bottom of this file). Backs the "Top Time" leaderboard
+	-- (LeaderboardManager.luau) -- unlike SpecialRollProgress["Lucky"]
+	-- (Lucky Roll's 90-min cycle, which resets), this is a lifetime total.
+	TotalPlaytimeSeconds: number,
+	-- Derived from Inventory/EquippedItemUids, NOT saved to the DataStore
+	-- (recomputed once at Load, then kept in sync by InventoryManager.
+	-- AddItem/RemoveItem/Equip/Unequip as the session goes on) -- exist
+	-- purely so RollManager's auto-sell-duplicates check and IncomeConfig's
+	-- item-income lookup don't have to linear-scan the full (only-ever-
+	-- growing) Inventory array on literally every roll. See
+	-- InventoryManager.luau's header.
+	OwnedItemCounts: { [string]: number },
+	InventoryTotalValue: number,
+	-- Only valid because ItemDatabase.MaxEquipped is 1 -- the ItemId of
+	-- whatever's currently in EquippedItemUids, or nil if nothing is.
+	EquippedItemId: string?,
 	LoadedOk: boolean,
 }
 
@@ -102,12 +116,45 @@ local function newDefaultSession(): Session
 		ClaimedGroupReward = false,
 		DailyRewardDay = 1,
 		LastDailyRewardClaimAt = 0,
-		PlaytimeSeconds = 0,
-		ClaimedPlaytimeMilestones = {},
-		PlaytimeRewardCycleStartSeconds = 0,
 		SpecialRollProgress = {},
+		ClaimedLuckyStages = {},
+		TotalPlaytimeSeconds = 0,
+		OwnedItemCounts = {},
+		InventoryTotalValue = 0,
+		EquippedItemId = nil,
 		LoadedOk = true,
 	}
+end
+
+-- Recomputes the 3 Inventory-derived fields from scratch -- only ever
+-- needed once, right after Load pulls a possibly-old save off the
+-- DataStore (a brand new session already starts with the trivial empty
+-- defaults above). O(n) over Inventory, but a one-time login cost, not a
+-- per-roll one -- InventoryManager keeps these in sync incrementally from
+-- here on.
+local function deriveInventoryState(inventory, equippedItemUids: { number }): ({ [string]: number }, number, string?)
+	local ownedItemCounts: { [string]: number } = {}
+	local totalValue = 0
+	for _, entry in inventory do
+		ownedItemCounts[entry.ItemId] = (ownedItemCounts[entry.ItemId] or 0) + 1
+		local item = ItemDatabase.GetItem(entry.ItemId)
+		if item then
+			totalValue += item.Value
+		end
+	end
+
+	local equippedItemId: string? = nil
+	local equippedUid = equippedItemUids[1]
+	if equippedUid then
+		for _, entry in inventory do
+			if entry.Uid == equippedUid then
+				equippedItemId = entry.ItemId
+				break
+			end
+		end
+	end
+
+	return ownedItemCounts, totalValue, equippedItemId
 end
 
 local function attempt(fn): (boolean, any)
@@ -139,27 +186,50 @@ function DataManager.Load(player: Player): Session
 				entry.Quantity = entry.Quantity or 1
 			end
 
+			local inventory = data.Inventory or {}
+			local equippedItemUids = data.EquippedItemUids or {}
+			local ownedItemCounts, inventoryTotalValue, equippedItemId = deriveInventoryState(inventory, equippedItemUids)
+
+			-- Common/Rare/Epic default ON (see newDefaultSession) -- but that
+			-- only ever applied to BRAND NEW sessions. Backfill it here too,
+			-- for existing saves, so it actually reaches everyone: a MISSING
+			-- key (never explicitly toggled, whether because this is an old
+			-- save from before the default existed, or the player just never
+			-- touched the setting) becomes true. An explicit `false` (the
+			-- player deliberately turned it off via SettingsPanel) or
+			-- explicit `true` is left alone either way -- SetAutoSellDuplicate
+			-- always writes a real boolean, never removes the key, so a
+			-- deliberate off stays off.
+			local autoSellDuplicates = data.AutoSellDuplicates or {}
+			for _, rarity in { "Common", "Rare", "Epic" } do
+				if autoSellDuplicates[rarity] == nil then
+					autoSellDuplicates[rarity] = true
+				end
+			end
+
 			session = {
 				Cash = data.Cash or 0,
-				Inventory = data.Inventory or {},
+				Inventory = inventory,
 				NextUid = data.NextUid or 1,
-				EquippedItemUids = data.EquippedItemUids or {},
+				EquippedItemUids = equippedItemUids,
 				TotalRolls = data.TotalRolls or 0,
 				OwnedAssets = data.OwnedAssets or {},
 				EquippedAssets = data.EquippedAssets or {},
 				Investments = investments,
 				NextInvestmentUid = data.NextInvestmentUid or 1,
 				ActivePotions = data.ActivePotions or {},
-				AutoSellDuplicates = data.AutoSellDuplicates or {},
+				AutoSellDuplicates = autoSellDuplicates,
 				Preferences = data.Preferences or { Music = true, SFX = true, VFX = true },
 				Upgrades = data.Upgrades or {},
 				ClaimedGroupReward = data.ClaimedGroupReward or false,
 				DailyRewardDay = data.DailyRewardDay or 1,
 				LastDailyRewardClaimAt = data.LastDailyRewardClaimAt or 0,
-				PlaytimeSeconds = data.PlaytimeSeconds or 0,
-				ClaimedPlaytimeMilestones = data.ClaimedPlaytimeMilestones or {},
-				PlaytimeRewardCycleStartSeconds = data.PlaytimeRewardCycleStartSeconds or 0,
 				SpecialRollProgress = data.SpecialRollProgress or {},
+				ClaimedLuckyStages = data.ClaimedLuckyStages or {},
+				TotalPlaytimeSeconds = data.TotalPlaytimeSeconds or 0,
+				OwnedItemCounts = ownedItemCounts,
+				InventoryTotalValue = inventoryTotalValue,
+				EquippedItemId = equippedItemId,
 				LoadedOk = true,
 			}
 		else
@@ -205,10 +275,9 @@ function DataManager.Save(player: Player)
 		ClaimedGroupReward = session.ClaimedGroupReward,
 		DailyRewardDay = session.DailyRewardDay,
 		LastDailyRewardClaimAt = session.LastDailyRewardClaimAt,
-		PlaytimeSeconds = session.PlaytimeSeconds,
-		ClaimedPlaytimeMilestones = session.ClaimedPlaytimeMilestones,
-		PlaytimeRewardCycleStartSeconds = session.PlaytimeRewardCycleStartSeconds,
 		SpecialRollProgress = session.SpecialRollProgress,
+		ClaimedLuckyStages = session.ClaimedLuckyStages,
+		TotalPlaytimeSeconds = session.TotalPlaytimeSeconds,
 	}
 
 	local ok = attempt(function()
@@ -240,6 +309,18 @@ task.spawn(function()
 		task.wait(AUTOSAVE_INTERVAL_SECONDS)
 		for _, player in Players:GetPlayers() do
 			DataManager.Save(player)
+		end
+	end
+end)
+
+-- +1/sec for every currently-loaded session -- `sessions` only ever holds
+-- online players (Release() drops them on leave), so this is naturally
+-- "seconds spent online," no separate Players:GetPlayers() filter needed.
+task.spawn(function()
+	while true do
+		task.wait(1)
+		for _, session in sessions do
+			session.TotalPlaytimeSeconds += 1
 		end
 	end
 end)

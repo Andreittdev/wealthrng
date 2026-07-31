@@ -216,6 +216,14 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		confirmPopup.Visible = true
 	end
 
+	-- Forward-declared here (not just above their `function name()`
+	-- definitions further down) because handle.Toggle below is defined
+	-- before those definitions are reached -- a `local` declared later in
+	-- the file does NOT retroactively become visible to code above it, so
+	-- without this, handle.Toggle's calls would resolve to nil globals.
+	local renderList
+	local renderDetail
+
 	local handle = {}
 	handle.Frame = panel
 
@@ -235,8 +243,6 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 			renderDetail()
 		end
 	end
-
-	local renderDetail
 
 	yesButton.Activated:Connect(function()
 		if pendingSellUid then
@@ -265,8 +271,6 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		end
 		return nil
 	end
-
-	local renderList
 
 	local function closeDetail()
 		selectedUid = nil

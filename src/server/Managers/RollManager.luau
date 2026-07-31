@@ -98,16 +98,20 @@ local function pickItem(session, isVIP: boolean, nowUnix: number)
 	return pickItemForRarity(rarity)
 end
 
--- Advances every Special Roll tier's progress by 1, independently, capped
--- at that tier's own Threshold once reached (so it just sits "ready"
--- instead of overflowing past it) -- called once per successful normal
--- roll. A tier's progress only resets back to 0 when THAT tier is
--- actually claimed (see RollManager.TrySpecialRoll), never here.
+-- Advances every "Rolls"-kind Special Roll tier's progress by 1,
+-- independently, capped at that tier's own Threshold once reached (so it
+-- just sits "ready" instead of overflowing past it) -- called once per
+-- successful normal roll. "SecondsStage" tiers (Lucky Roll's 6-stage
+-- ladder) advance separately, see the per-second loop near the bottom of
+-- this file. A "Rolls" tier's progress only resets back to 0 when THAT
+-- tier is actually claimed (see markTierClaimed below), never here.
 local function advanceSpecialRollProgress(session)
 	for _, tier in SpecialRollConfig.Milestones do
-		local current = session.SpecialRollProgress[tier.Id] or 0
-		if current < tier.Threshold then
-			session.SpecialRollProgress[tier.Id] = current + 1
+		if tier.Kind == "Rolls" then
+			local current = session.SpecialRollProgress[tier.Id] or 0
+			if current < tier.Threshold then
+				session.SpecialRollProgress[tier.Id] = current + 1
+			end
 		end
 	end
 end
@@ -144,18 +148,36 @@ end
 -- an earlier one, and pushing this immediately made the badge numbers
 -- visibly race ahead of what was on screen (e.g. jump by several while
 -- only one reveal had actually played).
+--
+-- Lucky Roll's 6 "SecondsStage" tiers read progress from the SHARED
+-- counter (session.SpecialRollProgress[tier.ProgressKey], all six point
+-- at "Lucky") instead of their own Id, and Available also has to check
+-- session.ClaimedLuckyStages -- unlike the "Rolls" tiers, the shared
+-- counter does NOT reset when an individual stage is claimed (it needs to
+-- keep climbing for the later stages), so "progress reached the
+-- threshold" alone isn't enough to know a stage is still claimable.
 local function buildSpecialRollTiers(session)
 	local tiers = {}
 	for _, tier in SpecialRollConfig.Milestones do
-		local progress = session.SpecialRollProgress[tier.Id] or 0
+		local progress
+		local available
+		if tier.Kind == "SecondsStage" then
+			progress = session.SpecialRollProgress[tier.ProgressKey] or 0
+			local claimed = session.ClaimedLuckyStages[tier.Id] == true
+			available = not claimed and progress >= tier.Threshold
+		else
+			progress = session.SpecialRollProgress[tier.Id] or 0
+			available = progress >= tier.Threshold
+		end
 		table.insert(tiers, {
 			TierId = tier.Id,
 			TierName = tier.Name,
+			Kind = tier.Kind,
 			Threshold = tier.Threshold,
 			Color = tier.Color,
 			Image = tier.Image,
 			Progress = progress,
-			Available = progress >= tier.Threshold,
+			Available = available,
 		})
 	end
 	return tiers
@@ -203,15 +225,11 @@ function RollManager.TryRoll(player: Player): boolean
 	-- player already owns at least one of this exact item AND has that
 	-- rarity's toggle on, credit cash instead of adding a second copy to
 	-- the inventory. Still fires RollResult either way so the reveal
-	-- animation always shows what was actually rolled.
+	-- animation always shows what was actually rolled. O(1) lookup via
+	-- session.OwnedItemCounts (kept in sync by InventoryManager) instead of
+	-- scanning the full Inventory array on every roll.
 	if session.AutoSellDuplicates[item.Rarity] then
-		local alreadyOwned = false
-		for _, invEntry in session.Inventory do
-			if invEntry.ItemId == item.Id then
-				alreadyOwned = true
-				break
-			end
-		end
+		local alreadyOwned = (session.OwnedItemCounts[item.Id] or 0) > 0
 
 		if alreadyOwned then
 			session.Cash += SellManager.ComputeSellValue(session, isVIP, item)
@@ -240,13 +258,36 @@ function RollManager.TryRoll(player: Player): boolean
 	return true
 end
 
--- Claims a specific Special Roll tier (by Id, e.g. "Golden"), if it's
--- actually unlocked (session.SpecialRollProgress[tierId] has reached that
--- tier's own Threshold) -- rejects otherwise, same "no-op if not valid"
--- contract as TryRoll. Not gated by the normal roll cooldown (lastRollAt)
--- -- it's an independent bonus action, not a faster way to spam normal
--- rolls. Only the claimed tier's progress resets -- every other tier keeps
--- counting/sitting ready untouched.
+-- Marks a tier as claimed for this cycle. "Rolls" tiers (Golden/Diamond/
+-- Ruby/Emerald) reset their own progress straight back to 0 -- simple,
+-- self-contained. "SecondsStage" tiers (Lucky I-VI) share ONE progress
+-- counter across all 6 stages, so claiming stage N must NOT reset it (the
+-- later stages still need it climbing) -- only flip that stage's own
+-- ClaimedLuckyStages entry. Claiming the FINAL stage (IsFinalStage) is the
+-- one exception: that's the actual end of the 90-minute cycle, so it
+-- resets the shared counter AND every stage's claimed flag together,
+-- starting a fresh climb from Stage I.
+local function markTierClaimed(session, tier)
+	if tier.Kind == "SecondsStage" then
+		session.ClaimedLuckyStages[tier.Id] = true
+		if tier.IsFinalStage then
+			session.SpecialRollProgress[tier.ProgressKey] = 0
+			for _, t in SpecialRollConfig.Milestones do
+				if t.ProgressKey == tier.ProgressKey then
+					session.ClaimedLuckyStages[t.Id] = nil
+				end
+			end
+		end
+	else
+		session.SpecialRollProgress[tier.Id] = 0
+	end
+end
+
+-- Claims a specific Special Roll tier (by Id, e.g. "Golden" or "Lucky3"),
+-- if it's actually unlocked and not already claimed this cycle -- rejects
+-- otherwise, same "no-op if not valid" contract as TryRoll. Not gated by
+-- the normal roll cooldown (lastRollAt) -- it's an independent bonus
+-- action, not a faster way to spam normal rolls.
 function RollManager.TrySpecialRoll(player: Player, tierId: string): boolean
 	local session = DataManager.Get(player)
 	if not session then
@@ -264,9 +305,19 @@ function RollManager.TrySpecialRoll(player: Player, tierId: string): boolean
 		return false
 	end
 
-	local progress = session.SpecialRollProgress[tier.Id] or 0
-	if progress < tier.Threshold then
-		return false
+	if tier.Kind == "SecondsStage" then
+		if session.ClaimedLuckyStages[tier.Id] then
+			return false
+		end
+		local progress = session.SpecialRollProgress[tier.ProgressKey] or 0
+		if progress < tier.Threshold then
+			return false
+		end
+	else
+		local progress = session.SpecialRollProgress[tier.Id] or 0
+		if progress < tier.Threshold then
+			return false
+		end
 	end
 
 	local rarity = pickRarityFromWeights(tier.Weights)
@@ -278,18 +329,12 @@ function RollManager.TrySpecialRoll(player: Player, tierId: string): boolean
 	local isVIP = VIPManager.IsVIP(player)
 
 	if session.AutoSellDuplicates[item.Rarity] then
-		local alreadyOwned = false
-		for _, invEntry in session.Inventory do
-			if invEntry.ItemId == item.Id then
-				alreadyOwned = true
-				break
-			end
-		end
+		local alreadyOwned = (session.OwnedItemCounts[item.Id] or 0) > 0
 
 		if alreadyOwned then
 			session.Cash += SellManager.ComputeSellValue(session, isVIP, item)
 			session.TotalRolls += 1
-			session.SpecialRollProgress[tier.Id] = 0
+			markTierClaimed(session, tier)
 
 			rollResult:FireClient(player, item, buildSpecialRollTiers(session), true)
 			StatsManager.Recompute(player)
@@ -304,7 +349,7 @@ function RollManager.TrySpecialRoll(player: Player, tierId: string): boolean
 	end
 
 	session.TotalRolls += 1
-	session.SpecialRollProgress[tier.Id] = 0
+	markTierClaimed(session, tier)
 
 	rollResult:FireClient(player, item, buildSpecialRollTiers(session), true)
 	inventoryUpdated:FireClient(player, session.Inventory)
@@ -338,6 +383,53 @@ end)
 
 Players.PlayerRemoving:Connect(function(player)
 	lastRollAt[player] = nil
+end)
+
+-- Drives "SecondsStage" tiers (Lucky Roll's 6-stage ladder) -- +1 progress
+-- per second per connected player to the SHARED counter each stage's
+-- ProgressKey points at, capped at that shared cycle's overall length (90
+-- min), not any single stage's own Threshold -- the counter has to keep
+-- climbing past Stage I-V's thresholds for the later stages to ever
+-- become reachable. Only advances while actually online, same convention
+-- the old Playtime Rewards system used (not real-world wall-clock time).
+-- `advancedKeys` stops this from incrementing the same shared counter 6
+-- times in one tick (once per stage that shares it).
+task.spawn(function()
+	while true do
+		task.wait(1)
+		for _, player in Players:GetPlayers() do
+			local session = DataManager.Get(player)
+			if session then
+				local advancedKeys: { [string]: boolean } = {}
+				for _, tier in SpecialRollConfig.Milestones do
+					if tier.Kind == "SecondsStage" and tier.ProgressKey and not advancedKeys[tier.ProgressKey] then
+						advancedKeys[tier.ProgressKey] = true
+						local current = session.SpecialRollProgress[tier.ProgressKey] or 0
+						local cap = tier.CycleLengthSeconds or tier.Threshold
+						if current < cap then
+							session.SpecialRollProgress[tier.ProgressKey] = current + 1
+						end
+					end
+				end
+			end
+		end
+	end
+end)
+
+-- Keeps the Lucky Roll badge's countdown roughly live for players who
+-- aren't actively rolling (the other 4 tiers only need a push when a roll
+-- actually happens -- this one ticks up every second regardless).
+local SPECIAL_ROLL_PUSH_INTERVAL_SECONDS = 5
+task.spawn(function()
+	while true do
+		task.wait(SPECIAL_ROLL_PUSH_INTERVAL_SECONDS)
+		for _, player in Players:GetPlayers() do
+			local session = DataManager.Get(player)
+			if session then
+				pushSpecialRollState(player, session)
+			end
+		end
+	end
 end)
 
 return RollManager

@@ -166,12 +166,16 @@ local DAILY_REWARDS_MARKER_POSITION = Vector2.new(-0.66, -71.2)
 local DAILY_REWARDS_MARKER_COLOR = Color3.fromRGB(230, 60, 60)
 local DAILY_REWARDS_MARKER_LABEL = "Daily Rewards"
 
--- Same convention again, purple this time -- claim panel is
--- PlaytimeRewardsProximityPanel.luau (client) + PlaytimeRewardsManager.luau
--- (server).
-local PLAYTIME_REWARDS_MARKER_POSITION = Vector2.new(72.16, -1.23)
-local PLAYTIME_REWARDS_MARKER_COLOR = Color3.fromRGB(160, 70, 230)
-local PLAYTIME_REWARDS_MARKER_LABEL = "Playtime Rewards"
+-- Same spot the old Playtime Rewards marker used to sit at -- just the
+-- usual glowing disk, no extra 3D geometry on top -- claim panel is
+-- LuckyRollProximityPanel.luau (client), which also owns the floating
+-- dice-icon/timer/Claim billboard above this marker (reuses the same dice
+-- image RollPanel's ROLL button uses, no custom 3D dice model needed), and
+-- no static "Lucky Roll" title label here since that billboard already
+-- covers it. Server side lives in RollManager.luau (Lucky is just another
+-- SpecialRollConfig tier, see its own comments).
+local LUCKY_ROLL_MARKER_POSITION = Vector2.new(72.16, -1.23)
+local LUCKY_ROLL_MARKER_COLOR = Color3.fromRGB(180, 100, 255)
 
 -- Standing sign out on the grass showing a live countdown to the next
 -- update (every Sunday 7 PM GMT+3) -- computed entirely client-side
@@ -185,13 +189,13 @@ local NEXT_UPDATE_BOARD_POSITION = Vector2.new(-69.96, -0.25)
 -- to be here since it already sits inside TREE_EXCLUSION_RADIUS, on the
 -- protected plaza.
 local GRASS_MARKER_POSITIONS =
-	{ GROUP_REWARDS_MARKER_POSITION, DAILY_REWARDS_MARKER_POSITION, PLAYTIME_REWARDS_MARKER_POSITION, NEXT_UPDATE_BOARD_POSITION }
+	{ GROUP_REWARDS_MARKER_POSITION, DAILY_REWARDS_MARKER_POSITION, LUCKY_ROLL_MARKER_POSITION, NEXT_UPDATE_BOARD_POSITION }
 
 -- 3 boards in a row, centered on this XZ point, all facing the plaza
 -- center -- LEADERBOARD_SPACING studs apart along the row.
 local LEADERBOARD_CENTER = Vector2.new(-36.95, 24.42)
 local LEADERBOARD_SPACING = 7.5 -- must clear LEADERBOARD_WIDTH (6.5) or the 3 boards overlap
-local LEADERBOARD_LABELS = { "TOP CASH", "TOP NET WORTH", "TOP ROLLS" }
+local LEADERBOARD_LABELS = { "TOP TIME", "TOP NET WORTH", "TOP ROLLS" }
 
 -- Trees sit on a fixed, centered grid (not scattered randomly) so the
 -- forest reads as deliberately planted rows, not clutter -- isBlocked still
@@ -757,8 +761,14 @@ local function buildFloorMarker(mapFolder: Folder, diskName: string, position: V
 
 	-- Stays low near the disk either way -- AlwaysOnTop (only when there's
 	-- a beam) is what keeps the text readable in front of the glow, not
-	-- moving the label up and out of it.
-	addLabel(disk, labelText, 7, UDim2.new(0, 75, 0, 22), textColor, withBeam)
+	-- moving the label up and out of it. Empty labelText skips the label
+	-- entirely -- Lucky Roll's marker uses this since its own billboard
+	-- (LuckyRollProximityPanel.luau's "Nx Roll!"/"Claim in..." callout)
+	-- already covers that space, and a static "Lucky Roll" title floating
+	-- right underneath it just doubled up.
+	if labelText ~= "" then
+		addLabel(disk, labelText, 7, UDim2.new(0, 75, 0, 22), textColor, withBeam)
+	end
 	return disk
 end
 
@@ -1032,7 +1042,7 @@ local function buildLeaderboard(mapFolder: Folder, offsetIndex: number, labelTex
 	-- (the longest title) was wrapping to 2 cramped, overlapping-looking
 	-- lines in a header bar that's only 1 stud tall; forcing single-line
 	-- means TextScaled shrinks the font instead of wrapping, same as the
-	-- shorter "TOP CASH"/"TOP ROLLS" titles already rendered.
+	-- shorter "TOP TIME"/"TOP ROLLS" titles already rendered.
 	headerText.TextWrapped = false
 	headerText.TextColor3 = Color3.fromRGB(255, 255, 255)
 	headerText.TextStrokeTransparency = 0
@@ -1630,12 +1640,12 @@ function MapBuilder.Build()
 	)
 	buildFloorMarker(
 		mapFolder,
-		"PlaytimeRewardsMarker_Disk",
-		PLAYTIME_REWARDS_MARKER_POSITION,
+		"LuckyRollMarker_Disk",
+		LUCKY_ROLL_MARKER_POSITION,
 		GROUND_TOP_Y,
-		PLAYTIME_REWARDS_MARKER_COLOR,
-		PLAYTIME_REWARDS_MARKER_LABEL,
-		Color3.fromRGB(210, 160, 255),
+		LUCKY_ROLL_MARKER_COLOR,
+		"",
+		Color3.fromRGB(220, 180, 255),
 		true
 	)
 	buildNextUpdateBoard(mapFolder, NEXT_UPDATE_BOARD_POSITION)

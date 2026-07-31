@@ -16,6 +16,14 @@
 -- higher tiers is intentional, not a bug: absolute income still explodes,
 -- it just isn't a strictly-improving "efficiency" ladder, which keeps the
 -- late game from trivializing itself.
+--
+-- RealEstateEmpire (the top tier) breaks the "~7-8x" step on purpose --
+-- its Price jumped ~55x over the previous tier (LuxuryHotelChain) while
+-- its Income was left alone, deliberately pushing its payback time from
+-- ~9 min (in line with the tiers below it) out to ~8.7 HOURS. It's meant
+-- to be a multi-day capstone purchase reached well after "Trillionaire"
+-- net worth, not just the next rung on the same ladder -- a pure prestige
+-- buy, not an efficient one.
 -- This is a first-pass theorycrafted model, not simulation-tested against
 -- real RNG variance from rolling -- expect to retune after playtesting.
 --
@@ -49,7 +57,7 @@ local assets: { [string]: Asset } = {
 	SkyscraperPenthouse = { Id = "SkyscraperPenthouse", Name = "Skyscraper Penthouse", Price = 4200000000, IncomePerMinute = 810000000, Image = "rbxassetid://85345447282599" },
 	PrivateResort = { Id = "PrivateResort", Name = "Private Resort", Price = 32000000000, IncomePerMinute = 4680000000, Image = "rbxassetid://115536352813894" },
 	LuxuryHotelChain = { Id = "LuxuryHotelChain", Name = "Luxury Hotel Chain", Price = 240000000000, IncomePerMinute = 25800000000, Image = "rbxassetid://120902816460043" },
-	RealEstateEmpire = { Id = "RealEstateEmpire", Name = "Real Estate Empire", Price = 1800000000000, IncomePerMinute = 192000000000, Image = "rbxassetid://97450504269002" },
+	RealEstateEmpire = { Id = "RealEstateEmpire", Name = "Real Estate Empire", Price = 100000000000000, IncomePerMinute = 192000000000, Image = "rbxassetid://97450504269002" },
 }
 
 function AssetDatabase.GetAsset(id: string?): Asset?

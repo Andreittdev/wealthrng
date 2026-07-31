@@ -55,7 +55,6 @@ require(ServerScriptService.Managers.PreferencesManager)
 require(ServerScriptService.Managers.UpgradeManager)
 require(ServerScriptService.Managers.GroupRewardsManager)
 local DailyRewardsManager = require(ServerScriptService.Managers.DailyRewardsManager)
-local PlaytimeRewardsManager = require(ServerScriptService.Managers.PlaytimeRewardsManager)
 
 -- Initial pushes (saved Inventory/Assets/Investments/etc.) fire TWICE, on
 -- purpose: once immediately after DataManager.Load (the old behavior --
@@ -85,7 +84,6 @@ local function sendInitialState(player: Player)
 	upgradesUpdated:FireClient(player, session.Upgrades)
 	groupRewardStateUpdated:FireClient(player, session.ClaimedGroupReward)
 	DailyRewardsManager.PushState(player)
-	PlaytimeRewardsManager.PushState(player)
 	RollManager.PushSpecialRollState(player, session)
 end
 
