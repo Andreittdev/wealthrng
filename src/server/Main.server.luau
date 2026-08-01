@@ -67,6 +67,7 @@ require(ServerScriptService.Managers.PreferencesManager)
 require(ServerScriptService.Managers.UpgradeManager)
 require(ServerScriptService.Managers.GroupRewardsManager)
 local DailyRewardsManager = require(ServerScriptService.Managers.DailyRewardsManager)
+require(ServerScriptService.Managers.BattleManager)
 
 -- Initial pushes (saved Inventory/Assets/Investments/etc.) fire TWICE, on
 -- purpose: once immediately after DataManager.Load (the old behavior --

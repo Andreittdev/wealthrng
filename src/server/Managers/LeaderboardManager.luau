@@ -25,6 +25,7 @@ local DataManager = require(ServerScriptService.Managers.DataManager)
 local Leaderstats = require(ServerScriptService.Managers.Leaderstats)
 local StatsManager = require(ServerScriptService.Managers.StatsManager)
 local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
+local BattlePointsConfig = require(ReplicatedStorage.Modules.BattlePointsConfig)
 
 -- Which BoardIndex's rank gets mirrored onto leaderstats.Rank (shown next
 -- to the player's name in Roblox's built-in PlayerList) -- Net Worth is
@@ -119,23 +120,70 @@ local function getTotalRolls(player: Player): number?
 	return session and session.TotalRolls
 end
 
--- BoardIndex matches MapBuilder's LEADERBOARD_LABELS order (1=Time, 2=NetWorth, 3=Rolls).
--- AlwaysSubmit (Time only): unlike Cash/NetWorth/Rolls, playtime changes
--- every second for every online player regardless of any action they take
--- -- MarkDirty only ever fires from roll/sell/buy-type events, so an AFK
--- player would never get resubmitted here without this, and their Top Time
--- entry would go stale the moment they stopped actively doing something.
+-- LARP Battles (BattleManager.luau) -- EnsureCurrentWeek first so a stale
+-- total from a week that already ended never gets submitted/displayed.
+local function getBattlePoints(player: Player): number?
+	local session = DataManager.Get(player)
+	if not session then
+		return nil
+	end
+	BattlePointsConfig.EnsureCurrentWeek(session)
+	return session.BattlePoints
+end
+
+local topPlaytimeStore = DataStoreService:GetOrderedDataStore("WealthRNG_TopPlaytime")
+local topNetWorthStore = DataStoreService:GetOrderedDataStore("WealthRNG_TopNetWorth")
+local topRollsStore = DataStoreService:GetOrderedDataStore("WealthRNG_TopRolls")
+
+-- BoardIndex matches MapBuilder's LEADERBOARD_LABELS order (1=Time,
+-- 2=NetWorth, 3=Rolls, 4=Points). AlwaysSubmit (Time only): unlike
+-- Cash/NetWorth/Rolls, playtime changes every second for every online
+-- player regardless of any action they take -- MarkDirty only ever fires
+-- from roll/sell/buy-type events, so an AFK player would never get
+-- resubmitted here without this, and their Top Time entry would go stale
+-- the moment they stopped actively doing something.
+--
+-- GetStore (a function, not a fixed field) so Points can point at a
+-- DIFFERENT OrderedDataStore every week (see BattlePointsConfig.GetWeekKey)
+-- -- the other 3 categories just return the same store every time.
 local categories = {
 	{
 		BoardIndex = 1,
 		Label = "Time",
-		Store = DataStoreService:GetOrderedDataStore("WealthRNG_TopPlaytime"),
+		GetStore = function()
+			return topPlaytimeStore
+		end,
 		GetValue = getTotalPlaytimeSeconds,
 		Format = NumberFormat.FormatDuration,
 		AlwaysSubmit = true,
 	},
-	{ BoardIndex = 2, Label = "Net Worth", Store = DataStoreService:GetOrderedDataStore("WealthRNG_TopNetWorth"), GetValue = getNetWorth, Format = NumberFormat.FormatCash },
-	{ BoardIndex = 3, Label = "Rolls", Store = DataStoreService:GetOrderedDataStore("WealthRNG_TopRolls"), GetValue = getTotalRolls, Format = NumberFormat.Format },
+	{
+		BoardIndex = 2,
+		Label = "Net Worth",
+		GetStore = function()
+			return topNetWorthStore
+		end,
+		GetValue = getNetWorth,
+		Format = NumberFormat.FormatCash,
+	},
+	{
+		BoardIndex = 3,
+		Label = "Rolls",
+		GetStore = function()
+			return topRollsStore
+		end,
+		GetValue = getTotalRolls,
+		Format = NumberFormat.Format,
+	},
+	{
+		BoardIndex = 4,
+		Label = "Points",
+		GetStore = function()
+			return DataStoreService:GetOrderedDataStore("WealthRNG_MostPoints_" .. BattlePointsConfig.GetWeekKey(os.time()))
+		end,
+		GetValue = getBattlePoints,
+		Format = NumberFormat.Format,
+	},
 }
 
 local dirtyPlayers: { [Player]: boolean } = {}
@@ -152,7 +200,7 @@ local function submitCategoryForPlayer(category, player: Player)
 	local value = category.GetValue(player)
 	if value then
 		attempt(function()
-			category.Store:SetAsync(tostring(player.UserId), math.floor(value))
+			category.GetStore():SetAsync(tostring(player.UserId), math.floor(value))
 		end)
 	end
 end
@@ -307,7 +355,7 @@ task.spawn(function()
 	task.wait(5)
 	while true do
 		for _, category in categories do
-			refreshBoard(category.BoardIndex, category.Label, category.Store, category.Format)
+			refreshBoard(category.BoardIndex, category.Label, category.GetStore(), category.Format)
 		end
 		task.wait(REFRESH_INTERVAL_SECONDS)
 	end

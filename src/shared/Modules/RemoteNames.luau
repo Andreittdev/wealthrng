@@ -16,7 +16,7 @@ local RemoteNames = {
 		"EquipItem", -- client -> server, payload: uid
 		"UnequipItem", -- client -> server, payload: uid
 		"EquippedItemsUpdated", -- server -> client, payload: { uid }
-		"StatsUpdated", -- server -> client, payload: { Cash, NetWorth, Title, IsVIP, OwnsAutoRoll, OwnsAutoClaim, OwnsLuckPass, OwnsUltraLuckPass, OwnsFastRoll, OwnsDoubleCash, FriendBonusPercent, ItemsIncomePerSecond, AssetsIncomePerMinute }
+		"StatsUpdated", -- server -> client, payload: { Cash, NetWorth, Title, IsVIP, OwnsAutoRoll, OwnsAutoClaim, OwnsLuckPass, OwnsUltraLuckPass, OwnsFastRoll, OwnsDoubleCash, BattleRankPoints, FriendBonusPercent, ItemsIncomePerSecond, AssetsIncomePerMinute }
 		"BuyAsset", -- client -> server, payload: assetId
 		"SellAsset", -- client -> server, payload: assetId
 		"EquipAsset", -- client -> server, payload: assetId
@@ -77,6 +77,23 @@ local RemoteNames = {
 		-- on join (see Main.server.luau's sendInitialState) -- every subsequent update rides along on
 		-- RollResult's 2nd argument instead (see its own comment above), so the client applies each
 		-- snapshot exactly when it shows that specific roll's reveal, not before.
+		"JoinBattleQueue", -- client -> server, no payload -- LARP Battles (BattleManager.luau)
+		-- "Multiplayer" card, fired from BattlePanel.luau's zone menu. Matched against the next
+		-- other queued player automatically -- no opponent picking, no bot fallback (see
+		-- JoinCasualBattle below for that).
+		"LeaveBattleQueue", -- client -> server, no payload -- fired when the player closes the
+		-- menu or walks out of the zone while still queued.
+		"BattleQueueUpdated", -- server -> client, payload: { InQueue: boolean, Count: number } --
+		-- echoes real queue membership/size back so the client's "1/2 Wait for opponent" state
+		-- can't drift from reality.
+		"JoinCasualBattle", -- client -> server, no payload -- LARP Battles "Casual" card: resolves
+		-- INSTANTLY against the "Practice Dummy" bot, no queueing at all. Counts toward the weekly
+		-- Most Points leaderboard, deliberately does NOT touch ranked BattleRankPoints (see
+		-- BattleManager.luau's runBotBattle).
+		"BattleResult", -- server -> client, payload: { Opponent: string, WinsMine: number,
+		-- WinsOpponent: number, Won: boolean?, Categories: { { Name: string, Outcome: number } } }
+		-- -- Won is nil on a draw (no category winner reached 2/3). Outcome: 1 = this player won that
+		-- category, 2 = opponent won it, 0 = tied.
 	},
 	Functions = {},
 }

@@ -109,8 +109,15 @@ local function stateFor(session: TradeSession, player: Player)
 			Investments = partnerSessionData and resolveInvestments(partnerSessionData, theirOfferRaw.InvestmentUids) or {},
 			Cash = theirOfferRaw.Cash,
 		},
-		MyConfirmed = isA and session.ConfirmedA or session.ConfirmedB,
-		TheirConfirmed = isA and session.ConfirmedB or session.ConfirmedA,
+		-- NOT `isA and session.ConfirmedA or session.ConfirmedB` -- that
+		-- idiom breaks the moment session.ConfirmedA is `false` (the exact
+		-- "haven't confirmed yet" case this field exists to report): `true
+		-- and false` collapses to `false`, so the whole expression falls
+		-- through to `session.ConfirmedB` instead, silently reporting the
+		-- OTHER player's confirmation state as this player's own. Plain
+		-- if/else instead.
+		MyConfirmed = if isA then session.ConfirmedA else session.ConfirmedB,
+		TheirConfirmed = if isA then session.ConfirmedB else session.ConfirmedA,
 	}
 end
 

@@ -45,6 +45,7 @@ local lastStats: {
 		OwnsUltraLuckPass: boolean,
 		OwnsFastRoll: boolean,
 		OwnsDoubleCash: boolean,
+		BattleRankPoints: number,
 		FriendBonusPercent: number,
 		ItemsIncomePerSecond: number,
 		AssetsIncomePerMinute: number,
@@ -99,6 +100,7 @@ function StatsManager.Recompute(player: Player)
 	local ownsUltraLuckPass = UltraLuckPassManager.Owns(player)
 	local ownsFastRoll = FastRollManager.Owns(player)
 	local ownsDoubleCash = DoubleCashManager.Owns(player)
+	local battleRankPoints = session.BattleRankPoints
 	-- Friend Boost (FriendBoostConfig.luau) only ever feeds into THIS
 	-- income bonusArgs, never SellManager's -- it's deliberately passive-
 	-- income-only, see FriendBoostConfig's header. Double Cash feeds into
@@ -128,6 +130,7 @@ function StatsManager.Recompute(player: Player)
 		and previous.OwnsUltraLuckPass == ownsUltraLuckPass
 		and previous.OwnsFastRoll == ownsFastRoll
 		and previous.OwnsDoubleCash == ownsDoubleCash
+		and previous.BattleRankPoints == battleRankPoints
 		and previous.FriendBonusPercent == friendBonusPercent
 		and previous.ItemsIncomePerSecond == itemsIncomePerSecond
 		and previous.AssetsIncomePerMinute == assetsIncomePerMinute
@@ -146,6 +149,7 @@ function StatsManager.Recompute(player: Player)
 		OwnsUltraLuckPass = ownsUltraLuckPass,
 		OwnsFastRoll = ownsFastRoll,
 		OwnsDoubleCash = ownsDoubleCash,
+		BattleRankPoints = battleRankPoints,
 		FriendBonusPercent = friendBonusPercent,
 		ItemsIncomePerSecond = itemsIncomePerSecond,
 		AssetsIncomePerMinute = assetsIncomePerMinute,

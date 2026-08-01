@@ -9,11 +9,20 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local PotionDatabase = require(ReplicatedStorage.Modules.PotionDatabase)
 local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
+local BattleRankConfig = require(ReplicatedStorage.Modules.BattleRankConfig)
 local Theme = require(script.Parent.Theme)
 
 local ProfilePanel = {}
 
-export type StatsPayload = { Cash: number, NetWorth: number, Title: string, IsVIP: boolean, ItemsIncomePerSecond: number, AssetsIncomePerMinute: number }
+export type StatsPayload = {
+	Cash: number,
+	NetWorth: number,
+	Title: string,
+	IsVIP: boolean,
+	BattleRankPoints: number,
+	ItemsIncomePerSecond: number,
+	AssetsIncomePerMinute: number,
+}
 
 local function formatDuration(seconds: number): string
 	seconds = math.max(0, math.floor(seconds))
@@ -21,7 +30,7 @@ local function formatDuration(seconds: number): string
 end
 
 function ProfilePanel.Create(screenGui: ScreenGui)
-	local panel = Theme.ResponsivePanel(screenGui, UDim2.new(0, 320, 0, 346), UDim2.new(0.5, -160, 0, 60))
+	local panel = Theme.ResponsivePanel(screenGui, UDim2.new(0, 320, 0, 372), UDim2.new(0.5, -160, 0, 60))
 	panel.Visible = false
 	panel.ZIndex = 10
 
@@ -34,7 +43,7 @@ function ProfilePanel.Create(screenGui: ScreenGui)
 	end)
 
 	local card = Instance.new("Frame")
-	card.Size = UDim2.new(1, -32, 0, 176)
+	card.Size = UDim2.new(1, -32, 0, 202)
 	card.Position = UDim2.new(0, 16, 0, 56)
 	card.BackgroundColor3 = Theme.Colors.Surface
 	card.BorderSizePixel = 0
@@ -84,13 +93,16 @@ function ProfilePanel.Create(screenGui: ScreenGui)
 	local assetsIncomeLabel = Theme.Label(card, UDim2.new(1, 0, 0, 22), "Assets: $0/min")
 	assetsIncomeLabel.TextColor3 = Theme.Colors.TextSecondary
 
+	local rankLabel = Theme.Label(card, UDim2.new(1, 0, 0, 22), "Rank: Bronze (0 RP)")
+	rankLabel.TextColor3 = BattleRankConfig.Tiers[1].Color
+
 	local potionsHeader = Theme.Label(panel, UDim2.new(1, -32, 0, 22), "Active Potions")
-	potionsHeader.Position = UDim2.new(0, 16, 0, 240)
+	potionsHeader.Position = UDim2.new(0, 16, 0, 266)
 	potionsHeader.TextColor3 = Theme.Colors.Accent
 
 	local potionsList = Instance.new("Frame")
 	potionsList.Size = UDim2.new(1, -32, 0, 76)
-	potionsList.Position = UDim2.new(0, 16, 0, 266)
+	potionsList.Position = UDim2.new(0, 16, 0, 292)
 	potionsList.BackgroundTransparency = 1
 	potionsList.Parent = panel
 
@@ -149,6 +161,10 @@ function ProfilePanel.Create(screenGui: ScreenGui)
 		netWorthLabel.Text = "Net Worth: " .. NumberFormat.FormatCash(stats.NetWorth)
 		itemsIncomeLabel.Text = "Items: " .. NumberFormat.FormatCash(stats.ItemsIncomePerSecond) .. "/s"
 		assetsIncomeLabel.Text = "Assets: " .. NumberFormat.FormatCash(stats.AssetsIncomePerMinute) .. "/min"
+
+		local tier = BattleRankConfig.GetTier(stats.BattleRankPoints, stats.NetWorth)
+		rankLabel.Text = string.format("Rank: %s (%d RP)", tier.Name, stats.BattleRankPoints)
+		rankLabel.TextColor3 = tier.Color
 	end
 
 	function handle.UpdatePotions(potions: { [string]: number })

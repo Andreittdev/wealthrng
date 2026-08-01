@@ -177,11 +177,10 @@ local DAILY_REWARDS_MARKER_LABEL = "Daily Rewards"
 local LUCKY_ROLL_MARKER_POSITION = Vector2.new(72.16, -1.23)
 local LUCKY_ROLL_MARKER_COLOR = Color3.fromRGB(180, 100, 255)
 
--- Standing sign out on the grass showing a live countdown to the next
--- update (every Sunday 7 PM GMT+3) -- computed entirely client-side
--- (NextUpdateCountdown.luau), no server/remote involved at all since it's
--- just wall-clock math, identical for every player.
-local NEXT_UPDATE_BOARD_POSITION = Vector2.new(-69.96, -0.25)
+-- LARP Battles marker (BattleManager.luau owns the actual queue/matchmaking
+-- server-side) -- same spot the old Next Update countdown board used to
+-- stand.
+local BATTLE_MARKER_POSITION = Vector2.new(-69.96, -0.25)
 
 -- Every out-on-the-grass floor marker's position, so isBlocked can keep
 -- ALL of them clear of trees/bushes/grass decor (see MARKER_EXCLUSION_RADIUS
@@ -189,12 +188,14 @@ local NEXT_UPDATE_BOARD_POSITION = Vector2.new(-69.96, -0.25)
 -- to be here since it already sits inside TREE_EXCLUSION_RADIUS, on the
 -- protected plaza.
 local GRASS_MARKER_POSITIONS =
-	{ GROUP_REWARDS_MARKER_POSITION, DAILY_REWARDS_MARKER_POSITION, LUCKY_ROLL_MARKER_POSITION, NEXT_UPDATE_BOARD_POSITION }
+	{ GROUP_REWARDS_MARKER_POSITION, DAILY_REWARDS_MARKER_POSITION, LUCKY_ROLL_MARKER_POSITION, BATTLE_MARKER_POSITION }
 
--- 3 boards in a row, centered on this XZ point, all facing the plaza
+-- 4 boards in a row, centered on this XZ point, all facing the plaza
 -- center -- LEADERBOARD_SPACING studs apart along the row.
 local LEADERBOARD_CENTER = Vector2.new(-36.95, 24.42)
-local LEADERBOARD_SPACING = 7.5 -- must clear LEADERBOARD_WIDTH (6.5) or the 3 boards overlap
+local LEADERBOARD_SPACING = 7.5 -- must clear LEADERBOARD_WIDTH (6.5) or the boards overlap
+-- "TOP POINTS" (LARP Battles' weekly leaderboard) is built separately, next
+-- to the battle line, not as a 4th slot in this row -- see Build().
 local LEADERBOARD_LABELS = { "TOP TIME", "TOP NET WORTH", "TOP ROLLS" }
 
 -- Trees sit on a fixed, centered grid (not scattered randomly) so the
@@ -772,98 +773,39 @@ local function buildFloorMarker(mapFolder: Folder, diskName: string, position: V
 	return disk
 end
 
-local NEXT_UPDATE_BOARD_WIDTH = 10.5
-local NEXT_UPDATE_BOARD_HEIGHT = 6
-local NEXT_UPDATE_BOARD_DEPTH = 0.6
-local NEXT_UPDATE_POST_HEIGHT = 3.5
+local BATTLE_LINE_LENGTH = 8
+local BATTLE_LINE_WIDTH = 0.6
+local BATTLE_MARKER_COLOR = Color3.fromRGB(255, 140, 80)
+-- "TOP POINTS" (LARP Battles' own weekly board) -- explicit world position
+-- (client-provided, via HumanoidRootPart.Position while standing there),
+-- facing the plaza center like every other board (no extra rotation --
+-- see buildLeaderboard's call site for why that broke the board's visibility).
+local LEADERBOARD_POINTS_POSITION = Vector2.new(-55.436, -6.461)
 
--- Standing sign (2 posts + a gold-framed board), out on the open grass --
--- same "premium gold trim" look as the fountain/leaderboards. The board's
--- text is filled in entirely client-side (NextUpdateCountdown.luau finds
--- it by name: "NextUpdateBoard_Board" -> "Display" -> "CountdownLabel"),
--- since the countdown is just wall-clock math, identical for every player
--- -- no server/remote round-trip needed at all.
-local function buildNextUpdateBoard(mapFolder: Folder, position: Vector2)
-	local boardCF = CFrame.lookAt(Vector3.new(position.X, GROUND_TOP_Y, position.Y), Vector3.new(0, GROUND_TOP_Y, 0))
+-- Just the flat black line painted on the ground, players face off across
+-- it -- no ProximityPrompt. BattlePanel.luau (client) shows its own 3-card
+-- menu automatically while in range (plain distance check against this
+-- part, same pattern as VIPProximityPanel.luau), and BattleManager.luau
+-- (server) owns the actual queue/matchmaking once a card is picked.
+local function buildBattleMarker(mapFolder: Folder, position: Vector2)
+	local facingCF = CFrame.lookAt(Vector3.new(position.X, GROUND_TOP_Y, position.Y), Vector3.new(0, GROUND_TOP_Y, 0))
 
-	local function place(name: string, size: Vector3, localOffset: Vector3, color: Color3, material: Enum.Material?): Part
-		local part = Instance.new("Part")
-		part.Name = "NextUpdateBoard_" .. name
-		part.Size = size
-		part.CFrame = boardCF * CFrame.new(localOffset)
-		part.Color = color
-		part.Material = material or Enum.Material.SmoothPlastic
-		part.Anchored = true
-		part.TopSurface = Enum.SurfaceType.Smooth
-		part.BottomSurface = Enum.SurfaceType.Smooth
-		part.Parent = mapFolder
-		return part
-	end
+	local line = Instance.new("Part")
+	line.Name = "BattleMarker_Line"
+	line.Size = Vector3.new(BATTLE_LINE_LENGTH, 0.1, BATTLE_LINE_WIDTH)
+	line.CFrame = facingCF * CFrame.new(0, 0.05, 0)
+	line.Color = Color3.fromRGB(15, 15, 18)
+	line.Material = Enum.Material.SmoothPlastic
+	line.Anchored = true
+	line.CanCollide = false
+	line.TopSurface = Enum.SurfaceType.Smooth
+	line.BottomSurface = Enum.SurfaceType.Smooth
+	line.Parent = mapFolder
 
-	local postColor = Color3.fromRGB(45, 45, 52)
-	place("PostLeft", Vector3.new(0.6, NEXT_UPDATE_POST_HEIGHT, 0.6), Vector3.new(-3, NEXT_UPDATE_POST_HEIGHT / 2, 0), postColor, Enum.Material.Metal)
-	place("PostRight", Vector3.new(0.6, NEXT_UPDATE_POST_HEIGHT, 0.6), Vector3.new(3, NEXT_UPDATE_POST_HEIGHT / 2, 0), postColor, Enum.Material.Metal)
-
-	local boardCenterY = NEXT_UPDATE_POST_HEIGHT + NEXT_UPDATE_BOARD_HEIGHT / 2
-	place(
-		"Frame",
-		Vector3.new(NEXT_UPDATE_BOARD_WIDTH + 0.6, NEXT_UPDATE_BOARD_HEIGHT + 0.6, NEXT_UPDATE_BOARD_DEPTH * 0.6),
-		Vector3.new(0, boardCenterY, 0.05),
-		FOUNTAIN_GOLD,
-		Enum.Material.Metal
-	)
-	local board = place(
-		"Board",
-		Vector3.new(NEXT_UPDATE_BOARD_WIDTH, NEXT_UPDATE_BOARD_HEIGHT, NEXT_UPDATE_BOARD_DEPTH),
-		Vector3.new(0, boardCenterY, 0),
-		Color3.fromRGB(20, 20, 26),
-		Enum.Material.SmoothPlastic
-	)
-
-	local displayGui = Instance.new("SurfaceGui")
-	displayGui.Name = "Display"
-	displayGui.Face = Enum.NormalId.Front
-	displayGui.LightInfluence = 0
-	displayGui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
-	displayGui.PixelsPerStud = 100
-	displayGui.Parent = board
-
-	local padding = Instance.new("UIPadding")
-	padding.PaddingLeft = UDim.new(0.04, 0)
-	padding.PaddingRight = UDim.new(0.04, 0)
-	padding.PaddingTop = UDim.new(0.08, 0)
-	padding.PaddingBottom = UDim.new(0.08, 0)
-	padding.Parent = displayGui
-
-	local titleLabel = Instance.new("TextLabel")
-	titleLabel.Name = "TitleLabel"
-	titleLabel.Size = UDim2.new(1, 0, 0.4, 0)
-	titleLabel.BackgroundTransparency = 1
-	titleLabel.Text = "NEXT UPDATE IN:"
-	titleLabel.Font = Enum.Font.LuckiestGuy
-	titleLabel.TextScaled = true
-	titleLabel.TextColor3 = FOUNTAIN_GOLD
-	titleLabel.TextStrokeTransparency = 0
-	titleLabel.Parent = displayGui
-
-	-- Placeholder text only -- NextUpdateCountdown.luau (client) overwrites
-	-- this every second with the live countdown. A LocalScript setting a
-	-- property doesn't replicate, so this is purely this-client-only, same
-	-- trick as the leaderboards' YourRankLabel -- except here every client
-	-- computes and shows the exact same value anyway (it's just wall-clock
-	-- math), so there's no personalization angle, just no reason to
-	-- involve the server for something client math can already do.
-	local countdownLabel = Instance.new("TextLabel")
-	countdownLabel.Name = "CountdownLabel"
-	countdownLabel.Size = UDim2.new(1, 0, 0.45, 0)
-	countdownLabel.Position = UDim2.new(0, 0, 0.5, 0)
-	countdownLabel.BackgroundTransparency = 1
-	countdownLabel.Text = "--"
-	countdownLabel.Font = Enum.Font.GothamBold
-	countdownLabel.TextScaled = true
-	countdownLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-	countdownLabel.TextStrokeTransparency = 0
-	countdownLabel.Parent = displayGui
+	-- Floating world-space title above the line -- same BillboardGui
+	-- convention every other marker's label uses (addLabel), not a flat
+	-- 2D screen element.
+	addLabel(line, "LARP Battles", 16, UDim2.new(0, 180, 0, 32), BATTLE_MARKER_COLOR)
 end
 
 -- Bigger than before (was 5x6) -- text on a small board has a hard physical
@@ -875,7 +817,8 @@ local LEADERBOARD_HEIGHT = 7.5
 local LEADERBOARD_DEPTH = 0.6
 local LEADERBOARD_STAND_HEIGHT = 2
 local LEADERBOARD_HEADER_HEIGHT = 1.3
-local LEADERBOARD_HEADER_COLORS = { Color3.fromRGB(60, 190, 100), Color3.fromRGB(85, 140, 235), Color3.fromRGB(200, 90, 220) }
+local LEADERBOARD_HEADER_COLORS =
+	{ Color3.fromRGB(60, 190, 100), Color3.fromRGB(85, 140, 235), Color3.fromRGB(200, 90, 220), Color3.fromRGB(230, 170, 60) }
 local LEADERBOARD_BASE_HEIGHT = 1.2
 local LEADERBOARD_FRAME_MARGIN = 0.5
 
@@ -884,10 +827,18 @@ local LEADERBOARD_FRAME_MARGIN = 0.5
 -- FOUNTAIN_GOLD used on the fountain/shop-stand finials, so the boards
 -- read as part of the same "wealth" aesthetic instead of a plain
 -- scoreboard. Still faces the plaza center (CFrame.lookAt).
-local function buildLeaderboard(mapFolder: Folder, offsetIndex: number, labelText: string, index: number)
-	local clusterCF = CFrame.lookAt(Vector3.new(LEADERBOARD_CENTER.X, PLAZA_TOP_Y, LEADERBOARD_CENTER.Y), Vector3.new(0, PLAZA_TOP_Y, 0))
-	local boardCF = clusterCF * CFrame.new(offsetIndex * LEADERBOARD_SPACING, 0, 0)
-
+-- Takes the board's final CFrame directly (not a cluster offsetIndex) --
+-- the 3 general boards (Time/NetWorth/Rolls) still live in the row around
+-- LEADERBOARD_CENTER (see Build()), but the 4th (Points, LARP Battles'
+-- weekly leaderboard) stands next to the battle line instead, so it needs
+-- its own independent placement, not another slot in that row.
+-- `premium` (Points only) swaps the gold trim for icy diamond-white
+-- (Glass material) and adds a spinning, sparkling diamond-shaped finial on
+-- top -- same "catches the light, reads as alive" trick as the fountain
+-- gem/stand finials -- so this one board visibly stands out from the other
+-- 3's plainer gold trophy-stand look, matching how much more went into
+-- LARP Battles as a feature.
+local function buildLeaderboard(mapFolder: Folder, boardCF: CFrame, labelText: string, index: number, premium: boolean?)
 	local function place(name: string, size: Vector3, localOffset: Vector3, color: Color3, material: Enum.Material?, shape: Enum.PartType?): Part
 		local part = Instance.new("Part")
 		part.Name = "Leaderboard" .. index .. "_" .. name
@@ -908,25 +859,31 @@ local function buildLeaderboard(mapFolder: Folder, offsetIndex: number, labelTex
 	local boardCenterY = LEADERBOARD_STAND_HEIGHT + LEADERBOARD_HEIGHT / 2
 	local boardTopY = boardCenterY + LEADERBOARD_HEIGHT / 2
 
-	-- Wide gold pedestal base (replaces the old bare pole's footing).
-	place("Base", Vector3.new(LEADERBOARD_WIDTH + 1.5, LEADERBOARD_BASE_HEIGHT, LEADERBOARD_DEPTH + 1.2), Vector3.new(0, LEADERBOARD_BASE_HEIGHT / 2, 0), FOUNTAIN_GOLD, Enum.Material.Metal)
+	-- Icy diamond-white trim for the premium (Points) board instead of the
+	-- other 3's gold, so the whole stand reads as diamond-themed, not just
+	-- the small finial on top.
+	local trimColor = premium and Color3.fromRGB(190, 235, 255) or FOUNTAIN_GOLD
+	local trimMaterial = premium and Enum.Material.Glass or Enum.Material.Metal
 
-	-- Two gold side pillars, base top to board top -- reads as a trophy
-	-- stand holding the screen up, not a single bare pole.
+	-- Wide pedestal base (replaces the old bare pole's footing).
+	place("Base", Vector3.new(LEADERBOARD_WIDTH + 1.5, LEADERBOARD_BASE_HEIGHT, LEADERBOARD_DEPTH + 1.2), Vector3.new(0, LEADERBOARD_BASE_HEIGHT / 2, 0), trimColor, trimMaterial)
+
+	-- Two side pillars, base top to board top -- reads as a trophy stand
+	-- holding the screen up, not a single bare pole.
 	local pillarHeight = boardTopY - LEADERBOARD_BASE_HEIGHT
 	local pillarCenterY = LEADERBOARD_BASE_HEIGHT + pillarHeight / 2
 	local pillarX = LEADERBOARD_WIDTH / 2 + 0.35
-	place("PillarLeft", Vector3.new(0.5, pillarHeight, 0.5), Vector3.new(-pillarX, pillarCenterY, 0), FOUNTAIN_GOLD, Enum.Material.Metal)
-	place("PillarRight", Vector3.new(0.5, pillarHeight, 0.5), Vector3.new(pillarX, pillarCenterY, 0), FOUNTAIN_GOLD, Enum.Material.Metal)
+	place("PillarLeft", Vector3.new(0.5, pillarHeight, 0.5), Vector3.new(-pillarX, pillarCenterY, 0), trimColor, trimMaterial)
+	place("PillarRight", Vector3.new(0.5, pillarHeight, 0.5), Vector3.new(pillarX, pillarCenterY, 0), trimColor, trimMaterial)
 
-	-- Gold backing frame, set back and larger than the screen so it peeks
-	-- out as a border all the way around.
+	-- Backing frame, set back and larger than the screen so it peeks out
+	-- as a border all the way around.
 	place(
 		"Frame",
 		Vector3.new(LEADERBOARD_WIDTH + LEADERBOARD_FRAME_MARGIN * 2, LEADERBOARD_HEIGHT + LEADERBOARD_FRAME_MARGIN * 2, LEADERBOARD_DEPTH * 0.6),
 		Vector3.new(0, boardCenterY, LEADERBOARD_DEPTH * 0.35),
-		FOUNTAIN_GOLD,
-		Enum.Material.Metal
+		trimColor,
+		trimMaterial
 	)
 
 	local board = place("Board", Vector3.new(LEADERBOARD_WIDTH, LEADERBOARD_HEIGHT, LEADERBOARD_DEPTH), Vector3.new(0, boardCenterY, 0), Color3.fromRGB(25, 25, 30), Enum.Material.SmoothPlastic)
@@ -1057,6 +1014,18 @@ local function buildLeaderboard(mapFolder: Folder, offsetIndex: number, labelTex
 	headerText.TextScaled = true
 	headerText.Text = labelText
 	headerText.Parent = headerGui
+
+	if premium then
+		-- A cube rotated 45 deg around Y reads as a diamond/gem silhouette
+		-- (not a plain glowing ball) -- taller than it is wide, like a cut
+		-- gem, icy blue-white instead of gold so it doesn't just look like
+		-- another gold bauble matching the fountain/finials.
+		local finial =
+			place("Finial", Vector3.new(1.1, 1.6, 1.1), Vector3.new(0, boardTopY + 1.5, 0), Color3.fromRGB(190, 235, 255), Enum.Material.Neon)
+		finial.CFrame = finial.CFrame * CFrame.Angles(0, math.rad(45), 0)
+		addContinuousSpin(finial, 45)
+		addSparkle(finial, Color3.fromRGB(220, 245, 255), 14)
+	end
 end
 
 local function isNearPath(x: number, z: number): boolean
@@ -1648,12 +1617,24 @@ function MapBuilder.Build()
 		Color3.fromRGB(220, 180, 255),
 		true
 	)
-	buildNextUpdateBoard(mapFolder, NEXT_UPDATE_BOARD_POSITION)
+	buildBattleMarker(mapFolder, BATTLE_MARKER_POSITION)
 
+	local leaderboardClusterCF = CFrame.lookAt(Vector3.new(LEADERBOARD_CENTER.X, PLAZA_TOP_Y, LEADERBOARD_CENTER.Y), Vector3.new(0, PLAZA_TOP_Y, 0))
 	for index, labelText in LEADERBOARD_LABELS do
 		local offsetIndex = index - 2 -- 3 boards -> -1, 0, 1
-		buildLeaderboard(mapFolder, offsetIndex, labelText, index)
+		local boardCF = leaderboardClusterCF * CFrame.new(offsetIndex * LEADERBOARD_SPACING, 0, 0)
+		buildLeaderboard(mapFolder, boardCF, labelText, index)
 	end
+
+	-- "TOP POINTS" (LARP Battles' own weekly leaderboard) -- BoardIndex 4
+	-- still matches LeaderboardManager's categories table. No extra
+	-- rotation on top of the standard "face the plaza center" orientation
+	-- -- that twist was turning the board enough that its gold Frame (set
+	-- back slightly from the actual screen) ended up occluding the
+	-- SurfaceGui text instead of just peeking out around it.
+	local pointsBoardCF =
+		CFrame.lookAt(Vector3.new(LEADERBOARD_POINTS_POSITION.X, PLAZA_TOP_Y, LEADERBOARD_POINTS_POSITION.Y), Vector3.new(0, PLAZA_TOP_Y, 0))
+	buildLeaderboard(mapFolder, pointsBoardCF, "TOP POINTS", 4, true)
 
 	buildTrees(mapFolder)
 	buildGrassBushes(mapFolder)

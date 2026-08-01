@@ -10,8 +10,8 @@ local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
 local LoadingScreen = require(script.Parent.UI:WaitForChild("LoadingScreen"))
 local MainUI = require(script.Parent.UI:WaitForChild("MainUI"))
 local NotificationToast = require(script.Parent.UI:WaitForChild("NotificationToast"))
-local NextUpdateCountdown = require(script.Parent.UI:WaitForChild("NextUpdateCountdown"))
 local HideOtherPlayers = require(script.Parent.UI:WaitForChild("HideOtherPlayers"))
+local BattlePanel = require(script.Parent.UI:WaitForChild("BattlePanel"))
 
 -- Called directly (not backgrounded) so the rest of the game's UI only
 -- starts building AFTER the loading screen has fully held its 6s and faded
@@ -22,8 +22,9 @@ LoadingScreen.Run()
 
 MainUI.Init()
 NotificationToast.Init()
-NextUpdateCountdown.Init()
+-- NextUpdateCountdown.Init() -- disabled, see MapBuilder.luau's matching note
 HideOtherPlayers.Init()
+BattlePanel.Init()
 
 -- LeaderboardManager fires this only at the affected player (a rank
 -- change on one of the top-100 boards) -- DisplaySystemMessage called

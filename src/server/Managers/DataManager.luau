@@ -102,6 +102,21 @@ export type Session = {
 	-- toggling this does nothing. Defaults true (see newDefaultSession/Load)
 	-- so a first-time buyer doesn't also have to remember to turn it on.
 	AutoClaimEnabled: boolean,
+	-- LARP Battles (BattleManager.luau) -- points reset weekly, not tracked
+	-- via a separate cron/reset job. Instead, BattlePointsWeekStart records
+	-- which week's Monday-00:00-UTC these points belong to; anything that
+	-- reads or credits BattlePoints calls BattlePointsConfig.EnsureCurrentWeek
+	-- first, which zeroes both fields the moment they're found to belong to
+	-- a past week. See BattlePointsConfig.luau for why this is a shared
+	-- leaf module instead of living in BattleManager.
+	BattlePoints: number,
+	BattlePointsWeekStart: number,
+	-- LARP Battles ranked -- separate from BattlePoints above (that one's
+	-- the weekly-resetting "Most Points" leaderboard). This is permanent,
+	-- never resets -- +15 per win, -10 per loss (floored at 0), 0 on a
+	-- draw. Tier (Bronze..Diamond) is derived live from this number via
+	-- BattleRankConfig.GetTier, not stored separately.
+	BattleRankPoints: number,
 	-- Developer Product receipts (CashPackManager.luau) already granted,
 	-- keyed by PurchaseId -- Roblox retries ProcessReceipt (even across
 	-- server restarts) until it gets PurchaseGranted back, so this has to
@@ -139,6 +154,9 @@ local function newDefaultSession(): Session
 		InventoryTotalValue = 0,
 		EquippedItemId = nil,
 		AutoClaimEnabled = true,
+		BattlePoints = 0,
+		BattlePointsWeekStart = 0,
+		BattleRankPoints = 0,
 		GrantedCashPackPurchaseIds = {},
 		LoadedOk = true,
 	}
@@ -249,6 +267,9 @@ function DataManager.Load(player: Player): Session
 				InventoryTotalValue = inventoryTotalValue,
 				EquippedItemId = equippedItemId,
 				AutoClaimEnabled = data.AutoClaimEnabled == nil and true or data.AutoClaimEnabled,
+				BattlePoints = data.BattlePoints or 0,
+				BattlePointsWeekStart = data.BattlePointsWeekStart or 0,
+				BattleRankPoints = data.BattleRankPoints or 0,
 				GrantedCashPackPurchaseIds = data.GrantedCashPackPurchaseIds or {},
 				LoadedOk = true,
 			}
@@ -299,6 +320,9 @@ function DataManager.Save(player: Player)
 		ClaimedLuckyStages = session.ClaimedLuckyStages,
 		TotalPlaytimeSeconds = session.TotalPlaytimeSeconds,
 		AutoClaimEnabled = session.AutoClaimEnabled,
+		BattlePoints = session.BattlePoints,
+		BattlePointsWeekStart = session.BattlePointsWeekStart,
+		BattleRankPoints = session.BattleRankPoints,
 		GrantedCashPackPurchaseIds = session.GrantedCashPackPurchaseIds,
 	}
 
