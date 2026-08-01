@@ -9,13 +9,26 @@
 -- session's Upgrades table, never requires UpgradeManager, so
 -- RollManager/PotionManager can use it without a circular require.
 --
--- Costs are tuned against the established pacing (~30min to $1M,
--- ~2h to $1B): maxing all 3 tracks costs ~3.1M total (RollSpeed ~890k,
--- Luck ~1.65M -- priciest since it's the most impactful, PotionBoost
--- ~537k), so it's a real early-to-mid-game Cash sink that's fully done
--- well before the $1B mark, not competing with Assets as the late-game
--- sink. The Luck curve specifically is also tuned against VIP/Potion's
--- EXISTING multipliers, not just in isolation -- see its comment below.
+-- BaseCost was walked up 50x (2000/3000/1500 -> 100000/150000/75000) --
+-- against the ORIGINAL pacing target (~30min to $1M, ~2h to $1B), the old
+-- ~3.1M total-to-max was trivial, barely denting even the $1M mark. Maxing
+-- all 3 tracks now costs ~$616M total (RollSpeed ~44.5M, PotionBoost
+-- ~26.8M, Luck ~544.6M -- see below for why Luck alone is so much pricier
+-- than a smooth curve would give), a real mid-game Cash sink that takes a
+-- meaningful chunk of the climb to $1B instead of being an afterthought,
+-- while still finishing well before it -- not competing with Assets/
+-- Investments as the late-game sink. CostGrowth (the per-level escalation
+-- curve) is untouched for levels 1-9 on every track, so the shape of "each
+-- level costs more than the last" is identical, just scaled up.
+--
+-- Luck's FINAL level (9 -> 10) breaks that smooth curve on purpose -- see
+-- LUCK_MAX_LEVEL_COST/LUCK_MAX_LEVEL_LUXURY_MULTIPLIER below and
+-- GetLuckMultiplier's comment -- a deliberately expensive capstone
+-- purchase (~$500M by itself, vs. ~$38M the smooth curve would have
+-- charged) that unlocks a real Luxury-odds bump, not just the token 1.3x
+-- every earlier level was already ramping toward. The Luck curve overall
+-- is also tuned against VIP/Potion's EXISTING multipliers, not just in
+-- isolation -- see its comment below.
 
 local UpgradeConfig = {}
 
@@ -28,20 +41,30 @@ export type Track = {
 }
 
 local tracks: { [string]: Track } = {
-	RollSpeed = { Id = "RollSpeed", Name = "Roll Speed", MaxLevel = 10, BaseCost = 2000, CostGrowth = 1.8 },
-	Luck = { Id = "Luck", Name = "Luck Chance", MaxLevel = 10, BaseCost = 3000, CostGrowth = 1.85 },
-	PotionBoost = { Id = "PotionBoost", Name = "Potion Boost Time", MaxLevel = 10, BaseCost = 1500, CostGrowth = 1.75 },
+	RollSpeed = { Id = "RollSpeed", Name = "Roll Speed", MaxLevel = 10, BaseCost = 100000, CostGrowth = 1.8 },
+	Luck = { Id = "Luck", Name = "Luck Chance", MaxLevel = 10, BaseCost = 150000, CostGrowth = 1.85 },
+	PotionBoost = { Id = "PotionBoost", Name = "Potion Boost Time", MaxLevel = 10, BaseCost = 75000, CostGrowth = 1.75 },
 }
 UpgradeConfig.Tracks = tracks
 
 -- Order matters for consistent UI listing, same idea as RarityConfig.Order.
 UpgradeConfig.Order = { "RollSpeed", "Luck", "PotionBoost" }
 
+-- Luck's last purchase (level 9 -> 10) is a flat override, not
+-- BaseCost*CostGrowth^9 (~$38M) -- a deliberate capstone price jump, same
+-- idea as AssetDatabase's RealEstateEmpire/InvestmentDatabase's
+-- CelestialCore breaking their own smooth per-tier curve. See
+-- GetLuckMultiplier for what it buys.
+local LUCK_MAX_LEVEL_COST = 500000000
+
 -- Cost to go from `currentLevel` to `currentLevel + 1`. nil once maxed.
 function UpgradeConfig.GetCost(trackId: string, currentLevel: number): number?
 	local track = UpgradeConfig.Tracks[trackId]
 	if not track or currentLevel >= track.MaxLevel then
 		return nil
+	end
+	if trackId == "Luck" and currentLevel == track.MaxLevel - 1 then
+		return LUCK_MAX_LEVEL_COST
 	end
 	return math.floor(track.BaseCost * (track.CostGrowth ^ currentLevel))
 end
@@ -53,15 +76,24 @@ end
 
 -- Luck: same "boost non-Common tiers more" shape as VIPConfig/PotionDatabase's
 -- Luck Potion, scaled linearly from 1x (level 0) to each rarity's max at
--- MaxLevel. Luxury deliberately milder than the other tiers' own ratios
--- (1.3x, not the old 2x) -- it stacks multiplicatively with VIP's 6x and
--- the (now also reduced, see PotionDatabase's Luck Potion comment) Luck
--- Potion's 1.5x, and the old 6x*3.5x*2x = 42x combined stack pushed a
--- fully built player's Luxury odds from ~1-in-50k down to ~1-in-2.4k (a
--- Luxury every ~12 min of active rolling) -- guts the "genuine rare
--- moment" the whole Luxury tier exists for. The new stack (6x*1.5x*1.3x =
--- 11.7x) lands around ~1-in-8.6k, ~45 min at max roll speed -- still a
--- real, worth-buying boost, just not the dominant multiplier.
+-- MaxLevel. Luxury ramps toward a deliberately mild 1.3x across levels 1-9
+-- (not the old 2x) -- since RarityConfig.Luxury is now almost zero (see
+-- that file's header, Luxury is meant to come from Special Rolls, not
+-- plain rolls), a smooth 1.3x ceiling would be functionally invisible no
+-- matter what it was tuned to.
+--
+-- LEVEL 10 SPECIFICALLY breaks that curve: instead of landing on the same
+-- 1.3x every level was already ramping toward, hitting the actual max
+-- level (via the LUCK_MAX_LEVEL_COST capstone purchase above) jumps
+-- Luxury straight to LUCK_MAX_LEVEL_LUXURY_MULTIPLIER (50x) -- a real,
+-- felt bump exclusively for fully completing the track, not something
+-- levels 1-9 partially deliver a share of. Stacked with VIP's 6x and Luck
+-- Potion's 1.5x, a fully-built player at Luck level 10 hits 6*1.5*50 =
+-- 450x on Luxury (~1 in ~184,000 per roll instead of the old max 11.7x
+-- stack's ~1 in 7.1M) -- meaningfully exciting on its own, while staying
+-- far short of Emerald Roll's fixed ~1 in 183 (see SpecialRollConfig.luau),
+-- so Special Rolls stay the dominant path to Luxury, this is a bonus on
+-- top of active rolling for a player who's maxed everything.
 local maxLuckWeightMultiplier: { [string]: number } = {
 	Common = 1,
 	Rare = 1.15,
@@ -72,9 +104,16 @@ local maxLuckWeightMultiplier: { [string]: number } = {
 }
 UpgradeConfig.MaxLuckWeightMultiplier = maxLuckWeightMultiplier
 
+local LUCK_MAX_LEVEL_LUXURY_MULTIPLIER = 50
+
 function UpgradeConfig.GetLuckMultiplier(level: number, rarity: string): number
+	local maxLevel = UpgradeConfig.Tracks.Luck.MaxLevel
+	if rarity == "Luxury" and level >= maxLevel then
+		return LUCK_MAX_LEVEL_LUXURY_MULTIPLIER
+	end
+
 	local maxMult = UpgradeConfig.MaxLuckWeightMultiplier[rarity] or 1
-	local t = level / UpgradeConfig.Tracks.Luck.MaxLevel
+	local t = level / maxLevel
 	return 1 + (maxMult - 1) * t
 end
 

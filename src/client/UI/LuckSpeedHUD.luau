@@ -75,6 +75,10 @@ function LuckSpeedHUD.Create(screenGui: ScreenGui)
 	container.Position = UDim2.new(0, 16, 1, -16)
 	container.BackgroundTransparency = 1
 	container.Parent = screenGui
+	-- Same REFERENCE_WIDTH convention as Sidebar.luau/RollPanel.luau's own
+	-- AutoScale calls, so every fixed HUD cluster shrinks at the same
+	-- breakpoints instead of each drifting out of proportion with the others.
+	Theme.AutoScale(screenGui, container, 900)
 
 	local luckValueLabel = createImageBadge(container, UDim2.new(0, 0, 0, 0), LUCK_ICON)
 	local speedValueLabel = createImageBadge(container, UDim2.new(0, BADGE_WIDTH + BADGE_GAP, 0, 0), DICE_IMAGE)

@@ -25,7 +25,7 @@ function GroupRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Folder
 	local panel = Instance.new("Frame")
 	panel.Size = UDim2.new(0, 320, 0, 230)
 	panel.AnchorPoint = Vector2.new(0.5, 1)
-	panel.Position = UDim2.new(0.5, 0, 1, -230)
+	panel.Position = UDim2.new(0.5, 0, 1, -300)
 	panel.BackgroundColor3 = Theme.Colors.Panel
 	panel.BackgroundTransparency = 0
 	panel.BorderSizePixel = 0
@@ -34,7 +34,16 @@ function GroupRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Folder
 	panel.Parent = screenGui
 	Theme.Round(panel)
 	Theme.Stroke(panel, Color3.fromRGB(140, 190, 255), 1)
-	Theme.Shadow(panel)
+	local panelShadow = Theme.Shadow(panel)
+	-- Fixed-pixel popup (unlike the sidebar-triggered dialogs, which use
+	-- Theme.ResponsivePanel) -- shrinks as one unit toward its bottom-center
+	-- anchor on narrow phone screens instead of running off the edges.
+	-- Shadow is a sibling, not a descendant (see Theme.Shadow's comment), so
+	-- it needs its OWN matching AutoScale call -- both compute the exact
+	-- same Scale independently (pure function of screen width), so they
+	-- stay in sync without needing to be linked.
+	Theme.AutoScale(screenGui, panel, 320)
+	Theme.AutoScale(screenGui, panelShadow, 320)
 
 	local titleLabel = Theme.Label(panel, UDim2.new(1, -20, 0, 30), "Group Rewards", true)
 	titleLabel.Position = UDim2.new(0, 10, 0, 10)

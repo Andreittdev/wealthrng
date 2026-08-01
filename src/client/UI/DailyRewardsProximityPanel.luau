@@ -100,7 +100,16 @@ function DailyRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Folder
 	panel.Parent = screenGui
 	Theme.Round(panel, UDim.new(0, 20))
 	Theme.Stroke(panel, Color3.fromRGB(120, 200, 255), 2)
-	Theme.Shadow(panel)
+	local panelShadow = Theme.Shadow(panel)
+	-- PANEL_WIDTH (~600px, grid + big Day 7 card side by side) badly
+	-- overflows any phone screen uncapped -- shrinks as one unit toward its
+	-- bottom-center anchor instead. Lower minScale than the default 0.6
+	-- (other proximity panels' default) since this one starts noticeably
+	-- wider than they do -- 0.5 still keeps every card/button comfortably
+	-- tappable, just smaller. Shadow needs its own matching call, see
+	-- GroupRewardsProximityPanel's comment for why.
+	Theme.AutoScale(screenGui, panel, PANEL_WIDTH, 0.5)
+	Theme.AutoScale(screenGui, panelShadow, PANEL_WIDTH, 0.5)
 
 	-- ===== Header =====
 	local iconLabel = Instance.new("TextLabel")

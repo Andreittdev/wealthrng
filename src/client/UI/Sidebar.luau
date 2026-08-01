@@ -106,8 +106,11 @@ function Sidebar.Create(screenGui: ScreenGui, handles: PanelHandles, cashHudFram
 		-- reordered).
 		if cashHudFrame and buttonData.Key == "Profile" then
 			cashHudFrame.Parent = container
+			-- Shifted left from dead-center under Profile's column -- still
+			-- anchored to Profile's row (y), just pulled toward the grid's
+			-- left edge on X.
 			cashHudFrame.AnchorPoint = Vector2.new(0.5, 0)
-			cashHudFrame.Position = UDim2.new(0, x + ICON_SIZE / 2, 0, y + ICON_SIZE + GAP_Y)
+			cashHudFrame.Position = UDim2.new(0, x + ICON_SIZE / 2 - 50, 0, y + ICON_SIZE + GAP_Y + 12)
 		end
 	end
 end

@@ -12,6 +12,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local VIPConfig = require(ReplicatedStorage.Modules.VIPConfig)
 local AutoRollConfig = require(ReplicatedStorage.Modules.AutoRollConfig)
+local AutoClaimConfig = require(ReplicatedStorage.Modules.AutoClaimConfig)
 
 -- The Emitter2D particle system (src/client/Emitter2D.rbxm) blocks forever
 -- on require() waiting for this attribute -- it's normally set by the
@@ -40,6 +41,7 @@ local DataManager = require(ServerScriptService.Managers.DataManager)
 local Leaderstats = require(ServerScriptService.Managers.Leaderstats)
 local VIPManager = require(ServerScriptService.Managers.VIPManager)
 local AutoRollManager = require(ServerScriptService.Managers.AutoRollManager)
+local AutoClaimManager = require(ServerScriptService.Managers.AutoClaimManager)
 local StatsManager = require(ServerScriptService.Managers.StatsManager)
 
 local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManager)
@@ -85,12 +87,14 @@ local function sendInitialState(player: Player)
 	groupRewardStateUpdated:FireClient(player, session.ClaimedGroupReward)
 	DailyRewardsManager.PushState(player)
 	RollManager.PushSpecialRollState(player, session)
+	AutoClaimManager.PushState(player)
 end
 
 local function onPlayerAdded(player: Player)
 	DataManager.Load(player)
 	VIPManager.Load(player)
 	AutoRollManager.Load(player)
+	AutoClaimManager.Load(player)
 	Leaderstats.Create(player)
 	StatsManager.Recompute(player)
 	-- So a player shows up on the boards from their very first stats
@@ -121,6 +125,10 @@ MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player: Playe
 	elseif gamePassId == AutoRollConfig.GamepassId then
 		AutoRollManager.Grant(player)
 		systemMessage:FireClient(player, "Auto Roll Gamepass Activated!")
+		StatsManager.Recompute(player)
+	elseif gamePassId == AutoClaimConfig.GamepassId then
+		AutoClaimManager.Grant(player)
+		systemMessage:FireClient(player, "Auto Claim Gamepass Activated!")
 		StatsManager.Recompute(player)
 	end
 end)

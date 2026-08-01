@@ -93,6 +93,15 @@ export type Session = {
 	-- Only valid because ItemDatabase.MaxEquipped is 1 -- the ItemId of
 	-- whatever's currently in EquippedItemUids, or nil if nothing is.
 	EquippedItemId: string?,
+	-- Auto Claim gamepass's on/off toggle (SetAutoClaim remote) -- persisted
+	-- (unlike Auto Roll's toggle, which is pure client-side state) because
+	-- the actual auto-claiming happens in RollManager.luau's server-side
+	-- per-second loop, which needs to remember this across a full session
+	-- restart, not just while the player's client is open. Only matters at
+	-- all if AutoClaimManager.Owns(player) is also true -- a non-owner
+	-- toggling this does nothing. Defaults true (see newDefaultSession/Load)
+	-- so a first-time buyer doesn't also have to remember to turn it on.
+	AutoClaimEnabled: boolean,
 	LoadedOk: boolean,
 }
 
@@ -122,6 +131,7 @@ local function newDefaultSession(): Session
 		OwnedItemCounts = {},
 		InventoryTotalValue = 0,
 		EquippedItemId = nil,
+		AutoClaimEnabled = true,
 		LoadedOk = true,
 	}
 end
@@ -230,6 +240,7 @@ function DataManager.Load(player: Player): Session
 				OwnedItemCounts = ownedItemCounts,
 				InventoryTotalValue = inventoryTotalValue,
 				EquippedItemId = equippedItemId,
+				AutoClaimEnabled = data.AutoClaimEnabled == nil and true or data.AutoClaimEnabled,
 				LoadedOk = true,
 			}
 		else
@@ -278,6 +289,7 @@ function DataManager.Save(player: Player)
 		SpecialRollProgress = session.SpecialRollProgress,
 		ClaimedLuckyStages = session.ClaimedLuckyStages,
 		TotalPlaytimeSeconds = session.TotalPlaytimeSeconds,
+		AutoClaimEnabled = session.AutoClaimEnabled,
 	}
 
 	local ok = attempt(function()

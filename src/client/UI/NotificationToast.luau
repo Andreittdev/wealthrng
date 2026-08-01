@@ -40,11 +40,18 @@ function NotificationToast.Init()
 	-- proximity popups whenever one showed up while you were standing near
 	-- a marker. Bottom-right is otherwise empty screen real estate.
 	local container = Instance.new("Frame")
-	container.Size = UDim2.new(0, TOAST_WIDTH, 0.5, 0)
+	-- Scale-based width (capped at TOAST_WIDTH via UISizeConstraint) instead
+	-- of a flat 340px -- on a narrow phone, 340px + the 16px margin was
+	-- wide enough to clip off the right edge of the screen.
+	container.Size = UDim2.new(0.85, 0, 0.5, 0)
 	container.AnchorPoint = Vector2.new(1, 1)
 	container.Position = UDim2.new(1, -16, 1, -16)
 	container.BackgroundTransparency = 1
 	container.Parent = screenGui
+
+	local containerSizeConstraint = Instance.new("UISizeConstraint")
+	containerSizeConstraint.MaxSize = Vector2.new(TOAST_WIDTH, math.huge)
+	containerSizeConstraint.Parent = container
 
 	local layout = Instance.new("UIListLayout")
 	layout.Padding = UDim.new(0, TOAST_GAP)
@@ -63,7 +70,7 @@ function NotificationToast.Init()
 		local currentOrder = order
 
 		local toast = Instance.new("Frame")
-		toast.Size = UDim2.new(0, TOAST_WIDTH, 0, TOAST_HEIGHT)
+		toast.Size = UDim2.new(1, 0, 0, TOAST_HEIGHT)
 		toast.BackgroundColor3 = Theme.Colors.Panel
 		toast.BackgroundTransparency = 1
 		toast.BorderSizePixel = 0

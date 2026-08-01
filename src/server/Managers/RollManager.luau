@@ -29,6 +29,7 @@ local StatsManager = require(ServerScriptService.Managers.StatsManager)
 local VIPManager = require(ServerScriptService.Managers.VIPManager)
 local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManager)
 local SellManager = require(ServerScriptService.Managers.SellManager)
+local AutoClaimManager = require(ServerScriptService.Managers.AutoClaimManager)
 
 local rollRequested = RemotesBootstrap:WaitForChild("RollRequested")
 local rollResult = RemotesBootstrap:WaitForChild("RollResult")
@@ -385,6 +386,26 @@ Players.PlayerRemoving:Connect(function(player)
 	lastRollAt[player] = nil
 end)
 
+-- Which Lucky stage (if any) an Auto Claim gamepass owner should be
+-- auto-claimed into right now -- same "earliest not-yet-claimed, ready"
+-- rule LuckyRollProximityPanel.luau's client-side pickCurrentStage uses,
+-- just reading session state directly instead of a pushed snapshot.
+-- SpecialRollConfig.Milestones already lists Lucky1..Lucky6 in ascending
+-- Threshold order, so a plain left-to-right scan is already "claim in
+-- order," no separate sort needed.
+local function findAutoClaimableLuckyStage(session): SpecialRollConfig.Tier?
+	for _, tier in SpecialRollConfig.Milestones do
+		if tier.Kind == "SecondsStage" then
+			local progress = session.SpecialRollProgress[tier.ProgressKey] or 0
+			local claimed = session.ClaimedLuckyStages[tier.Id] == true
+			if not claimed and progress >= tier.Threshold then
+				return tier
+			end
+		end
+	end
+	return nil
+end
+
 -- Drives "SecondsStage" tiers (Lucky Roll's 6-stage ladder) -- +1 progress
 -- per second per connected player to the SHARED counter each stage's
 -- ProgressKey points at, capped at that shared cycle's overall length (90
@@ -394,6 +415,13 @@ end)
 -- the old Playtime Rewards system used (not real-world wall-clock time).
 -- `advancedKeys` stops this from incrementing the same shared counter 6
 -- times in one tick (once per stage that shares it).
+--
+-- Auto Claim gamepass owners also get checked here, right after advancing
+-- -- the same TrySpecialRoll a manual Claim tap would fire, just triggered
+-- server-side instead of waiting for the player to walk up and press the
+-- button. Runs at most once per tick per player (TrySpecialRoll itself is
+-- the source of truth for what's actually claimable, this is just what
+-- decides WHEN to call it).
 task.spawn(function()
 	while true do
 		task.wait(1)
@@ -409,6 +437,13 @@ task.spawn(function()
 						if current < cap then
 							session.SpecialRollProgress[tier.ProgressKey] = current + 1
 						end
+					end
+				end
+
+				if AutoClaimManager.IsEnabled(player) then
+					local claimableTier = findAutoClaimableLuckyStage(session)
+					if claimableTier then
+						RollManager.TrySpecialRoll(player, claimableTier.Id)
 					end
 				end
 			end

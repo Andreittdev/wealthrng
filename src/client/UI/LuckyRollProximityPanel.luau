@@ -24,9 +24,12 @@
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
+local MarketplaceService = game:GetService("MarketplaceService")
+local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local SpecialRollConfig = require(ReplicatedStorage.Modules.SpecialRollConfig)
+local AutoClaimConfig = require(ReplicatedStorage.Modules.AutoClaimConfig)
 local Theme = require(script.Parent.Theme)
 
 local LuckyRollProximityPanel = {}
@@ -44,6 +47,9 @@ function LuckyRollProximityPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	local rollSpecial = remotes:WaitForChild("RollSpecial")
 	local rollResult = remotes:WaitForChild("RollResult")
 	local specialRollStateUpdated = remotes:WaitForChild("SpecialRollStateUpdated")
+	local statsUpdated = remotes:WaitForChild("StatsUpdated")
+	local setAutoClaim = remotes:WaitForChild("SetAutoClaim")
+	local autoClaimUpdated = remotes:WaitForChild("AutoClaimUpdated")
 
 	-- The 6 stage tier defs, sorted weakest -> strongest by Threshold --
 	-- pickCurrentStage below walks this order to find whichever one is
@@ -70,7 +76,7 @@ function LuckyRollProximityPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	local lastPushAt = os.clock()
 
 	local panel = Instance.new("Frame")
-	panel.Size = UDim2.new(0, 180, 0, 224)
+	panel.Size = UDim2.new(0, 220, 0, 224)
 	panel.AnchorPoint = Vector2.new(0.5, 1)
 	panel.Position = UDim2.new(0.5, 0, 1, -234)
 	panel.BackgroundColor3 = Theme.Colors.Panel
@@ -81,7 +87,70 @@ function LuckyRollProximityPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	panel.Parent = screenGui
 	Theme.Round(panel)
 	Theme.Stroke(panel, LUCKY_COLOR, 1)
-	Theme.Shadow(panel)
+	local panelShadow = Theme.Shadow(panel)
+	-- Fixed-pixel popup -- shrinks as one unit toward its bottom-center
+	-- anchor on narrow phone screens instead of running off the edges.
+	-- Shadow needs its own matching call, see GroupRewardsProximityPanel's
+	-- comment for why. The autoClaimBadge/priceFloatLabel below are children
+	-- of `panel` (or of autoClaimBadge, itself a child of panel), so they
+	-- scale along with everything else automatically.
+	Theme.AutoScale(screenGui, panel, 220)
+	Theme.AutoScale(screenGui, panelShadow, 220)
+
+	-- Auto Claim gamepass badge -- sits right on the panel's own border
+	-- (top-right corner), not inside the main icon/odds/timer stack.
+	-- "Buy" while unowned (opens the purchase prompt); once owned it
+	-- becomes a real ON/OFF toggle (green/red, see refreshAutoClaimBadge
+	-- further down) -- RollManager.luau's per-second loop only auto-claims
+	-- while it's ON. The price itself isn't in this text anymore -- see
+	-- priceFloatLabel just below, a separate bobbing "9 R$" tag to its
+	-- right, same idea as a floating price tag in a mobile-game shop icon.
+	local autoClaimBadge = Instance.new("TextButton")
+	autoClaimBadge.Size = UDim2.new(0, 130, 0, 34)
+	autoClaimBadge.AnchorPoint = Vector2.new(0.5, 0)
+	autoClaimBadge.Position = UDim2.new(0.5, -14, 0, -17)
+	autoClaimBadge.BackgroundColor3 = LUCKY_COLOR
+	autoClaimBadge.BorderSizePixel = 0
+	autoClaimBadge.AutoButtonColor = true
+	autoClaimBadge.Text = "AUTO CLAIM: BUY"
+	autoClaimBadge.Font = Theme.Fonts.Header
+	autoClaimBadge.TextScaled = true
+	autoClaimBadge.TextWrapped = true
+	autoClaimBadge.TextColor3 = Color3.fromRGB(20, 20, 20)
+	autoClaimBadge.ZIndex = 9
+	autoClaimBadge.Parent = panel
+	Theme.Round(autoClaimBadge, UDim.new(1, 0))
+	Theme.Stroke(autoClaimBadge, Color3.new(0, 0, 0), 1)
+	local autoClaimBadgeTextSize = Instance.new("UITextSizeConstraint")
+	autoClaimBadgeTextSize.MaxTextSize = 17
+	autoClaimBadgeTextSize.Parent = autoClaimBadge
+
+	-- Floating "9 R$" price tag to the badge's right -- gently bobs up and
+	-- down forever (a gentle Sine in/out Position tween, RepeatCount=-1,
+	-- Reverses=true) to draw the eye toward it, same "can't miss it"
+	-- purpose a floating price tag serves in mobile-game shop icons.
+	-- Hidden once the gamepass is owned (see refreshAutoClaimBadge below)
+	-- -- there's nothing left to buy at that point.
+	local priceFloatLabel = Instance.new("TextLabel")
+	priceFloatLabel.Size = UDim2.new(0, 72, 0, 22)
+	priceFloatLabel.AnchorPoint = Vector2.new(0, 0.5)
+	priceFloatLabel.Position = UDim2.new(0.5, 60, 0.5, 0)
+	priceFloatLabel.BackgroundTransparency = 1
+	priceFloatLabel.Font = Theme.Fonts.Header
+	priceFloatLabel.TextScaled = true
+	priceFloatLabel.Text = "Only 9 R$"
+	priceFloatLabel.TextColor3 = Color3.fromRGB(80, 220, 120)
+	priceFloatLabel.TextStrokeTransparency = 0
+	priceFloatLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+	priceFloatLabel.ZIndex = 9
+	priceFloatLabel.Parent = autoClaimBadge
+
+	local priceFloatBasePosition = priceFloatLabel.Position
+	TweenService:Create(
+		priceFloatLabel,
+		TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+		{ Position = priceFloatBasePosition + UDim2.new(0, 0, 0, -6) }
+	):Play()
 
 	local diceIcon = Instance.new("ImageLabel")
 	diceIcon.Size = UDim2.new(0, 64, 0, 64)
@@ -233,6 +302,53 @@ function LuckyRollProximityPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		if state.Available then
 			rollSpecial:FireServer(tier.Id)
 		end
+	end)
+
+	-- Not owned -> "BUY" (opens the purchase prompt). Owned -> a real ON/OFF
+	-- toggle (green when on, red when off) instead of a static "Owned" --
+	-- RollManager.luau's per-second loop only auto-claims while both Owns()
+	-- AND session.AutoClaimEnabled are true, so this button is what flips
+	-- that second half.
+	local ownsAutoClaim = false
+	local autoClaimEnabled = false
+	local function refreshAutoClaimBadge()
+		-- The price tag is only relevant pre-purchase -- nothing left to
+		-- buy once owned, regardless of the on/off toggle state.
+		priceFloatLabel.Visible = not ownsAutoClaim
+		if not ownsAutoClaim then
+			autoClaimBadge.Text = "AUTO CLAIM: BUY"
+			autoClaimBadge.BackgroundColor3 = LUCKY_COLOR
+		elseif autoClaimEnabled then
+			autoClaimBadge.Text = "AUTO CLAIM: ON"
+			autoClaimBadge.BackgroundColor3 = Theme.Colors.Success
+		else
+			autoClaimBadge.Text = "AUTO CLAIM: OFF"
+			autoClaimBadge.BackgroundColor3 = Theme.Colors.Danger
+		end
+	end
+	refreshAutoClaimBadge()
+
+	autoClaimBadge.Activated:Connect(function()
+		if not ownsAutoClaim then
+			MarketplaceService:PromptGamePassPurchase(Players.LocalPlayer, AutoClaimConfig.GamepassId)
+			return
+		end
+		setAutoClaim:FireServer(not autoClaimEnabled)
+	end)
+
+	statsUpdated.OnClientEvent:Connect(function(stats: { OwnsAutoClaim: boolean })
+		ownsAutoClaim = stats.OwnsAutoClaim
+		refreshAutoClaimBadge()
+	end)
+
+	-- Echoes the actual persisted server-side state back (see
+	-- AutoClaimManager.luau's SetAutoClaim handler) -- pushed on join and
+	-- again after every successful toggle, so this can't drift from reality
+	-- (e.g. a toggle-on request that got rejected because ownership somehow
+	-- lapsed between clicks).
+	autoClaimUpdated.OnClientEvent:Connect(function(enabled: boolean)
+		autoClaimEnabled = enabled
+		refreshAutoClaimBadge()
 	end)
 
 	-- Runs regardless of panel.Visible (unlike the perf-gated pattern used

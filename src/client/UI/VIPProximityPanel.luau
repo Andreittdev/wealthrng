@@ -25,7 +25,7 @@ function VIPProximityPanel.Create(screenGui: ScreenGui)
 	local panel = Instance.new("Frame")
 	panel.Size = UDim2.new(0, 320, 0, 200)
 	panel.AnchorPoint = Vector2.new(0.5, 1)
-	panel.Position = UDim2.new(0.5, 0, 1, -230)
+	panel.Position = UDim2.new(0.5, 0, 1, -300)
 	panel.BackgroundColor3 = Theme.Colors.Panel
 	panel.BackgroundTransparency = 0
 	panel.BorderSizePixel = 0
@@ -34,7 +34,13 @@ function VIPProximityPanel.Create(screenGui: ScreenGui)
 	panel.Parent = screenGui
 	Theme.Round(panel)
 	Theme.Stroke(panel, Color3.fromRGB(255, 215, 140), 1)
-	Theme.Shadow(panel)
+	local panelShadow = Theme.Shadow(panel)
+	-- Fixed-pixel popup -- shrinks as one unit toward its bottom-center
+	-- anchor on narrow phone screens instead of running off the edges.
+	-- Shadow needs its own matching call, see GroupRewardsProximityPanel's
+	-- comment for why.
+	Theme.AutoScale(screenGui, panel, 320)
+	Theme.AutoScale(screenGui, panelShadow, 320)
 
 	local titleLabel = Theme.Label(panel, UDim2.new(1, -20, 0, 30), "VIP Perks", true)
 	titleLabel.Position = UDim2.new(0, 10, 0, 10)

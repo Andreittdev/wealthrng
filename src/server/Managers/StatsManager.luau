@@ -22,12 +22,13 @@ local InventoryManager = require(ServerScriptService.Managers.InventoryManager)
 local Leaderstats = require(ServerScriptService.Managers.Leaderstats)
 local VIPManager = require(ServerScriptService.Managers.VIPManager)
 local AutoRollManager = require(ServerScriptService.Managers.AutoRollManager)
+local AutoClaimManager = require(ServerScriptService.Managers.AutoClaimManager)
 
 local statsUpdated = RemotesBootstrap:WaitForChild("StatsUpdated")
 
 local StatsManager = {}
 
-local lastStats: { [Player]: { Cash: number, NetWorth: number, Title: string, IsVIP: boolean, OwnsAutoRoll: boolean, ItemsIncomePerSecond: number, AssetsIncomePerMinute: number } } = {}
+local lastStats: { [Player]: { Cash: number, NetWorth: number, Title: string, IsVIP: boolean, OwnsAutoRoll: boolean, OwnsAutoClaim: boolean, ItemsIncomePerSecond: number, AssetsIncomePerMinute: number } } = {}
 
 local function getAssetsValue(session): number
 	local total = 0
@@ -72,6 +73,7 @@ function StatsManager.Recompute(player: Player)
 	local title = TitleConfig.GetTitleForNetWorth(netWorth)
 	local isVIP = VIPManager.IsVIP(player)
 	local ownsAutoRoll = AutoRollManager.Owns(player)
+	local ownsAutoClaim = AutoClaimManager.Owns(player)
 	local bonusArgs = { isVIP, VIPConfig.SellBonusPercent, PotionConfig.GetCashBonusPercent(session, os.time()) }
 	local itemsIncomePerSecond = IncomeConfig.ComputeItemsRatePerSecond(session, table.unpack(bonusArgs))
 	local assetsIncomePerMinute = IncomeConfig.ComputeAssetsRatePerMinute(session, table.unpack(bonusArgs))
@@ -84,19 +86,25 @@ function StatsManager.Recompute(player: Player)
 		and previous.Title == title
 		and previous.IsVIP == isVIP
 		and previous.OwnsAutoRoll == ownsAutoRoll
+		and previous.OwnsAutoClaim == ownsAutoClaim
 		and previous.ItemsIncomePerSecond == itemsIncomePerSecond
 		and previous.AssetsIncomePerMinute == assetsIncomePerMinute
 	then
 		return
 	end
 
-	lastStats[player] =
-		{ Cash = session.Cash, NetWorth = netWorth, Title = title, IsVIP = isVIP, OwnsAutoRoll = ownsAutoRoll, ItemsIncomePerSecond = itemsIncomePerSecond, AssetsIncomePerMinute = assetsIncomePerMinute }
+	lastStats[player] = {
+		Cash = session.Cash,
+		NetWorth = netWorth,
+		Title = title,
+		IsVIP = isVIP,
+		OwnsAutoRoll = ownsAutoRoll,
+		OwnsAutoClaim = ownsAutoClaim,
+		ItemsIncomePerSecond = itemsIncomePerSecond,
+		AssetsIncomePerMinute = assetsIncomePerMinute,
+	}
 	Leaderstats.SetCash(player, session.Cash)
-	statsUpdated:FireClient(
-		player,
-		{ Cash = session.Cash, NetWorth = netWorth, Title = title, IsVIP = isVIP, OwnsAutoRoll = ownsAutoRoll, ItemsIncomePerSecond = itemsIncomePerSecond, AssetsIncomePerMinute = assetsIncomePerMinute }
-	)
+	statsUpdated:FireClient(player, lastStats[player])
 end
 
 return StatsManager

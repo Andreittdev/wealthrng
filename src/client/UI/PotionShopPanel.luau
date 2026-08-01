@@ -101,6 +101,13 @@ function PotionShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		end
 	end
 
+	-- Left-hand icon strip (potion.Image) -- text columns below all shift
+	-- right by ICON_COLUMN_WIDTH to make room instead of overlapping it.
+	-- "rbxassetid://0" (not yet given a real image) just skips the icon
+	-- like every other placeholder-image spot in this codebase.
+	local ICON_SIZE = 56
+	local ICON_COLUMN_WIDTH = 66
+
 	local function render()
 		for id, potion in PotionDatabase.GetAllPotions() do
 			local row = Instance.new("Frame")
@@ -111,20 +118,46 @@ function PotionShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 			row.Parent = content
 			Theme.Round(row, UDim.new(0, 8))
 
-			local nameLabel = Theme.Label(row, UDim2.new(0.6, 0, 0, 24), string.format("%s (%s)", potion.Name, NumberFormat.FormatCash(potion.Price)))
-			nameLabel.Position = UDim2.new(0, 10, 0, 6)
+			local hasImage = potion.Image ~= "" and potion.Image ~= "rbxassetid://0"
+			local textLeft = 10
+			if hasImage then
+				local icon = Instance.new("ImageLabel")
+				icon.Size = UDim2.new(0, ICON_SIZE, 0, ICON_SIZE)
+				icon.AnchorPoint = Vector2.new(0, 0.5)
+				icon.Position = UDim2.new(0, 10, 0.5, 0)
+				icon.BackgroundTransparency = 1
+				icon.ScaleType = Enum.ScaleType.Fit
+				icon.Image = potion.Image
+				icon.Parent = row
+				textLeft = ICON_COLUMN_WIDTH
+			end
 
-			local descLabel = Theme.Label(row, UDim2.new(0.6, 0, 0, 20), describePotion(potion))
-			descLabel.Position = UDim2.new(0, 10, 0, 30)
+			local nameLabel = Theme.Label(row, UDim2.new(0.6, -textLeft + 10, 0, 24), potion.Name)
+			nameLabel.Position = UDim2.new(0, textLeft, 0, 6)
+
+			local descLabel = Theme.Label(row, UDim2.new(0.6, -textLeft + 10, 0, 20), describePotion(potion))
+			descLabel.Position = UDim2.new(0, textLeft, 0, 30)
 			descLabel.TextColor3 = Theme.Colors.Success
 
-			local timeLabel = Theme.Label(row, UDim2.new(0.6, 0, 0, 18), "Not active")
-			timeLabel.Position = UDim2.new(0, 10, 0, 52)
+			local timeLabel = Theme.Label(row, UDim2.new(0.6, -textLeft + 10, 0, 18), "Not active")
+			timeLabel.Position = UDim2.new(0, textLeft, 0, 52)
 			timeLabel.TextColor3 = Theme.Colors.TextSecondary
 			timeLabels[id] = timeLabel
 
-			local buyButton = Theme.Button(row, UDim2.new(0.32, 0, 0.6, 0), UDim2.new(1, -10, 0.5, 0), "Buy", true)
-			buyButton.AnchorPoint = Vector2.new(1, 0.5)
+			-- Price now sits above Buy instead of inline with the name --
+			-- Buy itself shrunk a bit (was 0.32/0.6 of the row) with a
+			-- capped text size so "BUY" doesn't dominate the row.
+			local priceLabel = Theme.Label(row, UDim2.new(0.3, 0, 0, 18), NumberFormat.FormatCash(potion.Price), true)
+			priceLabel.AnchorPoint = Vector2.new(1, 0)
+			priceLabel.Position = UDim2.new(1, -42, 0, 8)
+			priceLabel.TextXAlignment = Enum.TextXAlignment.Right
+			priceLabel.TextColor3 = Theme.Colors.Accent
+
+			local buyButton = Theme.Button(row, UDim2.new(0.28, 0, 0.46, 0), UDim2.new(1, -10, 1, -10), "Buy", true)
+			buyButton.AnchorPoint = Vector2.new(1, 1)
+			local buyButtonTextSize = Instance.new("UITextSizeConstraint")
+			buyButtonTextSize.MaxTextSize = 22
+			buyButtonTextSize.Parent = buyButton
 			buyButton.Activated:Connect(debounce(function()
 				buyPotion:FireServer(id)
 			end))

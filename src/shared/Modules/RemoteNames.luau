@@ -16,7 +16,7 @@ local RemoteNames = {
 		"EquipItem", -- client -> server, payload: uid
 		"UnequipItem", -- client -> server, payload: uid
 		"EquippedItemsUpdated", -- server -> client, payload: { uid }
-		"StatsUpdated", -- server -> client, payload: { Cash, NetWorth, Title, IsVIP, OwnsAutoRoll, ItemsIncomePerSecond, AssetsIncomePerMinute }
+		"StatsUpdated", -- server -> client, payload: { Cash, NetWorth, Title, IsVIP, OwnsAutoRoll, OwnsAutoClaim, ItemsIncomePerSecond, AssetsIncomePerMinute }
 		"BuyAsset", -- client -> server, payload: assetId
 		"SellAsset", -- client -> server, payload: assetId
 		"EquipAsset", -- client -> server, payload: assetId
@@ -53,6 +53,12 @@ local RemoteNames = {
 		-- player owns the Auto Roll gamepass (AutoRollConfig.GamepassId).
 		"AutoRollUpdated", -- server -> client, payload: enabled (boolean) -- echoes the actual server-side
 		-- state back (e.g. after a rejected enable) so the client toggle can't drift from reality.
+		"SetAutoClaim", -- client -> server, payload: enabled (boolean) -- rejected server-side unless the
+		-- player owns the Auto Claim gamepass (AutoClaimConfig.GamepassId). Unlike Auto Roll (a pure
+		-- client-driven loop, no server memory needed), Auto Claim's actual claiming happens in
+		-- RollManager.luau's server-side per-second loop, so this toggle IS persisted (session.AutoClaimEnabled).
+		"AutoClaimUpdated", -- server -> client, payload: enabled (boolean) -- echoes the actual persisted
+		-- session.AutoClaimEnabled, pushed on join and again after a successful SetAutoClaim toggle.
 		"ClaimGroupReward", -- client -> server, no payload -- rejected server-side unless the player is
 		-- in GroupRewardsConfig.GroupId and hasn't already claimed it this save.
 		"GroupRewardStateUpdated", -- server -> client, payload: claimed (boolean) -- current
