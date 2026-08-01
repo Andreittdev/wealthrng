@@ -23,12 +23,33 @@ local Leaderstats = require(ServerScriptService.Managers.Leaderstats)
 local VIPManager = require(ServerScriptService.Managers.VIPManager)
 local AutoRollManager = require(ServerScriptService.Managers.AutoRollManager)
 local AutoClaimManager = require(ServerScriptService.Managers.AutoClaimManager)
+local LuckPassManager = require(ServerScriptService.Managers.LuckPassManager)
+local UltraLuckPassManager = require(ServerScriptService.Managers.UltraLuckPassManager)
+local FastRollManager = require(ServerScriptService.Managers.FastRollManager)
+local DoubleCashManager = require(ServerScriptService.Managers.DoubleCashManager)
+local FriendBoostManager = require(ServerScriptService.Managers.FriendBoostManager)
 
 local statsUpdated = RemotesBootstrap:WaitForChild("StatsUpdated")
 
 local StatsManager = {}
 
-local lastStats: { [Player]: { Cash: number, NetWorth: number, Title: string, IsVIP: boolean, OwnsAutoRoll: boolean, OwnsAutoClaim: boolean, ItemsIncomePerSecond: number, AssetsIncomePerMinute: number } } = {}
+local lastStats: {
+	[Player]: {
+		Cash: number,
+		NetWorth: number,
+		Title: string,
+		IsVIP: boolean,
+		OwnsAutoRoll: boolean,
+		OwnsAutoClaim: boolean,
+		OwnsLuckPass: boolean,
+		OwnsUltraLuckPass: boolean,
+		OwnsFastRoll: boolean,
+		OwnsDoubleCash: boolean,
+		FriendBonusPercent: number,
+		ItemsIncomePerSecond: number,
+		AssetsIncomePerMinute: number,
+	},
+} = {}
 
 local function getAssetsValue(session): number
 	local total = 0
@@ -74,7 +95,23 @@ function StatsManager.Recompute(player: Player)
 	local isVIP = VIPManager.IsVIP(player)
 	local ownsAutoRoll = AutoRollManager.Owns(player)
 	local ownsAutoClaim = AutoClaimManager.Owns(player)
-	local bonusArgs = { isVIP, VIPConfig.SellBonusPercent, PotionConfig.GetCashBonusPercent(session, os.time()) }
+	local ownsLuckPass = LuckPassManager.Owns(player)
+	local ownsUltraLuckPass = UltraLuckPassManager.Owns(player)
+	local ownsFastRoll = FastRollManager.Owns(player)
+	local ownsDoubleCash = DoubleCashManager.Owns(player)
+	-- Friend Boost (FriendBoostConfig.luau) only ever feeds into THIS
+	-- income bonusArgs, never SellManager's -- it's deliberately passive-
+	-- income-only, see FriendBoostConfig's header. Double Cash feeds into
+	-- BOTH this and SellManager's/InvestmentManager's sell bonus.
+	local friendBonusPercent = FriendBoostManager.GetBonusPercent(player)
+	local doubleCashBonusPercent = DoubleCashManager.GetBonusPercent(player)
+	local bonusArgs = {
+		isVIP,
+		VIPConfig.SellBonusPercent,
+		PotionConfig.GetCashBonusPercent(session, os.time()),
+		friendBonusPercent,
+		doubleCashBonusPercent,
+	}
 	local itemsIncomePerSecond = IncomeConfig.ComputeItemsRatePerSecond(session, table.unpack(bonusArgs))
 	local assetsIncomePerMinute = IncomeConfig.ComputeAssetsRatePerMinute(session, table.unpack(bonusArgs))
 
@@ -87,6 +124,11 @@ function StatsManager.Recompute(player: Player)
 		and previous.IsVIP == isVIP
 		and previous.OwnsAutoRoll == ownsAutoRoll
 		and previous.OwnsAutoClaim == ownsAutoClaim
+		and previous.OwnsLuckPass == ownsLuckPass
+		and previous.OwnsUltraLuckPass == ownsUltraLuckPass
+		and previous.OwnsFastRoll == ownsFastRoll
+		and previous.OwnsDoubleCash == ownsDoubleCash
+		and previous.FriendBonusPercent == friendBonusPercent
 		and previous.ItemsIncomePerSecond == itemsIncomePerSecond
 		and previous.AssetsIncomePerMinute == assetsIncomePerMinute
 	then
@@ -100,6 +142,11 @@ function StatsManager.Recompute(player: Player)
 		IsVIP = isVIP,
 		OwnsAutoRoll = ownsAutoRoll,
 		OwnsAutoClaim = ownsAutoClaim,
+		OwnsLuckPass = ownsLuckPass,
+		OwnsUltraLuckPass = ownsUltraLuckPass,
+		OwnsFastRoll = ownsFastRoll,
+		OwnsDoubleCash = ownsDoubleCash,
+		FriendBonusPercent = friendBonusPercent,
 		ItemsIncomePerSecond = itemsIncomePerSecond,
 		AssetsIncomePerMinute = assetsIncomePerMinute,
 	}

@@ -23,17 +23,34 @@ type SessionSlice = {
 	EquippedAssets: { string },
 }
 
-local function combineBonusPercent(isVIP: boolean, vipBonusPercent: number, potionBonusPercent: number): number
-	-- VIP's permanent bonus and a Fortune Potion's temporary one stack
-	-- additively (25% + 40% = +65%), not overwrite each other.
-	local bonusPercent = potionBonusPercent
+local function combineBonusPercent(
+	isVIP: boolean,
+	vipBonusPercent: number,
+	potionBonusPercent: number,
+	friendBonusPercent: number,
+	doubleCashBonusPercent: number
+): number
+	-- VIP's permanent bonus, a Fortune Potion's temporary one, Friend Boost
+	-- (FriendBoostConfig.luau -- online with 1+ Roblox friends on the same
+	-- server), and the Double Cash gamepass (DoubleCashConfig.luau) all
+	-- stack additively (25% + 40% + 20% + 100% = +185%), not overwrite each
+	-- other -- same "stack, don't replace" shape used everywhere else in
+	-- this economy.
+	local bonusPercent = potionBonusPercent + friendBonusPercent + doubleCashBonusPercent
 	if isVIP then
 		bonusPercent += vipBonusPercent
 	end
 	return bonusPercent
 end
 
-function IncomeConfig.ComputeItemsRatePerSecond(session: SessionSlice, isVIP: boolean, vipBonusPercent: number, potionBonusPercent: number): number
+function IncomeConfig.ComputeItemsRatePerSecond(
+	session: SessionSlice,
+	isVIP: boolean,
+	vipBonusPercent: number,
+	potionBonusPercent: number,
+	friendBonusPercent: number,
+	doubleCashBonusPercent: number
+): number
 	-- Only equipped items earn income -- unequipped ones still count their
 	-- Value toward Net Worth via InventoryManager.GetValue, just not this.
 	-- Reads session.EquippedItemId directly (kept in sync by
@@ -49,11 +66,18 @@ function IncomeConfig.ComputeItemsRatePerSecond(session: SessionSlice, isVIP: bo
 		total = item.IncomePerSecond
 	end
 
-	total *= 1 + combineBonusPercent(isVIP, vipBonusPercent, potionBonusPercent) / 100
+	total *= 1 + combineBonusPercent(isVIP, vipBonusPercent, potionBonusPercent, friendBonusPercent, doubleCashBonusPercent) / 100
 	return total
 end
 
-function IncomeConfig.ComputeAssetsRatePerMinute(session: SessionSlice, isVIP: boolean, vipBonusPercent: number, potionBonusPercent: number): number
+function IncomeConfig.ComputeAssetsRatePerMinute(
+	session: SessionSlice,
+	isVIP: boolean,
+	vipBonusPercent: number,
+	potionBonusPercent: number,
+	friendBonusPercent: number,
+	doubleCashBonusPercent: number
+): number
 	local total = 0
 
 	for _, assetId in session.EquippedAssets do
@@ -63,7 +87,7 @@ function IncomeConfig.ComputeAssetsRatePerMinute(session: SessionSlice, isVIP: b
 		end
 	end
 
-	total *= 1 + combineBonusPercent(isVIP, vipBonusPercent, potionBonusPercent) / 100
+	total *= 1 + combineBonusPercent(isVIP, vipBonusPercent, potionBonusPercent, friendBonusPercent, doubleCashBonusPercent) / 100
 	return total
 end
 

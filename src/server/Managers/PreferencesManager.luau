@@ -11,7 +11,10 @@ local DataManager = require(ServerScriptService.Managers.DataManager)
 local setPreference = RemotesBootstrap:WaitForChild("SetPreference")
 local preferencesUpdated = RemotesBootstrap:WaitForChild("PreferencesUpdated")
 
-local VALID_KEYS = { Music = true, SFX = true, VFX = true }
+-- HideOtherPlayers is purely a client-side rendering toggle (see
+-- HideOtherPlayers.luau) -- persisted here the same way as Music/SFX/VFX
+-- just so the choice survives across sessions, nothing server-side reads it.
+local VALID_KEYS = { Music = true, SFX = true, VFX = true, HideOtherPlayers = true }
 
 setPreference.OnServerEvent:Connect(function(player: Player, key: unknown, enabled: unknown)
 	if typeof(key) ~= "string" or typeof(enabled) ~= "boolean" or not VALID_KEYS[key] then

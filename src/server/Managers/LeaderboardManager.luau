@@ -39,6 +39,13 @@ local LeaderboardManager = {}
 local SUBMIT_INTERVAL_SECONDS = 20
 local REFRESH_INTERVAL_SECONDS = 60
 local TOP_N = 100
+-- The physical board is only ~7 rows tall at once (7.5 studs / ROW_HEIGHT),
+-- so building all 100 rows as real TextLabel instances (300 across the 3
+-- boards, all permanently rendered in a SurfaceGui near spawn, re-created
+-- every 60s) was pure wasted render/layout cost for rows nobody could see
+-- without scrolling. Ranks beyond this cap are still tracked/announced
+-- (see the loop below) -- only the on-board TextLabel is skipped.
+local ROWS_TO_RENDER = 30
 -- In SurfaceGui pixels, not studs -- MapBuilder's boards render at 100
 -- PixelsPerStud (explicit, see buildLeaderboard), so 110px =~ 1.1 studs
 -- tall per row. Tall enough for TextScaled to wrap a long "1. Name -
@@ -239,22 +246,24 @@ local function refreshBoard(boardIndex: number, label: string, store: OrderedDat
 		local userId = tonumber(entry.key)
 		local name = userId and getDisplayName(userId) or entry.key
 
-		local row = Instance.new("TextLabel")
-		row.Name = "Row" .. i
-		row.LayoutOrder = i
-		row.Size = UDim2.new(1, 0, 0, ROW_HEIGHT)
-		row.BackgroundTransparency = 1
-		row.TextColor3 = RANK_COLORS[i] or DEFAULT_ROW_COLOR
-		-- LuckiestGuy (the game's one decorative font, see Theme.luau) is too
-		-- bold/chunky to stay legible at this size crammed onto a 3D board
-		-- viewed from a distance/angle -- unlike the 2D screen UI, rows here
-		-- need a plain, high-legibility font instead.
-		row.Font = Enum.Font.GothamBold
-		row.TextScaled = true
-		row.TextWrapped = true
-		row.TextXAlignment = Enum.TextXAlignment.Left
-		row.Text = string.format("%d. %s - %s", i, name, format(entry.value))
-		row.Parent = rowsFrame
+		if i <= ROWS_TO_RENDER then
+			local row = Instance.new("TextLabel")
+			row.Name = "Row" .. i
+			row.LayoutOrder = i
+			row.Size = UDim2.new(1, 0, 0, ROW_HEIGHT)
+			row.BackgroundTransparency = 1
+			row.TextColor3 = RANK_COLORS[i] or DEFAULT_ROW_COLOR
+			-- LuckiestGuy (the game's one decorative font, see Theme.luau) is too
+			-- bold/chunky to stay legible at this size crammed onto a 3D board
+			-- viewed from a distance/angle -- unlike the 2D screen UI, rows here
+			-- need a plain, high-legibility font instead.
+			row.Font = Enum.Font.GothamBold
+			row.TextScaled = true
+			row.TextWrapped = true
+			row.TextXAlignment = Enum.TextXAlignment.Left
+			row.Text = string.format("%d. %s - %s", i, name, format(entry.value))
+			row.Parent = rowsFrame
+		end
 
 		if userId then
 			local player = Players:GetPlayerByUserId(userId)

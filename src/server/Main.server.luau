@@ -13,6 +13,10 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local VIPConfig = require(ReplicatedStorage.Modules.VIPConfig)
 local AutoRollConfig = require(ReplicatedStorage.Modules.AutoRollConfig)
 local AutoClaimConfig = require(ReplicatedStorage.Modules.AutoClaimConfig)
+local LuckPassConfig = require(ReplicatedStorage.Modules.LuckPassConfig)
+local UltraLuckPassConfig = require(ReplicatedStorage.Modules.UltraLuckPassConfig)
+local FastRollConfig = require(ReplicatedStorage.Modules.FastRollConfig)
+local DoubleCashConfig = require(ReplicatedStorage.Modules.DoubleCashConfig)
 
 -- The Emitter2D particle system (src/client/Emitter2D.rbxm) blocks forever
 -- on require() waiting for this attribute -- it's normally set by the
@@ -42,6 +46,12 @@ local Leaderstats = require(ServerScriptService.Managers.Leaderstats)
 local VIPManager = require(ServerScriptService.Managers.VIPManager)
 local AutoRollManager = require(ServerScriptService.Managers.AutoRollManager)
 local AutoClaimManager = require(ServerScriptService.Managers.AutoClaimManager)
+require(ServerScriptService.Managers.CashPackManager)
+local LuckPassManager = require(ServerScriptService.Managers.LuckPassManager)
+local UltraLuckPassManager = require(ServerScriptService.Managers.UltraLuckPassManager)
+local FastRollManager = require(ServerScriptService.Managers.FastRollManager)
+local DoubleCashManager = require(ServerScriptService.Managers.DoubleCashManager)
+require(ServerScriptService.Managers.FriendBoostManager)
 local StatsManager = require(ServerScriptService.Managers.StatsManager)
 
 local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManager)
@@ -95,6 +105,10 @@ local function onPlayerAdded(player: Player)
 	VIPManager.Load(player)
 	AutoRollManager.Load(player)
 	AutoClaimManager.Load(player)
+	LuckPassManager.Load(player)
+	UltraLuckPassManager.Load(player)
+	FastRollManager.Load(player)
+	DoubleCashManager.Load(player)
 	Leaderstats.Create(player)
 	StatsManager.Recompute(player)
 	-- So a player shows up on the boards from their very first stats
@@ -129,6 +143,22 @@ MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player: Playe
 	elseif gamePassId == AutoClaimConfig.GamepassId then
 		AutoClaimManager.Grant(player)
 		systemMessage:FireClient(player, "Auto Claim Gamepass Activated!")
+		StatsManager.Recompute(player)
+	elseif gamePassId == LuckPassConfig.GamepassId then
+		LuckPassManager.Grant(player)
+		systemMessage:FireClient(player, "Luck Pass Gamepass Activated!")
+		StatsManager.Recompute(player)
+	elseif gamePassId == UltraLuckPassConfig.GamepassId then
+		UltraLuckPassManager.Grant(player)
+		systemMessage:FireClient(player, "Ultra Luck Pass Gamepass Activated!")
+		StatsManager.Recompute(player)
+	elseif gamePassId == FastRollConfig.GamepassId then
+		FastRollManager.Grant(player)
+		systemMessage:FireClient(player, "Fast Roll Gamepass Activated!")
+		StatsManager.Recompute(player)
+	elseif gamePassId == DoubleCashConfig.GamepassId then
+		DoubleCashManager.Grant(player)
+		systemMessage:FireClient(player, "Double Cash Gamepass Activated!")
 		StatsManager.Recompute(player)
 	end
 end)

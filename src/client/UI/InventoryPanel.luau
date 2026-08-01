@@ -80,11 +80,46 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		panel.Visible = false
 	end)
 
+	-- ===== Search bar -- filters the list below by item name as you type,
+	-- same rarity-colored row list, just fewer rows visible. =====
+	local searchBox = Instance.new("TextBox")
+	searchBox.Size = UDim2.new(1, -32, 0, 32)
+	searchBox.Position = UDim2.new(0, 16, 0, 56)
+	searchBox.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
+	searchBox.BorderSizePixel = 0
+	searchBox.Text = ""
+	searchBox.PlaceholderText = "Search items..."
+	searchBox.TextColor3 = Theme.Colors.TextPrimary
+	searchBox.PlaceholderColor3 = Theme.Colors.TextSecondary
+	searchBox.Font = Theme.Fonts.Body
+	searchBox.TextSize = 16
+	searchBox.TextXAlignment = Enum.TextXAlignment.Left
+	searchBox.ClearTextOnFocus = false
+	searchBox.ZIndex = 1
+	searchBox.Parent = panel
+	Theme.Round(searchBox, UDim.new(0, 8))
+	local searchBoxStroke = Theme.Stroke(searchBox, Color3.fromRGB(90, 90, 98), 1.5)
+	searchBoxStroke.Transparency = 0
+
+	local searchBoxPadding = Instance.new("UIPadding")
+	searchBoxPadding.PaddingLeft = UDim.new(0, 10)
+	searchBoxPadding.PaddingRight = UDim.new(0, 10)
+	searchBoxPadding.Parent = searchBox
+
+	-- Catches EVERY way the panel can close (Close button, Sidebar toggle,
+	-- clicking the Inventory sidebar icon again) in one place, instead of
+	-- duplicating a reset call at each individual close path.
+	panel:GetPropertyChangedSignal("Visible"):Connect(function()
+		if not panel.Visible then
+			searchBox.Text = ""
+		end
+	end)
+
 	-- ===== List, name + chance per row -- takes the full content width, no
 	-- space reserved for the detail pane (that's an overlay now, see below). =====
 	local list = Instance.new("ScrollingFrame")
-	list.Size = UDim2.new(1, -32, 1, -72)
-	list.Position = UDim2.new(0, 16, 0, 56)
+	list.Size = UDim2.new(1, -32, 1, -114)
+	list.Position = UDim2.new(0, 16, 0, 98)
 	list.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
 	list.BackgroundTransparency = 0
 	list.BorderSizePixel = 0
@@ -224,6 +259,12 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	local renderList
 	local renderDetail
 
+	local searchQuery = ""
+	searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+		searchQuery = string.lower(searchBox.Text)
+		renderList()
+	end)
+
 	local handle = {}
 	handle.Frame = panel
 
@@ -335,6 +376,9 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		for order, entry in currentInventory do
 			local item = ItemDatabase.GetItem(entry.ItemId)
 			if not item then
+				continue
+			end
+			if searchQuery ~= "" and not string.find(string.lower(item.Name), searchQuery, 1, true) then
 				continue
 			end
 

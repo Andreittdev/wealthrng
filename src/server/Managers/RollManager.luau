@@ -21,6 +21,9 @@ local RollConfig = require(ReplicatedStorage.Modules.RollConfig)
 local VIPConfig = require(ReplicatedStorage.Modules.VIPConfig)
 local PotionConfig = require(ReplicatedStorage.Modules.PotionConfig)
 local UpgradeConfig = require(ReplicatedStorage.Modules.UpgradeConfig)
+local LuckPassConfig = require(ReplicatedStorage.Modules.LuckPassConfig)
+local UltraLuckPassConfig = require(ReplicatedStorage.Modules.UltraLuckPassConfig)
+local FastRollConfig = require(ReplicatedStorage.Modules.FastRollConfig)
 local SpecialRollConfig = require(ReplicatedStorage.Modules.SpecialRollConfig)
 local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
 local DataManager = require(ServerScriptService.Managers.DataManager)
@@ -30,6 +33,10 @@ local VIPManager = require(ServerScriptService.Managers.VIPManager)
 local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManager)
 local SellManager = require(ServerScriptService.Managers.SellManager)
 local AutoClaimManager = require(ServerScriptService.Managers.AutoClaimManager)
+local LuckPassManager = require(ServerScriptService.Managers.LuckPassManager)
+local UltraLuckPassManager = require(ServerScriptService.Managers.UltraLuckPassManager)
+local FastRollManager = require(ServerScriptService.Managers.FastRollManager)
+local DoubleCashManager = require(ServerScriptService.Managers.DoubleCashManager)
 
 local rollRequested = RemotesBootstrap:WaitForChild("RollRequested")
 local rollResult = RemotesBootstrap:WaitForChild("RollResult")
@@ -42,7 +49,7 @@ local RollManager = {}
 local random = Random.new()
 local lastRollAt: { [Player]: number } = {}
 
-local function pickRarity(session, isVIP: boolean, nowUnix: number): string
+local function pickRarity(session, isVIP: boolean, nowUnix: number, ownsLuckPass: boolean, ownsUltraLuckPass: boolean): string
 	local totalWeight = 0
 	local weights: { [string]: number } = {}
 	for _, rarity in RarityConfig.Order do
@@ -52,6 +59,12 @@ local function pickRarity(session, isVIP: boolean, nowUnix: number): string
 		end
 		weight *= PotionConfig.GetLuckMultiplier(session, rarity, nowUnix)
 		weight *= UpgradeConfig.GetLuckMultiplier(session.Upgrades.Luck or 0, rarity)
+		if ownsLuckPass then
+			weight *= LuckPassConfig.LuckWeightMultiplier[rarity]
+		end
+		if ownsUltraLuckPass then
+			weight *= UltraLuckPassConfig.LuckWeightMultiplier[rarity]
+		end
 		weights[rarity] = weight
 		totalWeight += weight
 	end
@@ -94,8 +107,8 @@ local function pickItemForRarity(rarity: string)
 	return candidates[#candidates]
 end
 
-local function pickItem(session, isVIP: boolean, nowUnix: number)
-	local rarity = pickRarity(session, isVIP, nowUnix)
+local function pickItem(session, isVIP: boolean, nowUnix: number, ownsLuckPass: boolean, ownsUltraLuckPass: boolean)
+	local rarity = pickRarity(session, isVIP, nowUnix, ownsLuckPass, ownsUltraLuckPass)
 	return pickItemForRarity(rarity)
 end
 
@@ -209,6 +222,9 @@ function RollManager.TryRoll(player: Player): boolean
 	local cooldown = baseCooldown
 		* PotionConfig.GetCooldownMultiplier(session, nowUnix)
 		* UpgradeConfig.GetCooldownMultiplier(session.Upgrades.RollSpeed or 0)
+	if FastRollManager.Owns(player) then
+		cooldown *= FastRollConfig.CooldownMultiplier
+	end
 
 	local nowClock = os.clock()
 	local last = lastRollAt[player]
@@ -217,7 +233,7 @@ function RollManager.TryRoll(player: Player): boolean
 	end
 	lastRollAt[player] = nowClock
 
-	local item = pickItem(session, isVIP, nowUnix)
+	local item = pickItem(session, isVIP, nowUnix, LuckPassManager.Owns(player), UltraLuckPassManager.Owns(player))
 	if not item then
 		return false
 	end
@@ -233,7 +249,7 @@ function RollManager.TryRoll(player: Player): boolean
 		local alreadyOwned = (session.OwnedItemCounts[item.Id] or 0) > 0
 
 		if alreadyOwned then
-			session.Cash += SellManager.ComputeSellValue(session, isVIP, item)
+			session.Cash += SellManager.ComputeSellValue(session, isVIP, item, DoubleCashManager.GetBonusPercent(player))
 			session.TotalRolls += 1
 			advanceSpecialRollProgress(session)
 
@@ -333,7 +349,7 @@ function RollManager.TrySpecialRoll(player: Player, tierId: string): boolean
 		local alreadyOwned = (session.OwnedItemCounts[item.Id] or 0) > 0
 
 		if alreadyOwned then
-			session.Cash += SellManager.ComputeSellValue(session, isVIP, item)
+			session.Cash += SellManager.ComputeSellValue(session, isVIP, item, DoubleCashManager.GetBonusPercent(player))
 			session.TotalRolls += 1
 			markTierClaimed(session, tier)
 

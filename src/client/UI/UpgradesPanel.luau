@@ -118,7 +118,7 @@ function UpgradesPanel.Create(screenGui: ScreenGui, remotes: Folder)
 
 		local card = Instance.new("Frame")
 		card.LayoutOrder = order
-		card.Size = UDim2.new(1, 0, 0, 96)
+		card.Size = UDim2.new(1, 0, 0, 120)
 		card.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
 		card.BackgroundTransparency = 0
 		card.BorderSizePixel = 0
@@ -129,6 +129,7 @@ function UpgradesPanel.Create(screenGui: ScreenGui, remotes: Folder)
 
 		local padding = Instance.new("UIPadding")
 		padding.PaddingTop = UDim.new(0, 8)
+		padding.PaddingBottom = UDim.new(0, 8)
 		padding.PaddingLeft = UDim.new(0, 12)
 		padding.PaddingRight = UDim.new(0, 12)
 		padding.Parent = card
@@ -145,12 +146,12 @@ function UpgradesPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		descriptionLabel.Position = UDim2.new(0, 0, 0, 24)
 		descriptionLabel.TextColor3 = Theme.Colors.TextSecondary
 
-		local effectLabel = Theme.Label(card, UDim2.new(1, 0, 0, 20), "")
-		effectLabel.Position = UDim2.new(0, 0, 0, 44)
+		local effectLabel = Theme.Label(card, UDim2.new(1, 0, 0, 22), "")
+		effectLabel.Position = UDim2.new(0, 0, 0, 46)
 		effectLabel.TextColor3 = Theme.Colors.Success
 		effectLabels[trackId] = effectLabel
 
-		local buyButton = Theme.Button(card, UDim2.new(1, 0, 0, 30), UDim2.new(0, 0, 1, -32), "Buy", true)
+		local buyButton = Theme.Button(card, UDim2.new(1, 0, 0, 32), UDim2.new(0, 0, 0, 72), "Buy", true)
 		buyButton.Activated:Connect(debounce(function()
 			buyUpgrade:FireServer(trackId)
 		end))

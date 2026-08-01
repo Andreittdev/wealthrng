@@ -24,6 +24,10 @@ local SettingsPanel = {}
 
 local ROW_HEIGHT = 40
 local PREFERENCE_KEYS = { "Music", "SFX", "VFX" }
+-- Off by default (players visible) -- unlike Music/SFX/VFX, which default
+-- on. Kept as its own row/key instead of folded into PREFERENCE_KEYS since
+-- that list assumes "missing == on" everywhere it's read.
+local HIDE_OTHER_PLAYERS_KEY = "HideOtherPlayers"
 
 function SettingsPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	local setAutoSellDuplicate = remotes:WaitForChild("SetAutoSellDuplicate")
@@ -167,6 +171,29 @@ function SettingsPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		end)
 	end
 
+	-- ===== Performance =====
+	local performanceSectionLabel = Theme.Label(content, UDim2.new(1, 0, 0, 22), "Performance", true)
+	performanceSectionLabel.LayoutOrder = 4 + #PREFERENCE_KEYS
+
+	local hideOtherPlayersRow = Instance.new("Frame")
+	hideOtherPlayersRow.LayoutOrder = 5 + #PREFERENCE_KEYS
+	hideOtherPlayersRow.Size = UDim2.new(1, 0, 0, ROW_HEIGHT - 4)
+	hideOtherPlayersRow.BackgroundTransparency = 1
+	hideOtherPlayersRow.Parent = content
+
+	local hideOtherPlayersLabel = Theme.Label(hideOtherPlayersRow, UDim2.new(1, -96, 1, 0), "Hide Other Players", true)
+
+	local hideOtherPlayersButton = Theme.Button(hideOtherPlayersRow, UDim2.new(0, 80, 0, 30), UDim2.new(1, -80, 0, 3), "OFF")
+	stylePreferenceToggle(hideOtherPlayersButton, false)
+	preferenceToggleButtons[HIDE_OTHER_PLAYERS_KEY] = hideOtherPlayersButton
+
+	hideOtherPlayersButton.Activated:Connect(function()
+		local newState = not currentPreferences[HIDE_OTHER_PLAYERS_KEY]
+		currentPreferences[HIDE_OTHER_PLAYERS_KEY] = newState
+		stylePreferenceToggle(hideOtherPlayersButton, newState)
+		setPreference:FireServer(HIDE_OTHER_PLAYERS_KEY, newState)
+	end)
+
 	preferencesUpdated.OnClientEvent:Connect(function(map: { [string]: boolean })
 		for _, key in PREFERENCE_KEYS do
 			local isOn = map[key] ~= false
@@ -176,6 +203,10 @@ function SettingsPanel.Create(screenGui: ScreenGui, remotes: Folder)
 				stylePreferenceToggle(button, isOn)
 			end
 		end
+
+		local hideOn = map[HIDE_OTHER_PLAYERS_KEY] == true
+		currentPreferences[HIDE_OTHER_PLAYERS_KEY] = hideOn
+		stylePreferenceToggle(hideOtherPlayersButton, hideOn)
 	end)
 
 	local function setExpanded(expanded: boolean)

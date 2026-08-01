@@ -1,6 +1,9 @@
--- Sidebar-triggered "Shop" panel: Robux gamepass purchases (VIP, Auto
--- Roll). Built as a catalog list of rows so adding more purchasable things
--- later is just another row, not a restructure. Not to be confused with
+-- Sidebar-triggered "Shop" panel: two sections, GAMEPASSES (one-time
+-- permanent perks) and CASH PACKS (repeatable Developer Product purchases,
+-- straight Cash, no perk). Both are a grid of square cards (image + name +
+-- price pill, no description text -- per reference screenshot from another
+-- game's shop UI), 2 per row, so adding another entry later is just another
+-- create*Card call, not a layout restructure. Not to be confused with
 -- AssetShopPanel.luau, the physical proximity-triggered Assets/Invest
 -- trading panel. The plaza's yellow "VIP" floor marker (MapBuilder's
 -- buildVIPMarker) shows its own separate quick-glance popup
@@ -12,14 +15,142 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local VIPConfig = require(ReplicatedStorage.Modules.VIPConfig)
 local AutoRollConfig = require(ReplicatedStorage.Modules.AutoRollConfig)
+local LuckPassConfig = require(ReplicatedStorage.Modules.LuckPassConfig)
+local UltraLuckPassConfig = require(ReplicatedStorage.Modules.UltraLuckPassConfig)
+local FastRollConfig = require(ReplicatedStorage.Modules.FastRollConfig)
+local DoubleCashConfig = require(ReplicatedStorage.Modules.DoubleCashConfig)
+local CashPackConfig = require(ReplicatedStorage.Modules.CashPackConfig)
+local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
 local Theme = require(script.Parent.Theme)
 
 local ShopPanel = {}
 
+local CARD_STROKE_COLOR = Color3.fromRGB(15, 15, 18)
+local CASH_ICON = "rbxassetid://72463281853990"
+
+-- Shared by both card kinds -- builds the square frame + icon + name, and
+-- returns the empty price-pill button for the caller to finish wiring
+-- (gamepass cards need an Owned state, cash pack cards don't, so gluing the
+-- Activated handler on here would mean threading that difference through
+-- anyway).
+local function createCardBase(parent: Instance, layoutOrder: number, bgColor: Color3, imageId: string, name: string, nameMaxTextSize: number?): TextButton
+	local card = Instance.new("Frame")
+	card.LayoutOrder = layoutOrder
+	card.BackgroundColor3 = bgColor
+	card.BorderSizePixel = 0
+	card.Parent = parent
+	Theme.Round(card, UDim.new(0, 16))
+	Theme.Stroke(card, CARD_STROKE_COLOR, 4)
+
+	local icon = Instance.new("ImageLabel")
+	icon.Size = UDim2.new(1, -20, 0, 130)
+	icon.Position = UDim2.new(0, 10, 0, 10)
+	icon.BackgroundTransparency = 1
+	icon.ScaleType = Enum.ScaleType.Fit
+	icon.Image = imageId
+	icon.Parent = card
+
+	local nameLabel = Instance.new("TextLabel")
+	nameLabel.Size = UDim2.new(1, -12, 0, 28)
+	nameLabel.Position = UDim2.new(0, 6, 0, 144)
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.Font = Theme.Fonts.Header
+	nameLabel.Text = name
+	nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	nameLabel.TextScaled = true
+	nameLabel.TextStrokeTransparency = 0
+	nameLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+	nameLabel.Parent = card
+	local nameSizeConstraint = Instance.new("UITextSizeConstraint")
+	nameSizeConstraint.MaxTextSize = nameMaxTextSize or 22
+	nameSizeConstraint.Parent = nameLabel
+
+	local priceButton = Instance.new("TextButton")
+	priceButton.Size = UDim2.new(1, -20, 0, 34)
+	priceButton.Position = UDim2.new(0, 10, 0, 176)
+	priceButton.BackgroundColor3 = Theme.Colors.Success
+	priceButton.BorderSizePixel = 0
+	priceButton.AutoButtonColor = true
+	priceButton.Font = Theme.Fonts.Header
+	priceButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	priceButton.TextScaled = true
+	priceButton.Parent = card
+	Theme.Round(priceButton, UDim.new(1, 0))
+	Theme.Stroke(priceButton, CARD_STROKE_COLOR, 2)
+	local priceSizeConstraint = Instance.new("UITextSizeConstraint")
+	priceSizeConstraint.MaxTextSize = 20
+	priceSizeConstraint.Parent = priceButton
+
+	return priceButton
+end
+
+-- Returns a `refresh(owned)` closure so handle.Update can drive it from the
+-- matching StatsUpdated field without each card needing its own bespoke
+-- refresh function.
+local function createGamepassCard(parent: Instance, layoutOrder: number, bgColor: Color3, imageId: string, name: string, priceText: string, gamepassId: number): (boolean) -> ()
+	local priceButton = createCardBase(parent, layoutOrder, bgColor, imageId, name)
+	priceButton.Text = priceText
+
+	local owned = false
+	local function refresh(newOwned: boolean)
+		owned = newOwned
+		priceButton.Text = owned and "OWNED" or priceText
+		priceButton.Active = not owned
+		priceButton.AutoButtonColor = not owned
+	end
+	refresh(false)
+
+	priceButton.Activated:Connect(function()
+		if owned then
+			return
+		end
+		MarketplaceService:PromptGamePassPurchase(Players.LocalPlayer, gamepassId)
+	end)
+
+	return refresh
+end
+
+-- No Owned state -- Developer Products are meant to be bought again and
+-- again, so the price pill always stays active.
+local function createCashPackCard(parent: Instance, layoutOrder: number, bgColor: Color3, cashAmount: number, priceText: string, productId: number)
+	local priceButton = createCardBase(parent, layoutOrder, bgColor, CASH_ICON, NumberFormat.FormatCash(cashAmount), 30)
+	priceButton.Text = priceText
+
+	priceButton.Activated:Connect(function()
+		MarketplaceService:PromptProductPurchase(Players.LocalPlayer, productId)
+	end)
+end
+
+-- A full-width section: a "TITLE" label followed by its own 2-column card
+-- grid, both stacked into `parent`'s outer UIListLayout via `order`/`order+1`.
+-- Returns the grid Frame so the caller can populate it with cards.
+local function createSection(parent: Instance, order: number, title: string): Frame
+	local label = Theme.Label(parent, UDim2.new(1, 0, 0, 26), title, true)
+	label.LayoutOrder = order
+	label.TextXAlignment = Enum.TextXAlignment.Center
+
+	local grid = Instance.new("Frame")
+	grid.LayoutOrder = order + 1
+	grid.Size = UDim2.new(1, 0, 0, 0)
+	grid.AutomaticSize = Enum.AutomaticSize.Y
+	grid.BackgroundTransparency = 1
+	grid.Parent = parent
+
+	-- 2 columns -- CellSize halves are offset by half the gap so
+	-- 2*(0.5W - 8) + 16 == W exactly, same trick InventoryPanel uses.
+	local gridLayout = Instance.new("UIGridLayout")
+	gridLayout.CellSize = UDim2.new(0.5, -8, 0, 220)
+	gridLayout.CellPadding = UDim2.new(0, 16, 0, 16)
+	gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	gridLayout.Parent = grid
+
+	return grid
+end
+
 function ShopPanel.Create(screenGui: ScreenGui)
 	-- Anchored near the top (not dead-center) so it doesn't collide with
 	-- RollPanel's bottom-anchored reveal window/button on shorter viewports.
-	local panel = Theme.ResponsivePanel(screenGui, UDim2.new(0, 360, 0, 320), UDim2.new(0.5, -180, 0, 60))
+	local panel = Theme.ResponsivePanel(screenGui, UDim2.new(0, 460, 0, 600), UDim2.new(0.5, -230, 0, 60))
 	panel.Visible = false
 	panel.ZIndex = 10
 
@@ -27,103 +158,59 @@ function ShopPanel.Create(screenGui: ScreenGui)
 	titleLabel.Position = UDim2.new(0, 16, 0, 10)
 
 	local closeButton = Theme.Button(panel, UDim2.new(0, 90, 0, 32), UDim2.new(1, -100, 0, 10), "Close")
+	closeButton.BackgroundColor3 = Theme.Colors.Danger
+	closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	closeButton.TextScaled = false
+	closeButton.TextSize = 16
+	local closeButtonStroke = closeButton:FindFirstChildOfClass("UIStroke")
+	if closeButtonStroke then
+		closeButtonStroke.Color = Color3.fromRGB(255, 140, 140)
+	end
 	closeButton.Activated:Connect(function()
 		panel.Visible = false
 	end)
 
-	local vipRow = Instance.new("Frame")
-	vipRow.Size = UDim2.new(1, -32, 0, 120)
-	vipRow.Position = UDim2.new(0, 16, 0, 56)
-	vipRow.BackgroundColor3 = Theme.Colors.Surface
-	vipRow.BackgroundTransparency = 0
-	vipRow.BorderSizePixel = 0
-	vipRow.Parent = panel
-	Theme.Round(vipRow, UDim.new(0, 8))
-	Theme.Stroke(vipRow, Theme.Colors.Accent, 1)
+	local content = Instance.new("ScrollingFrame")
+	content.Size = UDim2.new(1, -32, 1, -66)
+	content.Position = UDim2.new(0, 16, 0, 56)
+	content.BackgroundTransparency = 1
+	content.BorderSizePixel = 0
+	content.CanvasSize = UDim2.new(0, 0, 0, 0)
+	content.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	content.ScrollBarThickness = 6
+	content.ScrollBarImageColor3 = Theme.Colors.Accent
+	content.Parent = panel
 
-	local vipNameLabel = Theme.Label(vipRow, UDim2.new(1, -20, 0, 28), "VIP", true)
-	vipNameLabel.Position = UDim2.new(0, 10, 0, 8)
+	local outerLayout = Instance.new("UIListLayout")
+	outerLayout.Padding = UDim.new(0, 16)
+	outerLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	outerLayout.Parent = content
 
-	local vipPerksLabel = Theme.Label(vipRow, UDim2.new(1, -20, 0, 46), "+Luck on every roll, shorter cooldown, +25% cash on sell")
-	vipPerksLabel.Position = UDim2.new(0, 10, 0, 38)
-	vipPerksLabel.TextWrapped = true
-	vipPerksLabel.TextColor3 = Theme.Colors.TextSecondary
+	local gamepassesGrid = createSection(content, 1, "GAMEPASSES")
 
-	local buyVIPButton = Theme.Button(vipRow, UDim2.new(1, -20, 0, 32), UDim2.new(0, 10, 1, -40), "Buy", true)
+	local refreshVIP = createGamepassCard(gamepassesGrid, 1, Color3.fromRGB(255, 200, 80), "", "VIP", "Buy", VIPConfig.GamepassId)
+	local refreshAutoRoll = createGamepassCard(
+		gamepassesGrid,
+		2,
+		Color3.fromRGB(90, 170, 255),
+		"rbxassetid://115324216729484",
+		"Auto Roll",
+		"Buy",
+		AutoRollConfig.GamepassId
+	)
+	local refreshLuckPass =
+		createGamepassCard(gamepassesGrid, 3, Color3.fromRGB(110, 220, 130), "", "Luck Pass", "49 R$", LuckPassConfig.GamepassId)
+	local refreshUltraLuckPass =
+		createGamepassCard(gamepassesGrid, 4, Color3.fromRGB(180, 110, 255), "", "Ultra Luck Pass", "249 R$", UltraLuckPassConfig.GamepassId)
+	local refreshFastRoll =
+		createGamepassCard(gamepassesGrid, 5, Color3.fromRGB(255, 110, 90), "", "Fast Roll", "149 R$", FastRollConfig.GamepassId)
+	local refreshDoubleCash =
+		createGamepassCard(gamepassesGrid, 6, Color3.fromRGB(255, 205, 80), "", "Double Cash", "299 R$", DoubleCashConfig.GamepassId)
 
-	local isVIP = false
-	local function refreshVIPButton()
-		if isVIP then
-			buyVIPButton.Text = "Owned"
-			buyVIPButton.Active = false
-			buyVIPButton.AutoButtonColor = false
-			buyVIPButton.BackgroundColor3 = Theme.Colors.Success
-			buyVIPButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-		else
-			buyVIPButton.Text = "Buy"
-			buyVIPButton.Active = true
-			buyVIPButton.AutoButtonColor = true
-			buyVIPButton.BackgroundColor3 = Theme.Colors.Accent
-			buyVIPButton.TextColor3 = Color3.fromRGB(20, 20, 20)
-		end
+	local cashPacksGrid = createSection(content, 3, "CASH")
+	for index, pack in CashPackConfig.Packs do
+		createCashPackCard(cashPacksGrid, index, Color3.fromRGB(120, 220, 150), pack.CashAmount, pack.RobuxPrice .. " R$", pack.ProductId)
 	end
-	refreshVIPButton()
-
-	buyVIPButton.Activated:Connect(function()
-		if isVIP then
-			return
-		end
-		MarketplaceService:PromptGamePassPurchase(Players.LocalPlayer, VIPConfig.GamepassId)
-	end)
-
-	-- ===== Auto Roll row =====
-	local autoRollRow = Instance.new("Frame")
-	autoRollRow.Size = UDim2.new(1, -32, 0, 120)
-	autoRollRow.Position = UDim2.new(0, 16, 0, 184)
-	autoRollRow.BackgroundColor3 = Theme.Colors.Surface
-	autoRollRow.BackgroundTransparency = 0
-	autoRollRow.BorderSizePixel = 0
-	autoRollRow.Parent = panel
-	Theme.Round(autoRollRow, UDim.new(0, 8))
-	Theme.Stroke(autoRollRow, Theme.Colors.Accent, 1)
-
-	local autoRollNameLabel = Theme.Label(autoRollRow, UDim2.new(1, -20, 0, 28), "Auto Roll", true)
-	autoRollNameLabel.Position = UDim2.new(0, 10, 0, 8)
-
-	local autoRollPerksLabel = Theme.Label(autoRollRow, UDim2.new(1, -20, 0, 46), "Automatically rolls for you at your normal cooldown")
-	autoRollPerksLabel.Position = UDim2.new(0, 10, 0, 38)
-	autoRollPerksLabel.TextWrapped = true
-	autoRollPerksLabel.TextColor3 = Theme.Colors.TextSecondary
-
-	-- Purchase-only here (Buy/Owned, same as VIP's row) -- the actual
-	-- On/Off toggle lives on RollPanel's AUTO ROLL button next to ROLL,
-	-- not here.
-	local autoRollButton = Theme.Button(autoRollRow, UDim2.new(1, -20, 0, 32), UDim2.new(0, 10, 1, -40), "Buy", true)
-
-	local ownsAutoRoll = false
-	local function refreshAutoRollButton()
-		if ownsAutoRoll then
-			autoRollButton.Text = "Owned"
-			autoRollButton.Active = false
-			autoRollButton.AutoButtonColor = false
-			autoRollButton.BackgroundColor3 = Theme.Colors.Success
-			autoRollButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-		else
-			autoRollButton.Text = "Buy"
-			autoRollButton.Active = true
-			autoRollButton.AutoButtonColor = true
-			autoRollButton.BackgroundColor3 = Theme.Colors.Accent
-			autoRollButton.TextColor3 = Color3.fromRGB(20, 20, 20)
-		end
-	end
-	refreshAutoRollButton()
-
-	autoRollButton.Activated:Connect(function()
-		if ownsAutoRoll then
-			return
-		end
-		MarketplaceService:PromptGamePassPurchase(Players.LocalPlayer, AutoRollConfig.GamepassId)
-	end)
 
 	local handle = {}
 	handle.Frame = panel
@@ -132,11 +219,20 @@ function ShopPanel.Create(screenGui: ScreenGui)
 		panel.Visible = not panel.Visible
 	end
 
-	function handle.Update(stats: { IsVIP: boolean, OwnsAutoRoll: boolean })
-		isVIP = stats.IsVIP
-		refreshVIPButton()
-		ownsAutoRoll = stats.OwnsAutoRoll
-		refreshAutoRollButton()
+	function handle.Update(stats: {
+		IsVIP: boolean,
+		OwnsAutoRoll: boolean,
+		OwnsLuckPass: boolean,
+		OwnsUltraLuckPass: boolean,
+		OwnsFastRoll: boolean,
+		OwnsDoubleCash: boolean,
+	})
+		refreshVIP(stats.IsVIP)
+		refreshAutoRoll(stats.OwnsAutoRoll)
+		refreshLuckPass(stats.OwnsLuckPass)
+		refreshUltraLuckPass(stats.OwnsUltraLuckPass)
+		refreshFastRoll(stats.OwnsFastRoll)
+		refreshDoubleCash(stats.OwnsDoubleCash)
 	end
 
 	return handle

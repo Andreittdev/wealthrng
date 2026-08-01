@@ -17,6 +17,8 @@ local DataManager = require(ServerScriptService.Managers.DataManager)
 local VIPManager = require(ServerScriptService.Managers.VIPManager)
 local StatsManager = require(ServerScriptService.Managers.StatsManager)
 local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManager)
+local FriendBoostManager = require(ServerScriptService.Managers.FriendBoostManager)
+local DoubleCashManager = require(ServerScriptService.Managers.DoubleCashManager)
 
 local IncomeManager = {}
 
@@ -29,7 +31,14 @@ task.spawn(function()
 		for _, player in Players:GetPlayers() do
 			local session = DataManager.Get(player)
 			if session then
-				local rate = IncomeConfig.ComputeItemsRatePerSecond(session, VIPManager.IsVIP(player), VIPConfig.SellBonusPercent, PotionConfig.GetCashBonusPercent(session, os.time()))
+				local rate = IncomeConfig.ComputeItemsRatePerSecond(
+					session,
+					VIPManager.IsVIP(player),
+					VIPConfig.SellBonusPercent,
+					PotionConfig.GetCashBonusPercent(session, os.time()),
+					FriendBoostManager.GetBonusPercent(player),
+					DoubleCashManager.GetBonusPercent(player)
+				)
 				if rate > 0 then
 					session.Cash += math.floor(rate * ITEMS_TICK_INTERVAL_SECONDS)
 					StatsManager.Recompute(player)
@@ -46,7 +55,14 @@ task.spawn(function()
 		for _, player in Players:GetPlayers() do
 			local session = DataManager.Get(player)
 			if session then
-				local payout = IncomeConfig.ComputeAssetsRatePerMinute(session, VIPManager.IsVIP(player), VIPConfig.SellBonusPercent, PotionConfig.GetCashBonusPercent(session, os.time()))
+				local payout = IncomeConfig.ComputeAssetsRatePerMinute(
+					session,
+					VIPManager.IsVIP(player),
+					VIPConfig.SellBonusPercent,
+					PotionConfig.GetCashBonusPercent(session, os.time()),
+					FriendBoostManager.GetBonusPercent(player),
+					DoubleCashManager.GetBonusPercent(player)
+				)
 				if payout > 0 then
 					session.Cash += math.floor(payout)
 					StatsManager.Recompute(player)

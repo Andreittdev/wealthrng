@@ -16,7 +16,7 @@ local RemoteNames = {
 		"EquipItem", -- client -> server, payload: uid
 		"UnequipItem", -- client -> server, payload: uid
 		"EquippedItemsUpdated", -- server -> client, payload: { uid }
-		"StatsUpdated", -- server -> client, payload: { Cash, NetWorth, Title, IsVIP, OwnsAutoRoll, OwnsAutoClaim, ItemsIncomePerSecond, AssetsIncomePerMinute }
+		"StatsUpdated", -- server -> client, payload: { Cash, NetWorth, Title, IsVIP, OwnsAutoRoll, OwnsAutoClaim, OwnsLuckPass, OwnsUltraLuckPass, OwnsFastRoll, OwnsDoubleCash, FriendBonusPercent, ItemsIncomePerSecond, AssetsIncomePerMinute }
 		"BuyAsset", -- client -> server, payload: assetId
 		"SellAsset", -- client -> server, payload: assetId
 		"EquipAsset", -- client -> server, payload: assetId

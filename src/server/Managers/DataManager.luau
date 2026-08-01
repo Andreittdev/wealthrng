@@ -102,6 +102,13 @@ export type Session = {
 	-- toggling this does nothing. Defaults true (see newDefaultSession/Load)
 	-- so a first-time buyer doesn't also have to remember to turn it on.
 	AutoClaimEnabled: boolean,
+	-- Developer Product receipts (CashPackManager.luau) already granted,
+	-- keyed by PurchaseId -- Roblox retries ProcessReceipt (even across
+	-- server restarts) until it gets PurchaseGranted back, so this has to
+	-- be persisted, not just an in-memory set, or a retry after a crash
+	-- between "grant the cash" and "acknowledge the receipt" would grant
+	-- it a second time.
+	GrantedCashPackPurchaseIds: { [string]: boolean },
 	LoadedOk: boolean,
 }
 
@@ -132,6 +139,7 @@ local function newDefaultSession(): Session
 		InventoryTotalValue = 0,
 		EquippedItemId = nil,
 		AutoClaimEnabled = true,
+		GrantedCashPackPurchaseIds = {},
 		LoadedOk = true,
 	}
 end
@@ -241,6 +249,7 @@ function DataManager.Load(player: Player): Session
 				InventoryTotalValue = inventoryTotalValue,
 				EquippedItemId = equippedItemId,
 				AutoClaimEnabled = data.AutoClaimEnabled == nil and true or data.AutoClaimEnabled,
+				GrantedCashPackPurchaseIds = data.GrantedCashPackPurchaseIds or {},
 				LoadedOk = true,
 			}
 		else
@@ -290,6 +299,7 @@ function DataManager.Save(player: Player)
 		ClaimedLuckyStages = session.ClaimedLuckyStages,
 		TotalPlaytimeSeconds = session.TotalPlaytimeSeconds,
 		AutoClaimEnabled = session.AutoClaimEnabled,
+		GrantedCashPackPurchaseIds = session.GrantedCashPackPurchaseIds,
 	}
 
 	local ok = attempt(function()

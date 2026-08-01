@@ -28,13 +28,18 @@ local TweenService = game:GetService("TweenService")
 local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
 local RarityConfig = require(ReplicatedStorage.Modules.RarityConfig)
 local AutoRollConfig = require(ReplicatedStorage.Modules.AutoRollConfig)
+local FastRollConfig = require(ReplicatedStorage.Modules.FastRollConfig)
 local RollOdds = require(ReplicatedStorage.Modules.RollOdds)
 local SpecialRollConfig = require(ReplicatedStorage.Modules.SpecialRollConfig)
 local Theme = require(script.Parent.Theme)
 
-local SPIN_MIN_DURATION = 0.9
+-- Defaults (no Fast Roll gamepass) -- owning Fast Roll swaps both of these
+-- for FastRollConfig's shorter values, see getSpinDuration/
+-- getResultDisplaySeconds below. RARE_RESULT_DISPLAY_SECONDS is
+-- deliberately untouched by Fast Roll either way (see FastRollConfig's header).
+local DEFAULT_SPIN_DURATION = 0.9
 local SPIN_INTERVAL = 0.06
-local RESULT_DISPLAY_SECONDS = 1.8
+local DEFAULT_RESULT_DISPLAY_SECONDS = 1.8
 -- Legendary/Ultra/Luxury results linger longer than a normal 1.8s reveal,
 -- escalating with rarity -- Ultra/Luxury especially are the "post it in
 -- chat" pulls, worth actually savoring. Auto Roll naturally pauses for
@@ -313,7 +318,7 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		autoRollLabel.Position = UDim2.new(0.5, 0, 1, -4)
 	end
 
-	-- ===== Hide Rolls pill, stacked right below AUTO ROLL -- only shown
+	-- ===== Hide Rolls pill, stacked right above AUTO ROLL -- only shown
 	-- while Auto Roll is actually ON (a manual roller never needs it).
 	-- Toggling it on stops DRAWING the drumroll/reveal popup for normal
 	-- rolls -- items/cash are still granted normally server-side, and
@@ -329,7 +334,7 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	local hideRollsButton = Instance.new("TextButton")
 	hideRollsButton.Size = UDim2.new(0, AUTO_ROLL_BUTTON_WIDTH, 0, AUTO_ROLL_BUTTON_HEIGHT)
 	hideRollsButton.AnchorPoint = Vector2.new(0.5, 1)
-	hideRollsButton.Position = UDim2.new(0.5, autoRollOffsetX, 0, HUD_BASELINE_Y - 34 + AUTO_ROLL_BUTTON_HEIGHT + 6)
+	hideRollsButton.Position = UDim2.new(0.5, autoRollOffsetX, 0, HUD_BASELINE_Y - 34 - AUTO_ROLL_ICON_SIZE - 6)
 	hideRollsButton.BackgroundColor3 = Theme.Colors.Surface
 	hideRollsButton.BorderSizePixel = 0
 	hideRollsButton.AutoButtonColor = false
@@ -377,6 +382,15 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 
 	local ownsAutoRoll = false
 	local autoRollEnabled = false
+	local ownsFastRoll = false
+
+	local function getSpinDuration(): number
+		return ownsFastRoll and FastRollConfig.SpinSeconds or DEFAULT_SPIN_DURATION
+	end
+
+	local function getResultDisplaySeconds(): number
+		return ownsFastRoll and FastRollConfig.ResultDisplaySeconds or DEFAULT_RESULT_DISPLAY_SECONDS
+	end
 
 	-- Label always just reads "AUTO ROLL" -- on/off is shown purely via
 	-- the icon's tint (green when enabled), not by changing the text.
@@ -889,17 +903,22 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	-- untimed/instant path (which was only bounded by network round-trip +
 	-- cooldown and could fire far faster than a real roll ever paces).
 	local function playReveal(item, show: boolean)
-		local resultDisplaySeconds = RARE_RESULT_DISPLAY_SECONDS[item.Rarity] or RESULT_DISPLAY_SECONDS
+		-- Rare showcase holds are untouched by Fast Roll even though the
+		-- normal display time is (see FastRollConfig's header) -- fall
+		-- through to the (possibly shortened) default only when this
+		-- rarity has no dedicated hold time of its own.
+		local resultDisplaySeconds = RARE_RESULT_DISPLAY_SECONDS[item.Rarity] or getResultDisplaySeconds()
+		local spinDuration = getSpinDuration()
 
 		if not show then
-			task.wait(SPIN_MIN_DURATION + resultDisplaySeconds)
+			task.wait(spinDuration + resultDisplaySeconds)
 			return
 		end
 
 		revealAnchor.Visible = true
 
 		local startTime = os.clock()
-		while os.clock() - startTime < SPIN_MIN_DURATION do
+		while os.clock() - startTime < spinDuration do
 			local randomItem = allItems[math.random(1, #allItems)]
 			local randomColor = RarityConfig.GetColor(randomItem.Rarity)
 			revealLabel.Text = randomItem.Name
@@ -1005,6 +1024,10 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	function handle.SetOwnsAutoRoll(owns: boolean)
 		ownsAutoRoll = owns
 		refreshAutoRollButton()
+	end
+
+	function handle.SetOwnsFastRoll(owns: boolean)
+		ownsFastRoll = owns
 	end
 
 	-- Hidden while any modal panel (shop, net worth, etc.) is open -- on

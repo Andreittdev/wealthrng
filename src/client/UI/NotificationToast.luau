@@ -45,7 +45,7 @@ function NotificationToast.Init()
 	-- wide enough to clip off the right edge of the screen.
 	container.Size = UDim2.new(0.85, 0, 0.5, 0)
 	container.AnchorPoint = Vector2.new(1, 1)
-	container.Position = UDim2.new(1, -16, 1, -16)
+	container.Position = UDim2.new(1, -16, 1, -70)
 	container.BackgroundTransparency = 1
 	container.Parent = screenGui
 

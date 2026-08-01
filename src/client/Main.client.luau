@@ -7,12 +7,23 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TextChatService = game:GetService("TextChatService")
 
 local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
+local LoadingScreen = require(script.Parent.UI:WaitForChild("LoadingScreen"))
 local MainUI = require(script.Parent.UI:WaitForChild("MainUI"))
 local NotificationToast = require(script.Parent.UI:WaitForChild("NotificationToast"))
 local NextUpdateCountdown = require(script.Parent.UI:WaitForChild("NextUpdateCountdown"))
+local HideOtherPlayers = require(script.Parent.UI:WaitForChild("HideOtherPlayers"))
+
+-- Called directly (not backgrounded) so the rest of the game's UI only
+-- starts building AFTER the loading screen has fully held its 6s and faded
+-- -- simpler to reason about than racing it against MainUI.Init() in a
+-- separate coroutine, and matches how a loading screen is expected to
+-- behave: nothing else happens until it's done.
+LoadingScreen.Run()
+
 MainUI.Init()
 NotificationToast.Init()
 NextUpdateCountdown.Init()
+HideOtherPlayers.Init()
 
 -- LeaderboardManager fires this only at the affected player (a rank
 -- change on one of the top-100 boards) -- DisplaySystemMessage called

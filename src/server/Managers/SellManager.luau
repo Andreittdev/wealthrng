@@ -18,6 +18,7 @@ local InventoryManager = require(ServerScriptService.Managers.InventoryManager)
 local StatsManager = require(ServerScriptService.Managers.StatsManager)
 local VIPManager = require(ServerScriptService.Managers.VIPManager)
 local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManager)
+local DoubleCashManager = require(ServerScriptService.Managers.DoubleCashManager)
 
 local sellItem = RemotesBootstrap:WaitForChild("SellItem")
 local setAutoSellDuplicate = RemotesBootstrap:WaitForChild("SetAutoSellDuplicate")
@@ -28,8 +29,8 @@ local systemMessage = RemotesBootstrap:WaitForChild("SystemMessage")
 
 local SellManager = {}
 
-function SellManager.ComputeSellValue(session, isVIP: boolean, item: ItemDatabase.Item): number
-	local bonusPercent = PotionConfig.GetCashBonusPercent(session, os.time())
+function SellManager.ComputeSellValue(session, isVIP: boolean, item: ItemDatabase.Item, doubleCashBonusPercent: number): number
+	local bonusPercent = PotionConfig.GetCashBonusPercent(session, os.time()) + doubleCashBonusPercent
 	if isVIP then
 		bonusPercent += VIPConfig.SellBonusPercent
 	end
@@ -53,7 +54,7 @@ sellItem.OnServerEvent:Connect(function(player: Player, uid: number)
 
 	local item = ItemDatabase.GetItem(removed.ItemId)
 	if item then
-		local payout = SellManager.ComputeSellValue(session, VIPManager.IsVIP(player), item)
+		local payout = SellManager.ComputeSellValue(session, VIPManager.IsVIP(player), item, DoubleCashManager.GetBonusPercent(player))
 		session.Cash += payout
 		systemMessage:FireClient(player, string.format("Sold %s for %s!", item.Name, NumberFormat.FormatCash(payout)))
 	end
