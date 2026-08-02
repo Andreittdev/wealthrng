@@ -43,16 +43,16 @@ local function createCardBase(parent: Instance, layoutOrder: number, bgColor: Co
 	Theme.Stroke(card, CARD_STROKE_COLOR, 4)
 
 	local icon = Instance.new("ImageLabel")
-	icon.Size = UDim2.new(1, -20, 0, 130)
-	icon.Position = UDim2.new(0, 10, 0, 10)
+	icon.Size = UDim2.new(1, -20, 0, 78)
+	icon.Position = UDim2.new(0, 10, 0, 8)
 	icon.BackgroundTransparency = 1
 	icon.ScaleType = Enum.ScaleType.Fit
 	icon.Image = imageId
 	icon.Parent = card
 
 	local nameLabel = Instance.new("TextLabel")
-	nameLabel.Size = UDim2.new(1, -12, 0, 28)
-	nameLabel.Position = UDim2.new(0, 6, 0, 144)
+	nameLabel.Size = UDim2.new(1, -12, 0, 20)
+	nameLabel.Position = UDim2.new(0, 6, 0, 90)
 	nameLabel.BackgroundTransparency = 1
 	nameLabel.Font = Theme.Fonts.Header
 	nameLabel.Text = name
@@ -66,8 +66,8 @@ local function createCardBase(parent: Instance, layoutOrder: number, bgColor: Co
 	nameSizeConstraint.Parent = nameLabel
 
 	local priceButton = Instance.new("TextButton")
-	priceButton.Size = UDim2.new(1, -20, 0, 34)
-	priceButton.Position = UDim2.new(0, 10, 0, 176)
+	priceButton.Size = UDim2.new(1, -20, 0, 26)
+	priceButton.Position = UDim2.new(0, 10, 0, 114)
 	priceButton.BackgroundColor3 = Theme.Colors.Success
 	priceButton.BorderSizePixel = 0
 	priceButton.AutoButtonColor = true
@@ -139,7 +139,7 @@ local function createSection(parent: Instance, order: number, title: string): Fr
 	-- 2 columns -- CellSize halves are offset by half the gap so
 	-- 2*(0.5W - 8) + 16 == W exactly, same trick InventoryPanel uses.
 	local gridLayout = Instance.new("UIGridLayout")
-	gridLayout.CellSize = UDim2.new(0.5, -8, 0, 220)
+	gridLayout.CellSize = UDim2.new(0.5, -8, 0, 150)
 	gridLayout.CellPadding = UDim2.new(0, 16, 0, 16)
 	gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	gridLayout.Parent = grid
@@ -188,7 +188,8 @@ function ShopPanel.Create(screenGui: ScreenGui)
 
 	local gamepassesGrid = createSection(content, 1, "GAMEPASSES")
 
-	local refreshVIP = createGamepassCard(gamepassesGrid, 1, Color3.fromRGB(255, 200, 80), "", "VIP", "Buy", VIPConfig.GamepassId)
+	local refreshVIP =
+		createGamepassCard(gamepassesGrid, 1, Color3.fromRGB(255, 200, 80), "rbxassetid://73540272717608", "VIP", "Buy", VIPConfig.GamepassId)
 	local refreshAutoRoll = createGamepassCard(
 		gamepassesGrid,
 		2,
@@ -198,14 +199,42 @@ function ShopPanel.Create(screenGui: ScreenGui)
 		"Buy",
 		AutoRollConfig.GamepassId
 	)
-	local refreshLuckPass =
-		createGamepassCard(gamepassesGrid, 3, Color3.fromRGB(110, 220, 130), "", "Luck Pass", "49 R$", LuckPassConfig.GamepassId)
-	local refreshUltraLuckPass =
-		createGamepassCard(gamepassesGrid, 4, Color3.fromRGB(180, 110, 255), "", "Ultra Luck Pass", "249 R$", UltraLuckPassConfig.GamepassId)
-	local refreshFastRoll =
-		createGamepassCard(gamepassesGrid, 5, Color3.fromRGB(255, 110, 90), "", "Fast Roll", "149 R$", FastRollConfig.GamepassId)
-	local refreshDoubleCash =
-		createGamepassCard(gamepassesGrid, 6, Color3.fromRGB(255, 205, 80), "", "Double Cash", "299 R$", DoubleCashConfig.GamepassId)
+	local refreshLuckPass = createGamepassCard(
+		gamepassesGrid,
+		3,
+		Color3.fromRGB(110, 220, 130),
+		"rbxassetid://72576762798024",
+		"Luck Pass",
+		"49 R$",
+		LuckPassConfig.GamepassId
+	)
+	local refreshUltraLuckPass = createGamepassCard(
+		gamepassesGrid,
+		4,
+		Color3.fromRGB(180, 110, 255),
+		"rbxassetid://75300488764415",
+		"Ultra Luck Pass",
+		"249 R$",
+		UltraLuckPassConfig.GamepassId
+	)
+	local refreshFastRoll = createGamepassCard(
+		gamepassesGrid,
+		5,
+		Color3.fromRGB(255, 110, 90),
+		"rbxassetid://120595892822392",
+		"Fast Roll",
+		"149 R$",
+		FastRollConfig.GamepassId
+	)
+	local refreshDoubleCash = createGamepassCard(
+		gamepassesGrid,
+		6,
+		Color3.fromRGB(255, 205, 80),
+		"rbxassetid://110513806383474",
+		"Double Cash",
+		"299 R$",
+		DoubleCashConfig.GamepassId
+	)
 
 	local cashPacksGrid = createSection(content, 3, "CASH")
 	for index, pack in CashPackConfig.Packs do

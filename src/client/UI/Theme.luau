@@ -115,26 +115,36 @@ function Theme.Panel(parent: Instance, size: UDim2, position: UDim2): Frame
 	return frame
 end
 
--- Same look as Theme.Panel, but shrinks to fit narrow (phone) screens
--- instead of overflowing them: `maxSize`'s X.Offset becomes an upper
--- bound (via UISizeConstraint), not a fixed width -- the panel is 94% of
--- screen width up to that bound. Height stays fixed at maxSize.Y.Offset;
--- these dialogs are short enough vertically that width was the actual
--- overflow risk (a 420-480px-wide fixed panel runs off the edge of a
--- ~375-430px phone screen), not height.
+-- Same look as Theme.Panel, but shrinks to fit narrow/short (phone)
+-- screens instead of overflowing them: `maxSize`'s X.Offset becomes an
+-- upper bound (via UISizeConstraint), not a fixed width -- the panel is
+-- 94% of screen width up to that bound.
+--
+-- Height USED to stay fixed at maxSize.Y.Offset on the (wrong) assumption
+-- that these dialogs were short enough vertically that only width could
+-- overflow. On a short landscape phone screen a flat 400-600px-tall panel
+-- overflows the whole viewport top and bottom (that's the "Store looks
+-- buggy on phone" report -- an oversized fixed-height panel, not a grid
+-- bug). Height is now `100% of the screen minus a symmetric margin` (every
+-- call site passes the same `position.Y.Offset` as its top gap, e.g. 60,
+-- so mirroring it as the bottom gap too keeps the panel vertically
+-- centered-ish and guarantees it fits), capped at maxSize.Y.Offset so
+-- desktop/tablet sizing is unchanged from before.
 -- `position`'s X component is ignored -- the panel is always centered via
 -- AnchorPoint instead of the caller working out "-width/2" by hand, which
 -- only produced correct centering for a fixed width. Pass position's Y
 -- component exactly like Theme.Panel's.
 function Theme.ResponsivePanel(parent: Instance, maxSize: UDim2, position: UDim2): Frame
+	local verticalMargin = position.Y.Offset
+
 	local frame = Instance.new("Frame")
-	frame.Size = UDim2.new(0.94, 0, 0, maxSize.Y.Offset)
+	frame.Size = UDim2.new(0.94, 0, 1, -verticalMargin * 2)
 	frame.AnchorPoint = Vector2.new(0.5, 0)
 	frame.Position = UDim2.new(0.5, 0, position.Y.Scale, position.Y.Offset)
 	frame.Parent = parent
 
 	local sizeConstraint = Instance.new("UISizeConstraint")
-	sizeConstraint.MaxSize = Vector2.new(maxSize.X.Offset, math.huge)
+	sizeConstraint.MaxSize = Vector2.new(maxSize.X.Offset, maxSize.Y.Offset)
 	sizeConstraint.Parent = frame
 
 	local shadow = applyPanelChrome(frame)
@@ -144,7 +154,7 @@ function Theme.ResponsivePanel(parent: Instance, maxSize: UDim2, position: UDim2
 	-- a matching cap or it'd render wider than the panel it's shadowing on
 	-- large screens.
 	local shadowConstraint = Instance.new("UISizeConstraint")
-	shadowConstraint.MaxSize = Vector2.new(maxSize.X.Offset, math.huge)
+	shadowConstraint.MaxSize = Vector2.new(maxSize.X.Offset, maxSize.Y.Offset)
 	shadowConstraint.Parent = shadow
 
 	return frame
@@ -161,16 +171,28 @@ end
 -- change from the existing desktop look); below it, Scale shrinks down to
 -- `minScale` (default 0.6, chosen so Sidebar's 76px buttons don't shrink
 -- past ~46px -- still comfortably tappable).
+--
+-- Also factors in HEIGHT against a fixed reference (not just width) --
+-- landscape phones are wide but short, so a width-only scale left
+-- fixed-pixel HUD clusters (Sidebar, LuckSpeedHUD, etc.) nearly full-size
+-- on those screens even though there wasn't nearly enough VERTICAL room,
+-- which is exactly what caused them to visually collide with each other.
+-- The smaller of the two ratios wins, so a short-but-wide screen shrinks
+-- enough to actually clear itself, not just a narrow-but-tall one.
+local AUTOSCALE_REFERENCE_HEIGHT = 700
+
 function Theme.AutoScale(screenGui: ScreenGui, container: GuiObject, referenceWidth: number, minScale: number?): UIScale
 	local uiScale = Instance.new("UIScale")
 	uiScale.Parent = container
 
 	local function update()
-		local width = screenGui.AbsoluteSize.X
-		if width <= 0 then
+		local size = screenGui.AbsoluteSize
+		if size.X <= 0 or size.Y <= 0 then
 			return
 		end
-		uiScale.Scale = math.clamp(width / referenceWidth, minScale or 0.6, 1)
+		local widthScale = size.X / referenceWidth
+		local heightScale = size.Y / AUTOSCALE_REFERENCE_HEIGHT
+		uiScale.Scale = math.clamp(math.min(widthScale, heightScale), minScale or 0.6, 1)
 	end
 
 	screenGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(update)

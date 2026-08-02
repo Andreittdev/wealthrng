@@ -110,22 +110,28 @@ end
 -- the "Practice Dummy" bot flexes a real, coherent item/value pair instead
 -- of a bare random number with no matching visual.
 --
--- `difficulty` (see BOT_*_NET_WORTH_THRESHOLD below) restricts the pick to
--- a slice of that database instead of the full range -- "hard" = top-end
--- only, "medium" = full range, "easy" = bottom-end only. Deliberately
--- undocumented anywhere a player can read it; the whole point is that it's
--- discovered by playing, not looked up.
+-- `difficulty` restricts the pick to a strict THIRD of that database --
+-- "hard" = top third, "medium" = middle third, "easy" = bottom third.
+-- "medium" used to mean "no filter at all" (the full, unrestricted
+-- database), which let a Gold-tier bot ("medium") occasionally out-flex a
+-- Platinum/Diamond-tier bot ("hard") or land as low as a Bronze/Silver-tier
+-- bot ("easy") -- contradicting the whole point of tying item quality to
+-- the bot's named tier. Three strictly-ordered, non-overlapping bands fix
+-- that: easy's ceiling can never reach medium's floor, medium's ceiling can
+-- never reach hard's floor. Deliberately undocumented anywhere a player can
+-- read it; the whole point is that it's discovered by playing, not looked up.
 export type BotDifficulty = "hard" | "medium" | "easy"
 
-local HARD_ROLL_RARITIES = { Legendary = true, Ultra = true, Luxury = true }
-local EASY_ROLL_RARITIES = { Common = true, Rare = true, Epic = true }
+local HARD_ROLL_RARITIES = { Ultra = true, Luxury = true }
+local MEDIUM_ROLL_RARITIES = { Epic = true, Legendary = true }
+local EASY_ROLL_RARITIES = { Common = true, Rare = true }
 
 local function pickRandomRollItem(difficulty: BotDifficulty): (number, ItemDatabase.Item?)
 	local all = {}
 	for _, item in ItemDatabase.GetAllItems() do
 		if
-			difficulty == "medium"
-			or (difficulty == "hard" and HARD_ROLL_RARITIES[item.Rarity])
+			(difficulty == "hard" and HARD_ROLL_RARITIES[item.Rarity])
+			or (difficulty == "medium" and MEDIUM_ROLL_RARITIES[item.Rarity])
 			or (difficulty == "easy" and EASY_ROLL_RARITIES[item.Rarity])
 		then
 			table.insert(all, item)
@@ -138,22 +144,33 @@ local function pickRandomRollItem(difficulty: BotDifficulty): (number, ItemDatab
 	return rarityRank[item.Rarity] or 0, item
 end
 
--- Sorts a list of { Price: number } entries and keeps only the top or
--- bottom half -- shared by pickRandomAsset/pickRandomInvestment's
--- "hard"/"easy" modes. Uses floor (not ceil) for BOTH halves so an
--- odd-length list's exact median entry is excluded from both instead of
--- counted in both -- "hard" and "easy" stay strictly disjoint.
-local function halfByPrice(entries: { { Price: number } }, keepTop: boolean): { { Price: number } }
+-- Sorts a list of { Price: number } entries (highest first) and keeps only
+-- one strict third -- shared by pickRandomAsset/pickRandomInvestment.
+-- "top"/"middle"/"bottom" partition the list into 3 non-overlapping,
+-- strictly price-ordered bands (any leftover entries from a length not
+-- divisible by 3 land in "middle", which only makes its band wider, never
+-- overlapping the other two).
+local function thirdByPrice(entries: { { Price: number } }, band: "top" | "middle" | "bottom"): { { Price: number } }
 	table.sort(entries, function(a, b)
 		return a.Price > b.Price
 	end)
-	local half = {}
-	local count = math.floor(#entries / 2)
-	local startIndex = keepTop and 1 or (#entries - count + 1)
-	for i = startIndex, startIndex + count - 1 do
-		table.insert(half, entries[i])
+	local count = math.floor(#entries / 3)
+	if count == 0 then
+		return entries
 	end
-	return half
+	local startIndex, endIndex
+	if band == "top" then
+		startIndex, endIndex = 1, count
+	elseif band == "bottom" then
+		startIndex, endIndex = #entries - count + 1, #entries
+	else
+		startIndex, endIndex = count + 1, #entries - count
+	end
+	local slice = {}
+	for i = startIndex, endIndex do
+		table.insert(slice, entries[i])
+	end
+	return slice
 end
 
 local function pickRandomAsset(difficulty: BotDifficulty): (number, AssetDatabase.Asset?)
@@ -162,9 +179,11 @@ local function pickRandomAsset(difficulty: BotDifficulty): (number, AssetDatabas
 		table.insert(all, asset)
 	end
 	if difficulty == "hard" then
-		all = halfByPrice(all, true) :: any
+		all = thirdByPrice(all, "top") :: any
+	elseif difficulty == "medium" then
+		all = thirdByPrice(all, "middle") :: any
 	elseif difficulty == "easy" then
-		all = halfByPrice(all, false) :: any
+		all = thirdByPrice(all, "bottom") :: any
 	end
 	if #all == 0 then
 		return 0, nil
@@ -179,9 +198,11 @@ local function pickRandomInvestment(difficulty: BotDifficulty): (number, Investm
 		table.insert(all, investment)
 	end
 	if difficulty == "hard" then
-		all = halfByPrice(all, true) :: any
+		all = thirdByPrice(all, "top") :: any
+	elseif difficulty == "medium" then
+		all = thirdByPrice(all, "middle") :: any
 	elseif difficulty == "easy" then
-		all = halfByPrice(all, false) :: any
+		all = thirdByPrice(all, "bottom") :: any
 	end
 	if #all == 0 then
 		return 0, nil
@@ -318,35 +339,57 @@ local function runBattle(playerA: Player, playerB: Player)
 end
 
 -- "Casual" card (BattlePanel.luau's zone menu) -- resolves INSTANTLY
--- against a fake "Practice Dummy" opponent flexing a real random
--- item/Asset/Investment (see pickRandom* above), no queueing at all. Also
--- doubles as the practice/solo-testing path.
-local BOT_NAME = "Practice Dummy"
+-- against a fake bot opponent flexing a real random item/Asset/Investment
+-- (see pickRandom* above), no queueing at all. Also doubles as the
+-- practice/solo-testing path. The bot's NAME (and its flexed Net
+-- Worth/item quality, see below) is themed off the player's own current
+-- rank (BattleRankConfig), so practicing against a "Bronze Warrior" vs. a
+-- "Diamond Legend" echoes the rank display BattlePanel.luau's menu already
+-- shows, instead of being an unrelated random flavor.
+local BOT_NAMES_BY_TIER = {
+	Bronze = "Bronze Warrior",
+	Silver = "Silver Fighter",
+	Gold = "Gold Gladiator",
+	Platinum = "Platinum Champion",
+	Diamond = "Diamond Legend",
+}
+local DEFAULT_BOT_NAME = "Practice Dummy"
 
--- 3-stage hidden difficulty curve, by the player's own Net Worth:
---   < $1M            -> "hard"   (bot only flexes top-end items -- near
---                        unbeatable, matches BattleRankConfig's Bronze
---                        floor)
---   $1M .. $2B        -> "medium" (bot draws from the FULL range -- real
---                        wins become possible, "here and there", roughly
---                        matching the climb toward Silver's $500M rank gate)
---   >= $2B            -> "easy"   (bot only flexes bottom-end items -- a
---                        real edge, matching the climb toward Gold's $5B
---                        rank gate)
--- None of these numbers are shown anywhere in the UI -- new players are
--- meant to notice their odds improving as they grow, not read a target to
--- grind toward.
-local BOT_MEDIUM_NET_WORTH_THRESHOLD = 1000000
-local BOT_EASY_NET_WORTH_THRESHOLD = 2000000000
-
-local function getBotDifficulty(netWorth: number): BotDifficulty
-	if netWorth >= BOT_EASY_NET_WORTH_THRESHOLD then
-		return "easy"
-	elseif netWorth >= BOT_MEDIUM_NET_WORTH_THRESHOLD then
-		return "medium"
+-- Bot's flexed Net Worth is randomized WITHIN its own named tier's Net
+-- Worth band (BattleRankConfig.Tiers), not around the player's own Net
+-- Worth -- a "Bronze Warrior" should flex a Bronze-ish number, a "Diamond
+-- Legend" a Diamond-ish one, regardless of what the player themselves has.
+-- Top tier (Diamond) has no upper gate, so it gets a synthetic spread
+-- (1x-3x its floor) instead of an unbounded range.
+local function getBotNetWorthRange(tierName: string): (number, number)
+	local tiers = BattleRankConfig.Tiers
+	for index, tier in tiers do
+		if tier.Name == tierName then
+			local nextTier = tiers[index + 1]
+			if nextTier then
+				return tier.MinNetWorth, nextTier.MinNetWorth
+			end
+			return tier.MinNetWorth, tier.MinNetWorth * 3
+		end
 	end
-	return "hard"
+	return 0, 1000000
 end
+
+-- Item quality now tracks the bot's OWN named tier (BOT_NAMES_BY_TIER
+-- above), not a hidden curve based on the player's Net Worth -- a "Bronze
+-- Warrior" flexes weak items, a "Gold Gladiator" a real middle ground, a
+-- "Diamond Legend" top-end ones, matching what its name/Net Worth already
+-- implies instead of contradicting it. "hard"/"medium"/"easy" = top/middle/
+-- bottom THIRD of the pool (see pickRandomRollItem/thirdByPrice above) --
+-- naming carried over from when this was a difficulty curve, "hard" still
+-- just means "the bot flexes the HARD-to-beat, top-end stuff."
+local BOT_ITEM_DIFFICULTY_BY_TIER: { [string]: BotDifficulty } = {
+	Bronze = "easy",
+	Silver = "easy",
+	Gold = "medium",
+	Platinum = "hard",
+	Diamond = "hard",
+}
 
 local function runBotBattle(player: Player)
 	local session = DataManager.Get(player)
@@ -359,7 +402,9 @@ local function runBotBattle(player: Player)
 	local investValue, investment = getBestInvestment(session)
 
 	local myNetWorth = StatsManager.ComputeNetWorth(player)
-	local difficulty = getBotDifficulty(myNetWorth)
+	local myTier = BattleRankConfig.GetTier(session.BattleRankPoints, myNetWorth)
+	local botName = BOT_NAMES_BY_TIER[myTier.Name] or DEFAULT_BOT_NAME
+	local difficulty = BOT_ITEM_DIFFICULTY_BY_TIER[myTier.Name] or "medium"
 
 	local botRollRank, botRollItem = pickRandomRollItem(difficulty)
 	local botAssetPrice, botAsset = pickRandomAsset(difficulty)
@@ -398,13 +443,14 @@ local function runBotBattle(player: Player)
 	-- against a bot with no real opposition would cheapen it permanently
 	-- (unlike the weekly Points leaderboard above, which resets and is
 	-- lower-stakes either way).
-	-- No real bot account to read a net worth from -- fabricate one in the
-	-- same ballpark as the player's own (50%-150%) so the intro reveal has
-	-- a plausible number to flex instead of an obviously fake round one.
-	local botNetWorth = math.floor(myNetWorth * (0.5 + math.random() * 1.0))
+	-- No real bot account to read a net worth from -- fabricate one that
+	-- matches the bot's OWN named tier (see getBotNetWorthRange above),
+	-- not the player's.
+	local minBotNetWorth, maxBotNetWorth = getBotNetWorthRange(myTier.Name)
+	local botNetWorth = math.floor(minBotNetWorth + math.random() * (maxBotNetWorth - minBotNetWorth))
 
 	battleResult:FireClient(player, {
-		Opponent = BOT_NAME,
+		Opponent = botName,
 		OpponentUserId = 0, -- sentinel: BattlePanel.luau shows a bot placeholder instead of an rbxthumb avatar
 		MyNetWorth = myNetWorth,
 		OpponentNetWorth = botNetWorth,

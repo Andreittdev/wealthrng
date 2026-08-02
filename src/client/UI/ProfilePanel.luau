@@ -42,12 +42,34 @@ function ProfilePanel.Create(screenGui: ScreenGui)
 		panel.Visible = false
 	end)
 
+	-- Scrolls instead of overflowing -- ProfilePanel's card + potions list
+	-- used to be absolutely positioned assuming the panel was always a
+	-- fixed 372px tall. Theme.ResponsivePanel now legitimately shrinks
+	-- that height on short (landscape phone) screens, which pushed the
+	-- Active Potions section past the visible bottom with no way to reach
+	-- it. Same ScrollingFrame + UIListLayout pattern ShopPanel already uses.
+	local content = Instance.new("ScrollingFrame")
+	content.Size = UDim2.new(1, -32, 1, -66)
+	content.Position = UDim2.new(0, 16, 0, 56)
+	content.BackgroundTransparency = 1
+	content.BorderSizePixel = 0
+	content.CanvasSize = UDim2.new(0, 0, 0, 0)
+	content.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	content.ScrollBarThickness = 6
+	content.ScrollBarImageColor3 = Theme.Colors.Accent
+	content.Parent = panel
+
+	local outerLayout = Instance.new("UIListLayout")
+	outerLayout.Padding = UDim.new(0, 12)
+	outerLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	outerLayout.Parent = content
+
 	local card = Instance.new("Frame")
-	card.Size = UDim2.new(1, -32, 0, 202)
-	card.Position = UDim2.new(0, 16, 0, 56)
+	card.LayoutOrder = 1
+	card.Size = UDim2.new(1, 0, 0, 202)
 	card.BackgroundColor3 = Theme.Colors.Surface
 	card.BorderSizePixel = 0
-	card.Parent = panel
+	card.Parent = content
 	Theme.Round(card, UDim.new(0, 10))
 
 	local padding = Instance.new("UIPadding")
@@ -96,18 +118,20 @@ function ProfilePanel.Create(screenGui: ScreenGui)
 	local rankLabel = Theme.Label(card, UDim2.new(1, 0, 0, 22), "Rank: Bronze (0 RP)")
 	rankLabel.TextColor3 = BattleRankConfig.Tiers[1].Color
 
-	local potionsHeader = Theme.Label(panel, UDim2.new(1, -32, 0, 22), "Active Potions")
-	potionsHeader.Position = UDim2.new(0, 16, 0, 266)
+	local potionsHeader = Theme.Label(content, UDim2.new(1, 0, 0, 22), "Active Potions")
+	potionsHeader.LayoutOrder = 2
 	potionsHeader.TextColor3 = Theme.Colors.Accent
 
 	local potionsList = Instance.new("Frame")
-	potionsList.Size = UDim2.new(1, -32, 0, 76)
-	potionsList.Position = UDim2.new(0, 16, 0, 292)
+	potionsList.LayoutOrder = 3
+	potionsList.Size = UDim2.new(1, 0, 0, 0)
+	potionsList.AutomaticSize = Enum.AutomaticSize.Y
 	potionsList.BackgroundTransparency = 1
-	potionsList.Parent = panel
+	potionsList.Parent = content
 
 	local potionsLayout = Instance.new("UIListLayout")
 	potionsLayout.Padding = UDim.new(0, 4)
+	potionsLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	potionsLayout.Parent = potionsList
 
 	local activePotions: { [string]: number } = {}

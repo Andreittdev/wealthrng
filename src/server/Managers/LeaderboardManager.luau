@@ -186,6 +186,18 @@ local categories = {
 	},
 }
 
+-- Dev/test accounts that should never show up on any of the 4 boards,
+-- regardless of their actual stats -- lowercased so the comparison below is
+-- case-insensitive (Roblox usernames are case-insensitive for login, but
+-- Player.Name preserves whatever casing the account was created with).
+local EXCLUDED_USERNAMES: { [string]: boolean } = {
+	fizzknot1 = true,
+}
+
+local function isExcludedPlayer(player: Player): boolean
+	return EXCLUDED_USERNAMES[string.lower(player.Name)] == true
+end
+
 local dirtyPlayers: { [Player]: boolean } = {}
 local nameCache: { [number]: string } = {}
 -- [player][boardIndex] = last rank we sent a chat message for -- only
@@ -193,6 +205,9 @@ local nameCache: { [number]: string } = {}
 local lastAnnouncedRank: { [Player]: { [number]: number } } = {}
 
 function LeaderboardManager.MarkDirty(player: Player)
+	if isExcludedPlayer(player) then
+		return
+	end
 	dirtyPlayers[player] = true
 end
 
@@ -326,6 +341,27 @@ local function refreshBoard(boardIndex: number, label: string, store: OrderedDat
 	end
 end
 
+-- One-time cleanup, on server start: EXCLUDED_USERNAMES blocks all FUTURE
+-- submissions (see isExcludedPlayer above), but doesn't retroactively erase
+-- whatever they already wrote to the stores from earlier testing sessions
+-- -- resolve each excluded username to its UserId (works even if that
+-- account isn't online right now) and RemoveAsync it from every category's
+-- store so they actually disappear from the boards, not just stop updating.
+task.spawn(function()
+	for username in EXCLUDED_USERNAMES do
+		local ok, userId = pcall(function()
+			return Players:GetUserIdFromNameAsync(username)
+		end)
+		if ok and userId then
+			for _, category in categories do
+				attempt(function()
+					category.GetStore():RemoveAsync(tostring(userId))
+				end)
+			end
+		end
+	end
+end)
+
 -- Both loops do their work immediately on startup, THEN wait -- waiting
 -- first (the original shape) meant a freshly started server showed
 -- completely empty boards for a full 60s even with players already
@@ -340,7 +376,9 @@ task.spawn(function()
 		for _, category in categories do
 			if category.AlwaysSubmit then
 				for _, player in Players:GetPlayers() do
-					submitCategoryForPlayer(category, player)
+					if not isExcludedPlayer(player) then
+						submitCategoryForPlayer(category, player)
+					end
 				end
 			end
 		end
@@ -362,6 +400,10 @@ task.spawn(function()
 end)
 
 Players.PlayerRemoving:Connect(function(player)
+	if isExcludedPlayer(player) then
+		lastAnnouncedRank[player] = nil
+		return
+	end
 	if dirtyPlayers[player] then
 		submitPlayer(player)
 		dirtyPlayers[player] = nil

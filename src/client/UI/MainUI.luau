@@ -82,14 +82,14 @@ function MainUI.Init()
 	-- open UpgradesPanel now -- the sidebar no longer has its own entry.
 	rollHandle.UpgradeButton.Activated:Connect(upgradesHandle.Toggle)
 
-	Sidebar.Create(screenGui, {
+	local sidebarHandle = Sidebar.Create(screenGui, {
 		Inventory = inventoryHandle,
 		NetWorth = netWorthHandle,
 		Shop = shopHandle,
 		Settings = settingsHandle,
 		Profile = profileHandle,
 		Trade = tradeHandle,
-	}, cashHudHandle.Frame)
+	}, cashHudHandle.Frame, luckSpeedHudHandle.Frame)
 
 	local modalFrames = {
 		inventoryHandle.Frame,
@@ -109,6 +109,13 @@ function MainUI.Init()
 		luckyRollProximityHandle.Frame,
 	}
 
+	-- inBattleZone is a 3rd independent source of "should the always-on HUD
+	-- be hidden right now" alongside "any modal is open" -- both need to be
+	-- folded into the SAME decision instead of separately/directly setting
+	-- rollHandle's visibility, or one could stomp the other (e.g. a modal
+	-- happens to still be open while walking into the LARP Battles circle).
+	local inBattleZone = false
+
 	local function updateRollHud()
 		local anyModalOpen = false
 		for _, frame in modalFrames do
@@ -117,7 +124,16 @@ function MainUI.Init()
 				break
 			end
 		end
-		rollHandle.SetHudVisible(not anyModalOpen)
+		-- Sidebar used to only react to inBattleZone, ignoring anyModalOpen
+		-- entirely -- on a narrow/short mobile screen, an open modal (Shop,
+		-- Inventory, any proximity panel, etc.) can genuinely overlap
+		-- Sidebar's top-left icon grid, and since Sidebar is built AFTER
+		-- every modal with no explicit ZIndex, it painted on top of the
+		-- modal's left edge instead of the other way around. Same
+		-- visibility formula as the Roll HUD now.
+		local hudVisible = not anyModalOpen and not inBattleZone
+		rollHandle.SetHudVisible(hudVisible)
+		sidebarHandle.Frame.Visible = hudVisible
 	end
 
 	for _, frame in modalFrames do
@@ -147,6 +163,20 @@ function MainUI.Init()
 	-- saved data" initial pushes (Inventory/Assets/Investments/etc.)
 	-- without risking firing before anything was listening.
 	clientReady:FireServer()
+
+	local handle = {}
+
+	-- Lets an unrelated, self-contained feature (BattlePanel's LARP Battles
+	-- zone) temporarily hide the always-on Sidebar cluster (grid + CashHud +
+	-- LuckSpeedHUD) and RollPanel's HUD while the player stands in its
+	-- circle, on both PC and phone -- there's no good on-screen spot for a
+	-- 3rd HUD layer to coexist with those, so it steps aside instead.
+	function handle.SetBattleZoneActive(active: boolean)
+		inBattleZone = active
+		updateRollHud()
+	end
+
+	return handle
 end
 
 return MainUI

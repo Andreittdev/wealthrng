@@ -71,14 +71,13 @@ end
 function LuckSpeedHUD.Create(screenGui: ScreenGui)
 	local container = Instance.new("Frame")
 	container.Size = UDim2.new(0, BADGE_WIDTH * 2 + BADGE_GAP, 0, ICON_SIZE + VALUE_HEIGHT)
-	container.AnchorPoint = Vector2.new(0, 1)
-	container.Position = UDim2.new(0, 16, 1, -16)
 	container.BackgroundTransparency = 1
 	container.Parent = screenGui
-	-- Same REFERENCE_WIDTH convention as Sidebar.luau/RollPanel.luau's own
-	-- AutoScale calls, so every fixed HUD cluster shrinks at the same
-	-- breakpoints instead of each drifting out of proportion with the others.
-	Theme.AutoScale(screenGui, container, 900)
+	-- AnchorPoint/Position and scaling are intentionally left to the
+	-- caller -- Sidebar.luau reparents this into its own single vertical
+	-- stack (icon grid -> CashHud -> this) under ONE shared AutoScale, so
+	-- the whole left-side cluster shrinks and lays out as one unit instead
+	-- of independently-anchored pieces that could collide on short screens.
 
 	local luckValueLabel = createImageBadge(container, UDim2.new(0, 0, 0, 0), LUCK_ICON)
 	local speedValueLabel = createImageBadge(container, UDim2.new(0, BADGE_WIDTH + BADGE_GAP, 0, 0), DICE_IMAGE)

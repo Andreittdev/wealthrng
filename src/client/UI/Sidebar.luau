@@ -5,9 +5,16 @@
 -- buttons). Each button just calls .Toggle() on the matching panel handle
 -- passed in from MainUI -- Sidebar itself owns no panel state.
 --
--- The whole grid sits in one container Frame with a Theme.AutoScale UIScale
--- (see Theme.luau) so it shrinks as one unit on narrow phone screens
--- instead of staying a fixed 76px per button regardless of screen size.
+-- Also owns the vertical placement of CashHud and LuckSpeedHUD: all three
+-- used to be independently anchored (grid from the top, LuckSpeedHUD from
+-- the bottom) with nothing coordinating their combined height against the
+-- actual screen height, so on a short landscape phone they'd collide in
+-- the middle even though each individually "shrank" via its own
+-- Theme.AutoScale. They're now laid out sequentially inside ONE container
+-- (grid -> CashHud -> LuckSpeedHUD) under a single shared AutoScale, so
+-- they're guaranteed not to overlap each other at any scale -- only
+-- CashHud/LuckSpeedHUD's own internal AutoScale calls were removed, not
+-- their layout logic.
 
 local Theme = require(script.Parent.Theme)
 
@@ -24,13 +31,21 @@ local BUTTONS = {
 
 -- Caption overlaps the icon's lower portion (same treatment as
 -- RollPanel's ROLL/UPGRADE), not a separate label sitting fully below it.
+-- START_Y used to be 150 -- way more top margin than needed once CashHud
+-- moved into this same container (it's no longer clearing separate
+-- top-of-screen HUDs). 60px comfortably clears Roblox's own top bar with
+-- room to spare, without eating into the short vertical room a landscape
+-- phone screen has.
 local ICON_SIZE = 96
 local START_X = 16
-local START_Y = 150
+local START_Y = 20
 local GAP_X = 2
 local GAP_Y = 4
 local COLUMNS = 2
 local REFERENCE_WIDTH = 900
+
+-- Vertical gap between the icon grid / CashHud / LuckSpeedHUD stack pieces.
+local STACK_GAP = 14
 
 local LABEL_COLOR = Color3.fromRGB(255, 255, 255)
 
@@ -43,10 +58,16 @@ export type PanelHandles = {
 	Profile: { Toggle: () -> () },
 }
 
-function Sidebar.Create(screenGui: ScreenGui, handles: PanelHandles, cashHudFrame: Frame?)
+function Sidebar.Create(screenGui: ScreenGui, handles: PanelHandles, cashHudFrame: Frame, luckSpeedHudFrame: Frame)
 	local rows = math.ceil(#BUTTONS / COLUMNS)
-	local containerWidth = COLUMNS * ICON_SIZE + (COLUMNS - 1) * GAP_X
-	local containerHeight = rows * ICON_SIZE + (rows - 1) * GAP_Y
+	local gridWidth = COLUMNS * ICON_SIZE + (COLUMNS - 1) * GAP_X
+	local gridHeight = rows * ICON_SIZE + (rows - 1) * GAP_Y
+
+	local cashHudHeight = cashHudFrame.Size.Y.Offset
+	local luckSpeedHudHeight = luckSpeedHudFrame.Size.Y.Offset
+
+	local containerWidth = math.max(gridWidth, cashHudFrame.Size.X.Offset, luckSpeedHudFrame.Size.X.Offset)
+	local containerHeight = gridHeight + STACK_GAP + cashHudHeight + STACK_GAP + luckSpeedHudHeight
 
 	local container = Instance.new("Frame")
 	container.Size = UDim2.new(0, containerWidth, 0, containerHeight)
@@ -97,22 +118,19 @@ function Sidebar.Create(screenGui: ScreenGui, handles: PanelHandles, cashHudFram
 				panelHandle.Toggle()
 			end)
 		end
-
-		-- Cash HUD moved here from its old fixed top-right corner spot --
-		-- reparented into this same AutoScale container so it scales as one
-		-- unit with the rest of the grid on narrow screens, positioned
-		-- directly under whichever button is "Profile" (found by Key, not a
-		-- hardcoded index, so this still lands correctly if BUTTONS is ever
-		-- reordered).
-		if cashHudFrame and buttonData.Key == "Profile" then
-			cashHudFrame.Parent = container
-			-- Shifted left from dead-center under Profile's column -- still
-			-- anchored to Profile's row (y), just pulled toward the grid's
-			-- left edge on X.
-			cashHudFrame.AnchorPoint = Vector2.new(0.5, 0)
-			cashHudFrame.Position = UDim2.new(0, x + ICON_SIZE / 2 - 50, 0, y + ICON_SIZE + GAP_Y + 12)
-		end
 	end
+
+	cashHudFrame.Parent = container
+	cashHudFrame.AnchorPoint = Vector2.new(0, 0)
+	cashHudFrame.Position = UDim2.new(0, 0, 0, gridHeight + STACK_GAP)
+
+	luckSpeedHudFrame.Parent = container
+	luckSpeedHudFrame.AnchorPoint = Vector2.new(0, 0)
+	luckSpeedHudFrame.Position = UDim2.new(0, 0, 0, gridHeight + STACK_GAP + cashHudHeight + STACK_GAP)
+
+	local handle = {}
+	handle.Frame = container
+	return handle
 end
 
 return Sidebar

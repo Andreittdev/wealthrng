@@ -15,9 +15,7 @@
 -- Server-authoritative cooldown/payout is DailyRewardsManager.luau; this
 -- is display + input only.
 
-local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
-local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local DailyRewardsConfig = require(ReplicatedStorage.Modules.DailyRewardsConfig)
@@ -25,6 +23,7 @@ local AssetDatabase = require(ReplicatedStorage.Modules.AssetDatabase)
 local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
 local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
 local Theme = require(script.Parent.Theme)
+local ProximityWatcher = require(script.Parent.ProximityWatcher)
 
 local DailyRewardsProximityPanel = {}
 
@@ -88,10 +87,17 @@ function DailyRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Folder
 	local claimDailyReward = remotes:WaitForChild("ClaimDailyReward")
 	local dailyRewardStateUpdated = remotes:WaitForChild("DailyRewardStateUpdated")
 
+	-- Centered, not bottom-anchored with a fixed "-230" offset -- at 440px
+	-- tall, that fixed offset pushed the panel's TOP (header/title/close
+	-- button) off the top of any short landscape phone screen, since
+	-- nothing coordinated "how tall the panel actually renders here" with
+	-- "how much room is left above that fixed anchor point". Centering is
+	-- safe: this panel is already in MainUI's modalFrames list, so
+	-- RollPanel's bottom HUD is hidden the whole time this is open anyway.
 	local panel = Instance.new("Frame")
 	panel.Size = UDim2.new(0, PANEL_WIDTH, 0, PANEL_HEIGHT)
-	panel.AnchorPoint = Vector2.new(0.5, 1)
-	panel.Position = UDim2.new(0.5, 0, 1, -230)
+	panel.AnchorPoint = Vector2.new(0.5, 0.5)
+	panel.Position = UDim2.new(0.5, 0, 0.5, 0)
 	panel.BackgroundColor3 = Theme.Colors.Panel
 	panel.BackgroundTransparency = 0
 	panel.BorderSizePixel = 0
@@ -155,22 +161,24 @@ function DailyRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Folder
 	gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	gridLayout.Parent = gridContainer
 
+	-- Day 7 is the showcase card (real Auto Roll gamepass reward) -- always
+	-- gold, not just tinted once it's actually reachable, so it reads as
+	-- the special day at a glance from across the plaza too.
 	local bigCard = Instance.new("Frame")
 	bigCard.Size = UDim2.new(0, BIG_CARD_WIDTH, 0, CONTENT_HEIGHT)
 	bigCard.Position = UDim2.new(0, 16 + GRID_WIDTH + CARD_GAP, 0, 84)
-	bigCard.BackgroundColor3 = Theme.Colors.Surface
+	bigCard.BackgroundColor3 = Color3.fromRGB(255, 205, 80)
 	bigCard.BorderSizePixel = 0
 	bigCard.Parent = panel
 	Theme.Round(bigCard, UDim.new(0, 14))
-	local bigStroke = Theme.Stroke(bigCard, LOCKED_COLOR, 2)
+	local bigStroke = Theme.Stroke(bigCard, Color3.fromRGB(255, 235, 180), 2)
 
 	local bigGradient = Instance.new("UIGradient")
 	bigGradient.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 190, 60)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 100, 150)),
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 230, 160)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(210, 150, 40)),
 	})
 	bigGradient.Rotation = 90
-	bigGradient.Enabled = false
 	bigGradient.Parent = bigCard
 
 	local function createCard(parent: Frame, layoutOrder: number, dayText: string, iconSize: number, amountBottomOffset: number)
@@ -235,12 +243,20 @@ function DailyRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Folder
 			if day2Item then
 				iconImage = addIconImage(card, icon, day2Item.Image)
 			end
+		elseif day == 4 then
+			-- Day 4's fixed Asset (see DailyRewardsConfig.Days) gets its
+			-- real Luxury Townhouse image instead of the generic HOUSE_ICON
+			-- emoji every other "Asset" reward still falls back to.
+			local day4Asset = AssetDatabase.GetAsset("LuxuryTownhouse")
+			if day4Asset then
+				iconImage = addIconImage(card, icon, day4Asset.Image)
+			end
 		end
 
 		dayCards[day] = { Stroke = stroke, Icon = icon, IconImage = iconImage, Amount = amountLabel, DayLabel = dayLabel }
 	end
 
-	local bigDayLabel, bigIcon, bigAmount = createCard(bigCard, 7, "DAY 7", 60, 34)
+	local bigDayLabel, bigIcon, bigAmount = createCard(bigCard, 7, "DAY 7", 100, 34)
 	local bigIconImage = addIconImage(bigCard, bigIcon, AUTO_ROLL_ICON)
 
 	dayCards[7] = { Stroke = bigStroke, Icon = bigIcon, IconImage = bigIconImage, Amount = bigAmount, DayLabel = bigDayLabel }
@@ -267,10 +283,6 @@ function DailyRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Folder
 			local card = dayCards[day]
 			local reward = DailyRewardsConfig.Days[day]
 			local amountText, rewardIcon = describeReward(reward)
-
-			if day == 7 then
-				bigGradient.Enabled = day <= currentDay
-			end
 
 			local claimed = day < currentDay
 			local current = day == currentDay
@@ -374,16 +386,7 @@ function DailyRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Folder
 		end
 
 		local wasInRange = false
-		RunService.Heartbeat:Connect(function()
-			local character = Players.LocalPlayer.Character
-			local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-			if not rootPart then
-				panel.Visible = false
-				wasInRange = false
-				return
-			end
-
-			local inRange = (rootPart.Position - marker.Position).Magnitude <= PROXIMITY_RADIUS_STUDS
+		ProximityWatcher.Register(marker, PROXIMITY_RADIUS_STUDS, function(inRange)
 			if inRange and not wasInRange then
 				-- Re-entering the zone clears a previous manual close, so
 				-- walking away and back re-shows the panel.

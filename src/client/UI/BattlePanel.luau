@@ -22,14 +22,15 @@
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
-local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
 local AssetDatabase = require(ReplicatedStorage.Modules.AssetDatabase)
 local InvestmentDatabase = require(ReplicatedStorage.Modules.InvestmentDatabase)
 local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
+local BattleRankConfig = require(ReplicatedStorage.Modules.BattleRankConfig)
 local Theme = require(script.Parent.Theme)
+local ProximityWatcher = require(script.Parent.ProximityWatcher)
 
 local BattlePanel = {}
 
@@ -92,7 +93,7 @@ local function waitOrSkip(duration: number, reveal): boolean
 	return not reveal.Skip
 end
 
-function BattlePanel.Init()
+function BattlePanel.Init(setBattleZoneActive: ((boolean) -> ())?)
 	local player = Players.LocalPlayer
 	local playerGui = player:WaitForChild("PlayerGui")
 
@@ -102,6 +103,7 @@ function BattlePanel.Init()
 	local battleQueueUpdated = remotes:WaitForChild("BattleQueueUpdated")
 	local joinCasualBattle = remotes:WaitForChild("JoinCasualBattle")
 	local battleResult = remotes:WaitForChild("BattleResult")
+	local statsUpdated = remotes:WaitForChild("StatsUpdated")
 
 	local screenGui = Instance.new("ScreenGui")
 	screenGui.Name = "WealthRNG_Battle"
@@ -117,30 +119,43 @@ function BattlePanel.Init()
 	local suppressMenu = false
 
 	-- ===== Zone menu -- Casual / Multiplayer / Rewards =====
-	-- Top-anchored, not the usual bottom "-230" band every other proximity
-	-- popup uses -- that band is also where NotificationToast's stack
-	-- lives (bottom-right), and this menu is wide enough (494px) that on
-	-- medium-width screens (~900-1206px) the two could actually overlap.
-	-- Top-center is clear of both the bottom HUD and the toast stack.
+	-- Centered on screen (not top-anchored) -- MainUI now hides the
+	-- Sidebar/CashHud/LuckSpeedHUD/RollPanel HUD entirely while standing in
+	-- this zone (see setBattleZoneActive below), so there's nothing left for
+	-- the menu to avoid colliding with and it can just sit in the middle
+	-- where it reads best, on both PC and phone.
 	local menuFrame = Instance.new("Frame")
-	menuFrame.Size = UDim2.new(0, 494, 0, 232)
-	menuFrame.AnchorPoint = Vector2.new(0.5, 0)
-	menuFrame.Position = UDim2.new(0.5, 0, 0, 100)
+	menuFrame.Size = UDim2.new(0, 494, 0, 250)
+	menuFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+	menuFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 	menuFrame.BackgroundTransparency = 1
 	menuFrame.Visible = false
 	menuFrame.ZIndex = 6
 	menuFrame.Parent = screenGui
 	Theme.AutoScale(screenGui, menuFrame, 900)
 
-	local menuTitle = Theme.Label(menuFrame, UDim2.new(1, 0, 0, 28), "LARP BATTLES", true)
+	local menuTitle = Theme.Label(menuFrame, UDim2.new(1, 0, 0, 26), "LARP BATTLES", true)
 	menuTitle.TextXAlignment = Enum.TextXAlignment.Center
 
+	-- Player's current LARP Battles rank (see BattleRankConfig) -- driven
+	-- by the same StatsUpdated push MainUI/ProfilePanel already use, kept
+	-- current here too so it's visible right where you queue up, not just
+	-- buried in the Profile panel. Both PC and phone -- it's just another
+	-- child of menuFrame, so it scales/shows with the rest of the menu.
+	local rankLabel = Theme.Label(menuFrame, UDim2.new(1, 0, 0, 20), "Rank: Bronze (0 RP)")
+	rankLabel.Position = UDim2.new(0, 0, 0, 26)
+	rankLabel.TextXAlignment = Enum.TextXAlignment.Center
+	rankLabel.TextColor3 = BattleRankConfig.Tiers[1].Color
+
 	-- ===== Queue status banner -- sits directly above the LARP Battles
-	-- menu itself, only visible while actually queued for Multiplayer.
+	-- menu itself, only visible while actually queued for Multiplayer. A
+	-- CHILD of menuFrame (not an independently-positioned sibling) so it
+	-- tracks the menu's own position/scale automatically no matter where
+	-- the menu itself is anchored.
 	local waitingLabel = Instance.new("TextLabel")
 	waitingLabel.AnchorPoint = Vector2.new(0.5, 1)
 	waitingLabel.Size = UDim2.new(0, 340, 0, 40)
-	waitingLabel.Position = UDim2.new(0.5, 0, 0, 94)
+	waitingLabel.Position = UDim2.new(0.5, 0, 0, -6)
 	waitingLabel.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
 	waitingLabel.BackgroundTransparency = 0.1
 	waitingLabel.Font = Theme.Fonts.Header
@@ -150,19 +165,19 @@ function BattlePanel.Init()
 	waitingLabel.TextStrokeTransparency = 0
 	waitingLabel.Visible = false
 	waitingLabel.ZIndex = 7
-	waitingLabel.Parent = screenGui
+	waitingLabel.Parent = menuFrame
 	Theme.Round(waitingLabel, UDim.new(0, 10))
 	local waitingStroke = Theme.Stroke(waitingLabel, Theme.Colors.Accent, 1.5)
 	waitingStroke.Transparency = 0
-	Theme.AutoScale(screenGui, waitingLabel, 900)
 
 	-- Returns the card's TextButton and its subtitle label, so callers can
 	-- wire Activated and update the subtitle text (e.g. Multiplayer's
-	-- queue status) independently.
-	local function createCard(xOffset: number, bgColor: Color3, title: string, subtitle: string): (TextButton, TextLabel)
+	-- queue status) independently. `imageId` is optional -- fills the top
+	-- portion of the card (above the title/subtitle stack) when given.
+	local function createCard(xOffset: number, bgColor: Color3, title: string, subtitle: string, imageId: string?): (TextButton, TextLabel)
 		local card = Instance.new("TextButton")
 		card.Size = UDim2.new(0, 150, 0, 190)
-		card.Position = UDim2.new(0, xOffset, 0, 38)
+		card.Position = UDim2.new(0, xOffset, 0, 50)
 		card.BackgroundColor3 = bgColor
 		card.BorderSizePixel = 0
 		card.AutoButtonColor = true
@@ -171,6 +186,16 @@ function BattlePanel.Init()
 		Theme.Round(card, UDim.new(0, 14))
 		local cardStroke = Theme.Stroke(card, Color3.fromRGB(15, 15, 18), 4)
 		cardStroke.Transparency = 0
+
+		if imageId then
+			local icon = Instance.new("ImageLabel")
+			icon.Size = UDim2.new(1, -20, 0, 96)
+			icon.Position = UDim2.new(0, 10, 0, 10)
+			icon.BackgroundTransparency = 1
+			icon.ScaleType = Enum.ScaleType.Fit
+			icon.Image = imageId
+			icon.Parent = card
+		end
 
 		local titleLabel = Instance.new("TextLabel")
 		titleLabel.Size = UDim2.new(1, -12, 0, 32)
@@ -203,11 +228,18 @@ function BattlePanel.Init()
 		return card, subtitleLabel
 	end
 
-	local casualCard = createCard(0, Color3.fromRGB(70, 170, 60), "Casual", "Find match!")
-	local multiplayerCard, multiplayerSubtitle = createCard(172, Color3.fromRGB(150, 30, 30), "Multiplayer", "Find match!")
-	local rewardsCard = createCard(344, Color3.fromRGB(110, 60, 190), "Rewards", "Coming soon!")
+	local casualCard = createCard(0, Color3.fromRGB(70, 170, 60), "Casual", "Find match!", "rbxassetid://107483731160801")
+	local multiplayerCard, multiplayerSubtitle =
+		createCard(172, Color3.fromRGB(150, 30, 30), "Multiplayer", "Find match!", "rbxassetid://72513267071394")
+	local rewardsCard = createCard(344, Color3.fromRGB(110, 60, 190), "Rewards", "Coming soon!", "rbxassetid://131878032004946")
 	-- Not wired to anything yet -- visual placeholder only, per request.
 	rewardsCard.AutoButtonColor = false
+
+	statsUpdated.OnClientEvent:Connect(function(stats: { BattleRankPoints: number, NetWorth: number })
+		local tier = BattleRankConfig.GetTier(stats.BattleRankPoints, stats.NetWorth)
+		rankLabel.Text = string.format("Rank: %s (%d RP)", tier.Name, stats.BattleRankPoints)
+		rankLabel.TextColor3 = tier.Color
+	end)
 
 	local function setInQueue(newInQueue: boolean, count: number?)
 		inQueue = newInQueue
@@ -264,8 +296,10 @@ function BattlePanel.Init()
 	local popupStroke = Theme.Stroke(popup, Color3.fromRGB(255, 215, 140), 1.5)
 	popupStroke.Transparency = 0
 	local popupShadow = Theme.Shadow(popup)
-	Theme.AutoScale(screenGui, popup, 400)
-	Theme.AutoScale(screenGui, popupShadow, 400)
+	-- Lower minScale than the default 0.6 -- this popup is tall (540px) and
+	-- still felt oversized on phone even after the default floor kicked in.
+	Theme.AutoScale(screenGui, popup, 400, 0.45)
+	Theme.AutoScale(screenGui, popupShadow, 400, 0.45)
 
 	local titleLabel = Theme.Label(popup, UDim2.new(1, -24, 0, 26), "LARP BATTLE", true)
 	titleLabel.Position = UDim2.new(0, 12, 0, 10)
@@ -381,16 +415,16 @@ function BattlePanel.Init()
 	scoreLabel.TextColor3 = Theme.Colors.TextSecondary
 
 	-- currentReveal: a fresh table {Skip=false} every time a new result
-	-- comes in -- Close sets THIS run's Skip flag, so an in-flight
-	-- animation coroutine unwinds promptly instead of continuing to mutate
-	-- a hidden popup after the player dismisses it.
+	-- comes in -- used ONLY to supersede a still-running PREVIOUS reveal
+	-- when a newer result arrives (see battleResult's handler below), not
+	-- as a player-facing skip anymore -- there's no way to cut the
+	-- animation short mid-battle, only to dismiss it once it's actually
+	-- done (see doneButton below).
 	local currentReveal = nil
 
-	local closeButton = Theme.Button(popup, UDim2.new(0, 100, 0, 32), UDim2.new(0.5, -50, 1, -44), "Skip")
-	closeButton.Activated:Connect(function()
-		if currentReveal then
-			currentReveal.Skip = true
-		end
+	local doneButton = Theme.Button(popup, UDim2.new(0, 100, 0, 32), UDim2.new(0.5, -50, 1, -44), "Done")
+	doneButton.Visible = false
+	doneButton.Activated:Connect(function()
 		popup.Visible = false
 		suppressMenu = false
 	end)
@@ -435,7 +469,9 @@ function BattlePanel.Init()
 		if result.OpponentUserId and result.OpponentUserId > 0 then
 			rightAvatar.Image = "rbxthumb://type=AvatarHeadShot&id=" .. result.OpponentUserId .. "&w=150&h=150"
 		else
-			rightAvatar.Image = ""
+			-- Sentinel (0) -- bot opponent, no real account to fetch an
+			-- avatar for -- classic "bacon hair" placeholder instead.
+			rightAvatar.Image = "rbxassetid://75097606209381"
 		end
 		leftPlayerNameLabel.Text = player.Name
 		rightPlayerNameLabel.Text = result.Opponent
@@ -580,6 +616,7 @@ function BattlePanel.Init()
 		end
 		outcomeLabel.Text = ""
 		scoreLabel.Text = ""
+		doneButton.Visible = false
 		popup.Visible = true
 
 		local reveal = { Skip = false }
@@ -588,13 +625,14 @@ function BattlePanel.Init()
 			if playIntro(result, reveal) and playCategories(result, reveal) then
 				playOutro(result, reveal)
 			end
-			-- Only close things out if THIS reveal is still the current one
-			-- -- if a newer result has since superseded it (currentReveal
-			-- was reassigned above), that newer coroutine owns the
-			-- popup/menu state now, not this stale one.
+			-- Only reveal the Done button if THIS reveal is still the
+			-- current one -- if a newer result has since superseded it
+			-- (currentReveal was reassigned above), that newer coroutine
+			-- owns the popup/menu state now, not this stale one. The popup
+			-- itself stays open at the end -- the player dismisses it
+			-- themselves via Done, it doesn't auto-close.
 			if currentReveal == reveal then
-				popup.Visible = false
-				suppressMenu = false
+				doneButton.Visible = true
 			end
 		end)
 	end)
@@ -611,13 +649,13 @@ function BattlePanel.Init()
 		end
 
 		local wasInRange = false
-		RunService.Heartbeat:Connect(function()
-			local character = player.Character
-			local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-			local inRange = rootPart ~= nil and (rootPart.Position - marker.Position).Magnitude <= PROXIMITY_RADIUS_STUDS
-
+		ProximityWatcher.Register(marker, PROXIMITY_RADIUS_STUDS, function(inRange)
 			if not suppressMenu then
 				menuFrame.Visible = inRange
+			end
+
+			if inRange ~= wasInRange and setBattleZoneActive then
+				setBattleZoneActive(inRange)
 			end
 
 			-- Walking away while queued auto-leaves -- otherwise a player

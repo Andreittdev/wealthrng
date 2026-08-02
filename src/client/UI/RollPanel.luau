@@ -70,7 +70,7 @@ local NORMAL_DICE_IMAGE = "rbxassetid://92855815758385"
 -- the container (Scale 0.5, not a fixed pixel offset) so it lands on
 -- actual screen-center regardless of the container's total width;
 -- UPGRADE sits a fixed offset to its right.
-local ROLL_ICON_SIZE = 190
+local ROLL_ICON_SIZE = 165
 local UPGRADE_ICON_SIZE = 88
 local ICON_GAP = -14
 -- Auto Roll is a text pill (no bespoke icon asset), not an icon+label like
@@ -318,7 +318,7 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		autoRollLabel.Position = UDim2.new(0.5, 0, 1, -4)
 	end
 
-	-- ===== Hide Rolls pill, stacked right above AUTO ROLL -- only shown
+	-- ===== Hide Rolls pill, stacked right below AUTO ROLL -- only shown
 	-- while Auto Roll is actually ON (a manual roller never needs it).
 	-- Toggling it on stops DRAWING the drumroll/reveal popup for normal
 	-- rolls -- items/cash are still granted normally server-side, and
@@ -333,8 +333,8 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	-- roll always shows its reveal again.
 	local hideRollsButton = Instance.new("TextButton")
 	hideRollsButton.Size = UDim2.new(0, AUTO_ROLL_BUTTON_WIDTH, 0, AUTO_ROLL_BUTTON_HEIGHT)
-	hideRollsButton.AnchorPoint = Vector2.new(0.5, 1)
-	hideRollsButton.Position = UDim2.new(0.5, autoRollOffsetX, 0, HUD_BASELINE_Y - 34 - AUTO_ROLL_ICON_SIZE - 6)
+	hideRollsButton.AnchorPoint = Vector2.new(0.5, 0)
+	hideRollsButton.Position = UDim2.new(0.5, autoRollOffsetX, 0, HUD_BASELINE_Y - 34 + 6)
 	hideRollsButton.BackgroundColor3 = Theme.Colors.Surface
 	hideRollsButton.BorderSizePixel = 0
 	hideRollsButton.AutoButtonColor = false

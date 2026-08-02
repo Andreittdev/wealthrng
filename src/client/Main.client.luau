@@ -20,11 +20,11 @@ local BattlePanel = require(script.Parent.UI:WaitForChild("BattlePanel"))
 -- behave: nothing else happens until it's done.
 LoadingScreen.Run()
 
-MainUI.Init()
+local mainUIHandle = MainUI.Init()
 NotificationToast.Init()
 -- NextUpdateCountdown.Init() -- disabled, see MapBuilder.luau's matching note
 HideOtherPlayers.Init()
-BattlePanel.Init()
+BattlePanel.Init(mainUIHandle.SetBattleZoneActive)
 
 -- LeaderboardManager fires this only at the affected player (a rank
 -- change on one of the top-100 boards) -- DisplaySystemMessage called

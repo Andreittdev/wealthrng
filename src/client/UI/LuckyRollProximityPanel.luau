@@ -23,7 +23,6 @@
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
-local RunService = game:GetService("RunService")
 local MarketplaceService = game:GetService("MarketplaceService")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -31,6 +30,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SpecialRollConfig = require(ReplicatedStorage.Modules.SpecialRollConfig)
 local AutoClaimConfig = require(ReplicatedStorage.Modules.AutoClaimConfig)
 local Theme = require(script.Parent.Theme)
+local ProximityWatcher = require(script.Parent.ProximityWatcher)
 
 local LuckyRollProximityPanel = {}
 
@@ -75,10 +75,15 @@ function LuckyRollProximityPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	end
 	local lastPushAt = os.clock()
 
+	-- Centered, not bottom-anchored with a fixed "-234" offset -- that fixed
+	-- offset sat the panel right up against the top of a short landscape
+	-- phone screen (same issue DailyRewardsProximityPanel had). Safe to
+	-- center: this panel is already in MainUI's modalFrames list, so
+	-- RollPanel's bottom HUD is hidden the whole time this is open anyway.
 	local panel = Instance.new("Frame")
 	panel.Size = UDim2.new(0, 220, 0, 224)
-	panel.AnchorPoint = Vector2.new(0.5, 1)
-	panel.Position = UDim2.new(0.5, 0, 1, -234)
+	panel.AnchorPoint = Vector2.new(0.5, 0.5)
+	panel.Position = UDim2.new(0.5, 0, 0.5, 0)
 	panel.BackgroundColor3 = Theme.Colors.Panel
 	panel.BackgroundTransparency = 0
 	panel.BorderSizePixel = 0
@@ -444,14 +449,8 @@ function LuckyRollProximityPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		billboardStateLabel = stateBillboardLabel
 		refresh()
 
-		RunService.Heartbeat:Connect(function()
-			local character = Players.LocalPlayer.Character
-			local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-			if not rootPart then
-				panel.Visible = false
-				return
-			end
-			panel.Visible = (rootPart.Position - marker.Position).Magnitude <= PROXIMITY_RADIUS_STUDS
+		ProximityWatcher.Register(marker, PROXIMITY_RADIUS_STUDS, function(inRange)
+			panel.Visible = inRange
 		end)
 	end)
 

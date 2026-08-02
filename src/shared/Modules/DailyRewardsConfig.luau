@@ -21,16 +21,19 @@
 local DailyRewardsConfig = {}
 
 -- Escalates in value across the week without being purely cash -- Day 4's
--- Asset (LuxuryTownhouse, see AssetDatabase.luau) is priced at exactly
--- $1,000,000, and Day 7's free Auto Roll gamepass is the biggest single
--- prize (a paid gamepass, normally Robux-only).
+-- Asset (LuxuryTownhouse, see AssetDatabase.luau) is priced at $15,000,000,
+-- and Day 7's free Auto Roll gamepass is the biggest single prize (a paid
+-- gamepass, normally Robux-only). Day 5 ($10M) dips slightly below Day 4's
+-- asset value on purpose -- Day 4 is the week's "big reveal" showcase day,
+-- not the new floor -- then Day 6 ($25M) climbs back past it before Day 7's
+-- gamepass caps the week.
 DailyRewardsConfig.Days = {
 	{ Type = "Cash", Amount = 500 },
 	{ Type = "Item", ItemId = "Day2SpecialItem" },
 	{ Type = "Cash", Amount = 2000 },
 	{ Type = "Asset", AssetId = "LuxuryTownhouse" },
-	{ Type = "Cash", Amount = 8000 },
-	{ Type = "Cash", Amount = 16000 },
+	{ Type = "Cash", Amount = 10000000 },
+	{ Type = "Cash", Amount = 25000000 },
 	{ Type = "AutoRollGamepass" },
 }
 

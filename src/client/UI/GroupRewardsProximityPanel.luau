@@ -8,11 +8,11 @@
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
-local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local GroupRewardsConfig = require(ReplicatedStorage.Modules.GroupRewardsConfig)
 local Theme = require(script.Parent.Theme)
+local ProximityWatcher = require(script.Parent.ProximityWatcher)
 
 local GroupRewardsProximityPanel = {}
 
@@ -22,10 +22,15 @@ function GroupRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Folder
 	local claimGroupReward = remotes:WaitForChild("ClaimGroupReward")
 	local groupRewardStateUpdated = remotes:WaitForChild("GroupRewardStateUpdated")
 
+	-- Centered, not bottom-anchored with a fixed "-300" offset -- that
+	-- pushed the panel off the top of a short landscape phone screen (same
+	-- issue DailyRewardsProximityPanel/LuckyRollProximityPanel had). Safe
+	-- to center: this panel is already in MainUI's modalFrames list, so
+	-- RollPanel's bottom HUD is hidden the whole time this is open anyway.
 	local panel = Instance.new("Frame")
 	panel.Size = UDim2.new(0, 320, 0, 230)
-	panel.AnchorPoint = Vector2.new(0.5, 1)
-	panel.Position = UDim2.new(0.5, 0, 1, -300)
+	panel.AnchorPoint = Vector2.new(0.5, 0.5)
+	panel.Position = UDim2.new(0.5, 0, 0.5, 0)
 	panel.BackgroundColor3 = Theme.Colors.Panel
 	panel.BackgroundTransparency = 0
 	panel.BorderSizePixel = 0
@@ -120,14 +125,8 @@ function GroupRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Folder
 			marker = mapFolder:WaitForChild("GroupRewardsMarker_Disk", 5) :: BasePart?
 		end
 
-		RunService.Heartbeat:Connect(function()
-			local character = Players.LocalPlayer.Character
-			local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-			if not rootPart then
-				panel.Visible = false
-				return
-			end
-			panel.Visible = (rootPart.Position - marker.Position).Magnitude <= PROXIMITY_RADIUS_STUDS
+		ProximityWatcher.Register(marker, PROXIMITY_RADIUS_STUDS, function(inRange)
+			panel.Visible = inRange
 		end)
 	end)
 
