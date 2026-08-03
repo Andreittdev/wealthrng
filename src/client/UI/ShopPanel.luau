@@ -192,7 +192,7 @@ function ShopPanel.Create(screenGui: ScreenGui)
 		createGamepassCard(gamepassesGrid, 1, Color3.fromRGB(255, 200, 80), "rbxassetid://73540272717608", "VIP", "Buy", VIPConfig.GamepassId)
 	local refreshAutoRoll = createGamepassCard(
 		gamepassesGrid,
-		2,
+		6,
 		Color3.fromRGB(90, 170, 255),
 		"rbxassetid://115324216729484",
 		"Auto Roll",
@@ -228,7 +228,7 @@ function ShopPanel.Create(screenGui: ScreenGui)
 	)
 	local refreshDoubleCash = createGamepassCard(
 		gamepassesGrid,
-		6,
+		2,
 		Color3.fromRGB(255, 205, 80),
 		"rbxassetid://110513806383474",
 		"Double Cash",

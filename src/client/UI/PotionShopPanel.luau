@@ -5,6 +5,7 @@
 
 local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
+local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local PotionDatabase = require(ReplicatedStorage.Modules.PotionDatabase)
@@ -111,7 +112,9 @@ function PotionShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	local function render()
 		for id, potion in PotionDatabase.GetAllPotions() do
 			local row = Instance.new("Frame")
-			row.Size = UDim2.new(1, 0, 0, 78)
+			-- Taller than before (78 -> 96) -- makes room for the 2 R$
+			-- instant-buy button stacked under Buy (see below).
+			row.Size = UDim2.new(1, 0, 0, 96)
 			row.BackgroundColor3 = Theme.Colors.Surface
 			row.BackgroundTransparency = 0
 			row.BorderSizePixel = 0
@@ -144,22 +147,39 @@ function PotionShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 			timeLabel.TextColor3 = Theme.Colors.TextSecondary
 			timeLabels[id] = timeLabel
 
-			-- Price now sits above Buy instead of inline with the name --
-			-- Buy itself shrunk a bit (was 0.32/0.6 of the row) with a
-			-- capped text size so "BUY" doesn't dominate the row.
-			local priceLabel = Theme.Label(row, UDim2.new(0.3, 0, 0, 18), NumberFormat.FormatCash(potion.Price), true)
+			-- Price sits centered directly above the Buy/instant-buy button
+			-- stack (same width + right edge as those buttons), not inline
+			-- with the name.
+			local priceLabel = Theme.Label(row, UDim2.new(0, 100, 0, 18), NumberFormat.FormatCash(potion.Price), true)
 			priceLabel.AnchorPoint = Vector2.new(1, 0)
-			priceLabel.Position = UDim2.new(1, -42, 0, 8)
-			priceLabel.TextXAlignment = Enum.TextXAlignment.Right
+			priceLabel.Position = UDim2.new(1, -10, 0, 4)
+			priceLabel.TextXAlignment = Enum.TextXAlignment.Center
 			priceLabel.TextColor3 = Theme.Colors.Accent
 
-			local buyButton = Theme.Button(row, UDim2.new(0.28, 0, 0.46, 0), UDim2.new(1, -10, 1, -10), "Buy", true)
+			-- Buy (Cash) on top, a smaller "2 R$" instant-buy button
+			-- underneath -- same idea as a Robux "skip the grind" shortcut
+			-- sitting right next to the normal price everywhere else in the
+			-- shop. Both stacked bottom-right, capped text size so neither
+			-- label dominates the row.
+			local buyButton = Theme.Button(row, UDim2.new(0, 100, 0, 32), UDim2.new(1, -10, 1, -40), "Buy", true)
 			buyButton.AnchorPoint = Vector2.new(1, 1)
 			local buyButtonTextSize = Instance.new("UITextSizeConstraint")
 			buyButtonTextSize.MaxTextSize = 22
 			buyButtonTextSize.Parent = buyButton
 			buyButton.Activated:Connect(debounce(function()
 				buyPotion:FireServer(id)
+			end))
+
+			local instantBuyButton = Theme.Button(row, UDim2.new(0, 100, 0, 26), UDim2.new(1, -10, 1, -8), "2 R$", false)
+			instantBuyButton.AnchorPoint = Vector2.new(1, 1)
+			instantBuyButton.BackgroundColor3 = Theme.Colors.Success
+			local instantBuyButtonTextSize = Instance.new("UITextSizeConstraint")
+			instantBuyButtonTextSize.MaxTextSize = 18
+			instantBuyButtonTextSize.Parent = instantBuyButton
+			instantBuyButton.Activated:Connect(debounce(function()
+				if potion.InstantProductId ~= 0 then
+					MarketplaceService:PromptProductPurchase(Players.LocalPlayer, potion.InstantProductId)
+				end
 			end))
 		end
 	end

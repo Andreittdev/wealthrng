@@ -5,16 +5,13 @@
 -- buttons). Each button just calls .Toggle() on the matching panel handle
 -- passed in from MainUI -- Sidebar itself owns no panel state.
 --
--- Also owns the vertical placement of CashHud and LuckSpeedHUD: all three
--- used to be independently anchored (grid from the top, LuckSpeedHUD from
--- the bottom) with nothing coordinating their combined height against the
--- actual screen height, so on a short landscape phone they'd collide in
--- the middle even though each individually "shrank" via its own
--- Theme.AutoScale. They're now laid out sequentially inside ONE container
--- (grid -> CashHud -> LuckSpeedHUD) under a single shared AutoScale, so
--- they're guaranteed not to overlap each other at any scale -- only
--- CashHud/LuckSpeedHUD's own internal AutoScale calls were removed, not
--- their layout logic.
+-- Also owns CashHud/LuckSpeedHUD's placement -- CashHud is stacked
+-- directly below the icon grid (same top-anchored container, one
+-- AutoScale, per explicit request), while LuckSpeedHUD stays its own
+-- independent bottom-left cluster. (Theme.AutoScale's height-awareness
+-- still shrinks each cluster on a short screen, but doesn't guarantee zero
+-- overlap between the two separately-anchored ones the way a single
+-- shared stack would.)
 
 local Theme = require(script.Parent.Theme)
 
@@ -31,21 +28,58 @@ local BUTTONS = {
 
 -- Caption overlaps the icon's lower portion (same treatment as
 -- RollPanel's ROLL/UPGRADE), not a separate label sitting fully below it.
--- START_Y used to be 150 -- way more top margin than needed once CashHud
--- moved into this same container (it's no longer clearing separate
--- top-of-screen HUDs). 60px comfortably clears Roblox's own top bar with
--- room to spare, without eating into the short vertical room a landscape
--- phone screen has.
+-- START_Y history: 150 (original) -> 20 (chasing a mobile landscape
+-- complaint, overshot -- collided with Roblox's own top bar on PC) -> 70
+-- -> 100 -> 180 (chasing PC "still too high" feedback). That last climb
+-- reintroduced the ORIGINAL problem this whole saga started from: START_Y
+-- is a FIXED pixel offset that Theme.AutoScale never shrinks (only the
+-- container's SIZE), so on a short landscape phone, a 180px top margin
+-- alone eats most of the available height, pushing the icon+cash cluster
+-- down into (or past) the independent Luck/Speed cluster at the bottom.
+-- PREFERRED_START_Y is now just the DESKTOP target -- updateTopPosition
+-- below shrinks it back down toward MIN_START_Y on short screens instead,
+-- computed from the actual current scale/screen height every resize, so
+-- it can never overlap the bottom cluster no matter how short the screen is.
 local ICON_SIZE = 96
 local START_X = 16
-local START_Y = 20
+local PREFERRED_START_Y = 120
+local MIN_START_Y = 60
 local GAP_X = 2
 local GAP_Y = 4
 local COLUMNS = 2
 local REFERENCE_WIDTH = 900
+-- Mirrors Theme.AutoScale's own internal AUTOSCALE_REFERENCE_HEIGHT --
+-- Sidebar can't just call Theme.AutoScale for its own top/bottom clusters
+-- anymore (see updateLayout below for why), so it needs its own copy of
+-- the same height reference to keep scaling consistent with every other
+-- panel.
+local HEIGHT_REFERENCE = 700
+-- The two clusters now scale INDEPENDENTLY (see updateLayout) -- explicit
+-- request that the icon grid/CashHud read comfortably large even on a
+-- cramped phone screen, while the Luck/Roll Speed badges stay small and
+-- compact rather than matching. TOP_MIN_SCALE is the floor for the
+-- former; BOTTOM_MIN_SCALE (deliberately lower) is the floor for the
+-- latter -- LuckSpeedHUD is computed and shrunk FIRST, then the icon
+-- cluster gets whatever room that leaves, so a bigger icon floor can
+-- never force LuckSpeedHUD to grow to match it.
+local TOP_MIN_SCALE = 0.5
+local BOTTOM_MIN_SCALE = 0.35
+-- Extra shrink applied to JUST CashHud (on top of iconUIScale) once the
+-- top cluster is already in its mobile-shrinking regime (topScale < 1) --
+-- explicit request that Cash read a bit smaller specifically on phone,
+-- without touching the icon buttons themselves or anything on PC (where
+-- topScale sits at 1 and this never applies).
+local CASH_MOBILE_SCALE = 0.8
+-- Extra breathing room beyond the bare-minimum fit, so the two clusters
+-- end up with a real visible gap instead of an exact mathematical
+-- touch (which any small rendering slop -- text stroke overflow, corner
+-- radius, etc. -- turns back into a visible overlap).
+local SAFETY_GAP = 10
 
--- Vertical gap between the icon grid / CashHud / LuckSpeedHUD stack pieces.
+-- Vertical gap between CashHud and LuckSpeedHUD in the bottom-left
+-- cluster, and between that cluster and the bottom of the screen.
 local STACK_GAP = 14
+local BOTTOM_MARGIN = 15
 
 local LABEL_COLOR = Color3.fromRGB(255, 255, 255)
 
@@ -64,17 +98,45 @@ function Sidebar.Create(screenGui: ScreenGui, handles: PanelHandles, cashHudFram
 	local gridHeight = rows * ICON_SIZE + (rows - 1) * GAP_Y
 
 	local cashHudHeight = cashHudFrame.Size.Y.Offset
-	local luckSpeedHudHeight = luckSpeedHudFrame.Size.Y.Offset
+	local topWidth = math.max(gridWidth, cashHudFrame.Size.X.Offset)
+	local topHeight = gridHeight + STACK_GAP + cashHudHeight
+	local bottomHeight = luckSpeedHudFrame.Size.Y.Offset
 
-	local containerWidth = math.max(gridWidth, cashHudFrame.Size.X.Offset, luckSpeedHudFrame.Size.X.Offset)
-	local containerHeight = gridHeight + STACK_GAP + cashHudHeight + STACK_GAP + luckSpeedHudHeight
+	-- iconContainer is now purely a vertical UIListLayout stack of exactly 2
+	-- children (gridFrame, then cashHudFrame) instead of both being manually
+	-- Position-ed by hand-computed pixel offsets that had to be kept in sync
+	-- with gridHeight/STACK_GAP/cashHudHeight by eye. A UIListLayout can't
+	-- render its 2nd child anywhere but directly after (below) the 1st, no
+	-- matter what scale/clamp math runs elsewhere -- removes an entire class
+	-- of "the numbers looked right but something still overlapped on one
+	-- specific device" bugs the constant-tuning approach kept running into.
+	local iconContainer = Instance.new("Frame")
+	iconContainer.Size = UDim2.new(0, topWidth, 0, topHeight)
+	iconContainer.Position = UDim2.new(0, START_X, 0, PREFERRED_START_Y)
+	iconContainer.BackgroundTransparency = 1
+	iconContainer.Parent = screenGui
+	-- NOT Theme.AutoScale -- that clamps its own Scale to a flat 0.6 floor
+	-- with no awareness of the independent bottom cluster (LuckSpeedHUD),
+	-- which is exactly how the two ended up overlapping on a short
+	-- landscape phone: the icon+cash cluster refused to shrink past 0.6,
+	-- and the top-position clamp below had nowhere left to push it except
+	-- straight into LuckSpeedHUD. updateLayout (below) computes this
+	-- UIScale's value itself, jointly with the bottom cluster's, so it can
+	-- shrink BELOW 0.6 on a screen too short to fit both otherwise.
+	local iconUIScale = Instance.new("UIScale")
+	iconUIScale.Parent = iconContainer
 
-	local container = Instance.new("Frame")
-	container.Size = UDim2.new(0, containerWidth, 0, containerHeight)
-	container.Position = UDim2.new(0, START_X, 0, START_Y)
-	container.BackgroundTransparency = 1
-	container.Parent = screenGui
-	Theme.AutoScale(screenGui, container, REFERENCE_WIDTH)
+	local stackLayout = Instance.new("UIListLayout")
+	stackLayout.FillDirection = Enum.FillDirection.Vertical
+	stackLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	stackLayout.Padding = UDim.new(0, STACK_GAP)
+	stackLayout.Parent = iconContainer
+
+	local gridFrame = Instance.new("Frame")
+	gridFrame.LayoutOrder = 1
+	gridFrame.Size = UDim2.new(0, gridWidth, 0, gridHeight)
+	gridFrame.BackgroundTransparency = 1
+	gridFrame.Parent = iconContainer
 
 	for index, buttonData in BUTTONS do
 		local row = math.floor((index - 1) / COLUMNS)
@@ -88,7 +150,7 @@ function Sidebar.Create(screenGui: ScreenGui, handles: PanelHandles, cashHudFram
 		button.BackgroundTransparency = 1
 		button.Text = ""
 		button.AutoButtonColor = false
-		button.Parent = container
+		button.Parent = gridFrame
 
 		local icon = Instance.new("ImageLabel")
 		icon.Size = UDim2.new(1, 0, 1, 0)
@@ -120,16 +182,75 @@ function Sidebar.Create(screenGui: ScreenGui, handles: PanelHandles, cashHudFram
 		end
 	end
 
-	cashHudFrame.Parent = container
+	-- CashHud stacks directly below the icon grid via the UIListLayout above
+	-- -- no manual Position needed, the layout places it.
+	cashHudFrame.LayoutOrder = 2
 	cashHudFrame.AnchorPoint = Vector2.new(0, 0)
-	cashHudFrame.Position = UDim2.new(0, 0, 0, gridHeight + STACK_GAP)
+	cashHudFrame.Position = UDim2.new(0, 0, 0, 0)
+	cashHudFrame.Parent = iconContainer
+	-- Extra scale layered on top of iconUIScale, see CASH_MOBILE_SCALE.
+	local cashUIScale = Instance.new("UIScale")
+	cashUIScale.Parent = cashHudFrame
 
-	luckSpeedHudFrame.Parent = container
+	-- LuckSpeedHUD stays its own independent bottom-left cluster.
+	local bottomContainer = Instance.new("Frame")
+	bottomContainer.Size = luckSpeedHudFrame.Size
+	bottomContainer.AnchorPoint = Vector2.new(0, 1)
+	bottomContainer.Position = UDim2.new(0, START_X, 1, -BOTTOM_MARGIN)
+	bottomContainer.BackgroundTransparency = 1
+	bottomContainer.Parent = screenGui
+	-- Same reasoning as iconUIScale above -- driven by updateLayout, not
+	-- Theme.AutoScale, so both clusters always shrink together.
+	local bottomUIScale = Instance.new("UIScale")
+	bottomUIScale.Parent = bottomContainer
+
+	luckSpeedHudFrame.Parent = bottomContainer
 	luckSpeedHudFrame.AnchorPoint = Vector2.new(0, 0)
-	luckSpeedHudFrame.Position = UDim2.new(0, 0, 0, gridHeight + STACK_GAP + cashHudHeight + STACK_GAP)
+	luckSpeedHudFrame.Position = UDim2.new(0, 0, 0, 0)
 
+	-- LuckSpeedHUD's scale is resolved FIRST, independently (plain width/
+	-- height scale, its own smaller floor) -- it's small to begin with, so
+	-- it never needs the icon cluster's bigger floor. The icon+CashHud
+	-- cluster's scale/Y offset are resolved SECOND, against whatever room
+	-- LuckSpeedHUD's now-known real footprint leaves, via the same
+	-- fitScale approach as before -- so on a screen too short to fit both
+	-- at their preferred floors, they still can never be forced to
+	-- overlap (see the original bug: a single shared scale pinned at its
+	-- floor collided with LuckSpeedHUD below it).
+	local function updateLayout()
+		local size = screenGui.AbsoluteSize
+		if size.X <= 0 or size.Y <= 0 then
+			return
+		end
+
+		local widthScale = size.X / REFERENCE_WIDTH
+		local heightScale = size.Y / HEIGHT_REFERENCE
+		local baseScale = math.min(widthScale, heightScale)
+
+		local bottomScale = math.clamp(baseScale, BOTTOM_MIN_SCALE, 1)
+		bottomUIScale.Scale = bottomScale
+
+		local availableHeight = size.Y - MIN_START_Y - STACK_GAP - SAFETY_GAP - BOTTOM_MARGIN - bottomHeight * bottomScale
+		local fitScale = topHeight > 0 and (availableHeight / topHeight) or 1
+		local topScale = math.clamp(math.min(widthScale, heightScale, fitScale), TOP_MIN_SCALE, 1)
+		iconUIScale.Scale = topScale
+		cashUIScale.Scale = topScale < 1 and CASH_MOBILE_SCALE or 1
+
+		local bottomClusterTop = size.Y - BOTTOM_MARGIN - bottomHeight * bottomScale
+		local maxStartY = bottomClusterTop - topHeight * topScale - STACK_GAP - SAFETY_GAP
+		local startY = math.clamp(math.min(PREFERRED_START_Y, maxStartY), MIN_START_Y, PREFERRED_START_Y)
+		iconContainer.Position = UDim2.new(0, START_X, 0, startY)
+	end
+
+	screenGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateLayout)
+	updateLayout()
+
+	-- Two independent clusters now (see header comment) -- callers that
+	-- need to hide/show "the sidebar" (e.g. MainUI.luau while a modal or
+	-- the LARP Battles zone is active) toggle both.
 	local handle = {}
-	handle.Frame = container
+	handle.Frame = iconContainer
+	handle.BottomFrame = bottomContainer
 	return handle
 end
 

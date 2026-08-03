@@ -391,6 +391,10 @@ function LuckyRollProximityPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		billboard.Size = UDim2.new(0, 80, 0, 76)
 		billboard.StudsOffset = Vector3.new(0, 5, 0)
 		billboard.AlwaysOnTop = true
+		-- Bigger than the default 40 (MapBuilder.luau's floor marker
+		-- labels) -- Lucky Roll's marker sits out on the open grass, same
+		-- reasoning as Group/Daily Rewards' own larger radius.
+		billboard.MaxDistance = 80
 		billboard.Adornee = marker
 		billboard.Parent = marker
 

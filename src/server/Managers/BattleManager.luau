@@ -55,6 +55,16 @@ end
 
 local queue: { Player } = {}
 
+-- Both matched players are removed from `queue` the instant #queue hits
+-- 2/2, before the MATCH_FOUND_PAUSE_SECONDS beat and runBattle actually
+-- run -- during that ~1.5s window, joinBattleQueue's "already queued" guard
+-- (table.find(queue, player)) no longer sees them, so without this separate
+-- set either player could re-join and get matched into a SECOND concurrent
+-- battle before the first one resolves, stacking more than one Battle
+-- Point/RP change per "tick." Cleared the moment runBattle (or the
+-- disconnect-during-pause fallback) finishes handling that pairing.
+local matchedPlayers: { [Player]: boolean } = {}
+
 -- { Name, Image } for anything with those 2 fields (ItemDatabase.Item,
 -- AssetDatabase.Asset, InvestmentDatabase.Investment all qualify) -- nil
 -- passes through as nil (category owned nothing), which the client reads
@@ -140,7 +150,20 @@ local function pickRandomRollItem(difficulty: BotDifficulty): (number, ItemDatab
 	if #all == 0 then
 		return 0, nil
 	end
-	local item = all[math.random(1, #all)]
+
+	-- A flat uniform pick across the whole rarity band let a bot's "best
+	-- item" land on the CHEAPEST possible entry in that band just as often
+	-- as the priciest one (e.g. "easy" spans Cap at $20 up to ~$780 --
+	-- getting Cap made a $500M-Net-Worth bot's flex look absurd). Sort by
+	-- Value and only pick from the top half of the band instead, so the
+	-- item at least reads as a plausible "best" within what that tier is
+	-- allowed to flex.
+	table.sort(all, function(a, b)
+		return a.Value > b.Value
+	end)
+	local topHalfCount = math.max(1, math.floor(#all / 2))
+
+	local item = all[math.random(1, topHalfCount)]
 	return rarityRank[item.Rarity] or 0, item
 end
 
@@ -176,7 +199,13 @@ end
 local function pickRandomAsset(difficulty: BotDifficulty): (number, AssetDatabase.Asset?)
 	local all = {}
 	for _, asset in AssetDatabase.GetAllAssets() do
-		table.insert(all, asset)
+		-- NotPurchasable assets (the weekly leaderboard's exclusive Top 3
+		-- reward Estates) must never show up as a bot's flex -- they're
+		-- meant to be unobtainable outside that leaderboard, and they're
+		-- priced high enough to otherwise dominate the "hard" band.
+		if not asset.NotPurchasable then
+			table.insert(all, asset)
+		end
 	end
 	if difficulty == "hard" then
 		all = thirdByPrice(all, "top") :: any
@@ -473,7 +502,7 @@ end
 -- battleQueueUpdated with the current queue size both times so the
 -- client's "1/2 Wait for opponent" text can't drift from reality.
 joinBattleQueue.OnServerEvent:Connect(function(player: Player)
-	if table.find(queue, player) then
+	if table.find(queue, player) or matchedPlayers[player] then
 		return
 	end
 	if not DataManager.Get(player) then
@@ -486,6 +515,8 @@ joinBattleQueue.OnServerEvent:Connect(function(player: Player)
 	if #queue >= 2 then
 		local playerA = table.remove(queue, 1) :: Player
 		local playerB = table.remove(queue, 1) :: Player
+		matchedPlayers[playerA] = true
+		matchedPlayers[playerB] = true
 		-- Briefly show "2/2" to both before actually starting -- a beat of
 		-- "Match Found!" instead of jumping straight from "1/2 Waiting" to
 		-- the reveal with no acknowledgment a 2nd player showed up at all.
@@ -512,6 +543,9 @@ joinBattleQueue.OnServerEvent:Connect(function(player: Player)
 			battleQueueUpdated:FireClient(playerB, { InQueue = false, Count = 0 })
 			systemMessage:FireClient(playerB, "Your opponent disconnected before the match started. Try again!")
 		end
+
+		matchedPlayers[playerA] = nil
+		matchedPlayers[playerB] = nil
 	end
 end)
 
@@ -532,6 +566,7 @@ end)
 
 Players.PlayerRemoving:Connect(function(player)
 	removeFromQueue(player)
+	matchedPlayers[player] = nil
 end)
 
 return BattleManager

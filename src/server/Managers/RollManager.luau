@@ -25,6 +25,7 @@ local LuckPassConfig = require(ReplicatedStorage.Modules.LuckPassConfig)
 local UltraLuckPassConfig = require(ReplicatedStorage.Modules.UltraLuckPassConfig)
 local FastRollConfig = require(ReplicatedStorage.Modules.FastRollConfig)
 local SpecialRollConfig = require(ReplicatedStorage.Modules.SpecialRollConfig)
+local RollOdds = require(ReplicatedStorage.Modules.RollOdds)
 local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local InventoryManager = require(ServerScriptService.Managers.InventoryManager)
@@ -43,11 +44,34 @@ local rollResult = RemotesBootstrap:WaitForChild("RollResult")
 local inventoryUpdated = RemotesBootstrap:WaitForChild("InventoryUpdated")
 local rollSpecial = RemotesBootstrap:WaitForChild("RollSpecial")
 local specialRollStateUpdated = RemotesBootstrap:WaitForChild("SpecialRollStateUpdated")
+local systemMessage = RemotesBootstrap:WaitForChild("SystemMessage")
 
 local RollManager = {}
 
 local random = Random.new()
 local lastRollAt: { [Player]: number } = {}
+
+local function colorToHex(color: Color3): string
+	return string.format("#%02X%02X%02X", color.R * 255, color.G * 255, color.B * 255)
+end
+
+-- Server-wide "look what X just got" callout for Ultra/Luxury pulls
+-- specifically (not Legendary or below -- just the top 2 tiers), broadcast
+-- to every client (not just the roller) via SystemMessage's underlying
+-- RemoteEvent -- every client's own OnClientEvent handler (Main.client.luau)
+-- already knows how to show it via TextChatService AND as a toast, so this
+-- needs no new client-side code. Colored to match that item's own rarity
+-- color (RarityConfig) via a rich-text <font> tag, same as the odds text
+-- uses in the reveal window -- turquoise for Ultra, magenta for Luxury.
+local RARE_ANNOUNCE_RARITIES = { Ultra = true, Luxury = true }
+
+local function announceRareUnlock(player: Player, item)
+	local colorHex = colorToHex(RarityConfig.GetColor(item.Rarity))
+	local oneInN = RollOdds.GetOneInN(item.Id)
+	local oddsText = oneInN and string.format(" (1 in %d)", math.floor(oneInN + 0.5)) or ""
+	local text = string.format("<font color=\"%s\">%s unlocked %s!%s</font>", colorHex, player.Name, item.Name, oddsText)
+	systemMessage:FireAllClients(text)
+end
 
 local function pickRarity(session, isVIP: boolean, nowUnix: number, ownsLuckPass: boolean, ownsUltraLuckPass: boolean): string
 	local totalWeight = 0
@@ -265,6 +289,10 @@ function RollManager.TryRoll(player: Player): boolean
 		return false
 	end
 
+	if RARE_ANNOUNCE_RARITIES[item.Rarity] then
+		announceRareUnlock(player, item)
+	end
+
 	session.TotalRolls += 1
 	advanceSpecialRollProgress(session)
 
@@ -363,6 +391,10 @@ function RollManager.TrySpecialRoll(player: Player, tierId: string): boolean
 	local entry = InventoryManager.AddItem(player, item.Id)
 	if not entry then
 		return false
+	end
+
+	if RARE_ANNOUNCE_RARITIES[item.Rarity] then
+		announceRareUnlock(player, item)
 	end
 
 	session.TotalRolls += 1

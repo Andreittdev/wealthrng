@@ -11,6 +11,7 @@ local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local GroupRewardsConfig = require(ReplicatedStorage.Modules.GroupRewardsConfig)
+local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
 local Theme = require(script.Parent.Theme)
 local ProximityWatcher = require(script.Parent.ProximityWatcher)
 
@@ -62,20 +63,17 @@ function GroupRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Folder
 	stepsLabel.TextColor3 = Theme.Colors.TextSecondary
 	stepsLabel.Text = "1. Like the game!\n2. Join the group!\nEnjoy the rewards!"
 
-	-- Display copy only -- still grants the single $50,000 Epic
-	-- GroupRewardChest item (GroupRewardsConfig.RewardItemId), just
-	-- described as "$50K & Free Epic Item" instead of spelling out the
-	-- item's exact name/rarity/value.
+	-- Display copy only -- still grants the real Cash amount
+	-- (GroupRewardsConfig.RewardCashAmount) plus the GroupRewardChest Epic
+	-- item (GroupRewardsConfig.RewardItemId), just described as "Cash &
+	-- Free Epic Item" instead of spelling out the item's exact name/rarity.
 	local rewardLabel = Theme.Label(panel, UDim2.new(1, -24, 0, 20), "")
 	rewardLabel.Position = UDim2.new(0, 12, 0, 116)
 	rewardLabel.TextColor3 = Theme.Colors.Accent
 	rewardLabel.TextXAlignment = Enum.TextXAlignment.Left
-	rewardLabel.Text = "Reward: $50K & Free Epic Item"
+	rewardLabel.Text = string.format("Reward: %s Cash & Free Epic Item", NumberFormat.FormatCash(GroupRewardsConfig.RewardCashAmount))
 
 	local actionButton = Theme.Button(panel, UDim2.new(1, -24, 0, 36), UDim2.new(0, 12, 1, -46), "Locked", true)
-	actionButton.Activated:Connect(function()
-		claimGroupReward:FireServer()
-	end)
 
 	local inGroup = false
 	local ok, result = pcall(function()
@@ -86,6 +84,13 @@ function GroupRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Folder
 	end
 
 	local claimed = false
+	-- Guards against a fast double-tap firing ClaimGroupReward twice before
+	-- the first response lands (easy to do on mobile, standing right at the
+	-- marker) -- every other purchase/claim-style button in this codebase
+	-- already disables itself the same way. Reset unconditionally whenever
+	-- a fresh groupRewardStateUpdated arrives, so a rejected claim doesn't
+	-- leave the button stuck disabled.
+	local claiming = false
 	local function refreshButton()
 		if claimed then
 			actionButton.Text = "Claimed Rewards"
@@ -93,6 +98,12 @@ function GroupRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Folder
 			actionButton.AutoButtonColor = false
 			actionButton.BackgroundColor3 = Theme.Colors.Success
 			actionButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+		elseif claiming then
+			actionButton.Text = "Claiming..."
+			actionButton.Active = false
+			actionButton.AutoButtonColor = false
+			actionButton.BackgroundColor3 = Theme.Colors.Surface
+			actionButton.TextColor3 = Theme.Colors.TextSecondary
 		elseif inGroup then
 			actionButton.Text = "Claim"
 			actionButton.Active = true
@@ -109,7 +120,17 @@ function GroupRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Folder
 	end
 	refreshButton()
 
+	actionButton.Activated:Connect(function()
+		if claiming or claimed or not inGroup then
+			return
+		end
+		claiming = true
+		refreshButton()
+		claimGroupReward:FireServer()
+	end)
+
 	groupRewardStateUpdated.OnClientEvent:Connect(function(newClaimed: boolean)
+		claiming = false
 		claimed = newClaimed
 		refreshButton()
 	end)

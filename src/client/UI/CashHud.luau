@@ -12,8 +12,8 @@ local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
 local Theme = require(script.Parent.Theme)
 
 local CASH_ICON = "rbxassetid://72463281853990"
-local ROW1_HEIGHT = 38
-local ROW2_HEIGHT = 24
+local ROW1_HEIGHT = 44
+local ROW2_HEIGHT = 27
 
 local CashHud = {}
 
@@ -45,7 +45,7 @@ function CashHud.Create(screenGui: ScreenGui)
 	-- named that for the rest of this function/its children's relative
 	-- positioning), not a visible background shape.
 	local pill = Instance.new("Frame")
-	pill.Size = UDim2.new(0, 170, 0, ROW1_HEIGHT + ROW2_HEIGHT)
+	pill.Size = UDim2.new(0, 150, 0, ROW1_HEIGHT + ROW2_HEIGHT)
 	pill.Position = UDim2.new(1, -166, 0, 16)
 	pill.BackgroundTransparency = 1
 	pill.BorderSizePixel = 0
@@ -66,7 +66,7 @@ function CashHud.Create(screenGui: ScreenGui)
 
 	local label = Instance.new("TextLabel")
 	label.LayoutOrder = 2
-	label.Size = UDim2.new(0, 110, 1, 0)
+	label.Size = UDim2.new(0, 112, 1, 0)
 	label.BackgroundTransparency = 1
 	label.Font = Theme.Fonts.Header
 	label.TextScaled = true
@@ -80,7 +80,7 @@ function CashHud.Create(screenGui: ScreenGui)
 	label.TextStrokeColor3 = Color3.new(0, 0, 0)
 	label.Parent = row1
 	local labelTextSize = Instance.new("UITextSizeConstraint")
-	labelTextSize.MaxTextSize = 24
+	labelTextSize.MaxTextSize = 34
 	labelTextSize.Parent = label
 
 	-- ===== Row 2: Friend Boost text + invite button =====
@@ -102,7 +102,7 @@ function CashHud.Create(screenGui: ScreenGui)
 	friendBoostLabel.AutomaticSize = Enum.AutomaticSize.X
 	friendBoostLabel.BackgroundTransparency = 1
 	friendBoostLabel.Font = Theme.Fonts.Header
-	friendBoostLabel.TextSize = 14
+	friendBoostLabel.TextSize = 17
 	friendBoostLabel.TextWrapped = false
 	friendBoostLabel.Text = "Friend Boost: +0%"
 	friendBoostLabel.TextColor3 = Theme.Colors.Success

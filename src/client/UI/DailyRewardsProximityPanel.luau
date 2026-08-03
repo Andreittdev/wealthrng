@@ -277,6 +277,10 @@ function DailyRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Folder
 	local secondsRemaining = 0
 	local lastPushAt = os.clock()
 	local manuallyClosed = false
+	-- Guards against a fast double-tap firing ClaimDailyReward twice before
+	-- the first response lands -- reset unconditionally on every fresh
+	-- dailyRewardStateUpdated push, same pattern as GroupRewardsProximityPanel.
+	local claiming = false
 
 	local function refreshCards()
 		for day = 1, 7 do
@@ -320,7 +324,13 @@ function DailyRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Folder
 	end
 
 	local function refreshButton()
-		if canClaim then
+		if claiming then
+			bottomButton.Text = "CLAIMING..."
+			bottomButton.Active = false
+			bottomButton.AutoButtonColor = false
+			bottomButton.BackgroundColor3 = Theme.Colors.Surface
+			bottomButton.TextColor3 = Theme.Colors.TextSecondary
+		elseif canClaim then
 			local amountText = describeReward(DailyRewardsConfig.Days[currentDay])
 			bottomButton.Text = "CLAIM " .. amountText
 			bottomButton.Active = true
@@ -345,9 +355,11 @@ function DailyRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Folder
 	refreshButton()
 
 	bottomButton.Activated:Connect(function()
-		if not canClaim then
+		if not canClaim or claiming then
 			return
 		end
+		claiming = true
+		refreshButton()
 		claimDailyReward:FireServer()
 	end)
 
@@ -357,6 +369,7 @@ function DailyRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Folder
 	end)
 
 	dailyRewardStateUpdated.OnClientEvent:Connect(function(state: { Day: number, CanClaim: boolean, SecondsRemaining: number })
+		claiming = false
 		currentDay = state.Day
 		canClaim = state.CanClaim
 		secondsRemaining = state.SecondsRemaining

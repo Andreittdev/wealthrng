@@ -182,6 +182,15 @@ local LUCKY_ROLL_MARKER_COLOR = Color3.fromRGB(180, 100, 255)
 -- stand.
 local BATTLE_MARKER_POSITION = Vector2.new(-69.96, -0.25)
 
+-- Same flat-circle marker convention as VIP -- inside the plaza (matches
+-- VIP's PLAZA_TOP_Y, no beam needed since there's no grass clutter to poke
+-- above here), client-provided position (HumanoidRootPart.Position while
+-- standing there). Claim panel is CodesProximityPanel.luau (client) +
+-- CodesManager.luau (server).
+local CODES_MARKER_POSITION = Vector2.new(-16.345903396606445, -9.156595230102539)
+local CODES_MARKER_COLOR = Color3.fromRGB(80, 220, 160)
+local CODES_MARKER_LABEL = "Codes"
+
 -- Every out-on-the-grass floor marker's position, so isBlocked can keep
 -- ALL of them clear of trees/bushes/grass decor (see MARKER_EXCLUSION_RADIUS
 -- below) without hardcoding each one by name -- VIP's marker doesn't need
@@ -246,7 +255,14 @@ local function createBlock(name: string, size: Vector3, centerPosition: Vector3,
 	return part
 end
 
-local function addLabel(adornee: BasePart, text: string, studsUp: number, size: UDim2?, textColor: Color3?, alwaysOnTop: boolean?)
+local DEFAULT_LABEL_MAX_DISTANCE = 40
+-- Group Rewards/Daily Rewards/Lucky Roll's markers are out on the open
+-- grass, further from the plaza than everything else -- readable from
+-- twice the usual distance so they don't just disappear the moment you
+-- leave the plaza itself.
+local LARGE_LABEL_MAX_DISTANCE = 80
+
+local function addLabel(adornee: BasePart, text: string, studsUp: number, size: UDim2?, textColor: Color3?, alwaysOnTop: boolean?, maxDistance: number?)
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "Label"
 	billboard.Size = size or UDim2.new(0, 100, 0, 26)
@@ -259,6 +275,13 @@ local function addLabel(adornee: BasePart, text: string, studsUp: number, size: 
 	-- instead, so the text draws in front of the glow instead of washing
 	-- out into it.
 	billboard.AlwaysOnTop = alwaysOnTop or false
+	-- Unset, this defaults to effectively unlimited -- every floor
+	-- marker/stand/board label was readable from clear across the map,
+	-- all piled up on screen at once from the plaza. Fades out (Roblox's
+	-- own built-in behavior) once the camera is farther than this instead.
+	-- Callers can opt into a bigger radius (e.g. Daily/Group Rewards, meant
+	-- to stay noticeable from farther across the grass) via `maxDistance`.
+	billboard.MaxDistance = maxDistance or DEFAULT_LABEL_MAX_DISTANCE
 	billboard.Adornee = adornee
 	billboard.Parent = adornee
 
@@ -746,7 +769,17 @@ end
 -- trees/bushes/grass clutter and read as a marker from across the map --
 -- VIP's marker sits in the open plaza (no clutter) so it doesn't need one,
 -- but markers out on the grass do.
-local function buildFloorMarker(mapFolder: Folder, diskName: string, position: Vector2, baseY: number, color: Color3, labelText: string, textColor: Color3, withBeam: boolean?): Part
+local function buildFloorMarker(
+	mapFolder: Folder,
+	diskName: string,
+	position: Vector2,
+	baseY: number,
+	color: Color3,
+	labelText: string,
+	textColor: Color3,
+	withBeam: boolean?,
+	labelMaxDistance: number?
+): Part
 	local diskY = baseY + 0.05
 	local disk = createCylinder(diskName, 6, 0.15, Vector3.new(position.X, diskY, position.Y), color, Enum.Material.Neon)
 	disk.CanCollide = false
@@ -768,7 +801,7 @@ local function buildFloorMarker(mapFolder: Folder, diskName: string, position: V
 	-- already covers that space, and a static "Lucky Roll" title floating
 	-- right underneath it just doubled up.
 	if labelText ~= "" then
-		addLabel(disk, labelText, 7, UDim2.new(0, 75, 0, 22), textColor, withBeam)
+		addLabel(disk, labelText, 7, UDim2.new(0, 75, 0, 22), textColor, withBeam, labelMaxDistance)
 	end
 	return disk
 end
@@ -782,13 +815,71 @@ local BATTLE_MARKER_COLOR = Color3.fromRGB(255, 140, 80)
 -- see buildLeaderboard's call site for why that broke the board's visibility).
 local LEADERBOARD_POINTS_POSITION = Vector2.new(-55.436, -6.461)
 
+-- Red carpet under the LARP Battles line -- a flat black line + floating
+-- text label alone used to read as "some random spot on the grass" from a
+-- distance; a real patch of red carpet (with a gold trim border, same
+-- premium-accent language as everywhere else on the map) makes the zone
+-- read as special ground worth walking onto, without needing a big
+-- structure looming over it.
+local CARPET_COLOR = Color3.fromRGB(160, 20, 20)
+local CARPET_TRIM_COLOR = Color3.fromRGB(212, 175, 55)
+local CARPET_DEPTH = 10
+local CARPET_TRIM_WIDTH = 0.4
+
+-- Built with raw Parts (not createBlock) -- createBlock only ever applies
+-- a plain CFrame.new(position) with IDENTITY rotation, silently dropping
+-- facingCF's rotation component (which the previous version fed it via
+-- `(facingCF * offset).Position`, discarding the rotation half of that
+-- CFrame entirely). Harmless when the marker happens to sit near-aligned
+-- with world axes, but the real bug was thickness: 0.1-0.3 studs sitting
+-- barely 0.2 studs above the ground is well within typical terrain/part
+-- z-fighting range and reads as "not there" from a normal camera angle.
+-- Genuinely thick and clearly elevated now.
+local function buildBattleCarpet(mapFolder: Folder, facingCF: CFrame)
+	local carpetLength = BATTLE_LINE_LENGTH + 3
+	local carpetHeight = 1
+
+	local carpet = Instance.new("Part")
+	carpet.Name = "BattleGate_Carpet"
+	carpet.Size = Vector3.new(carpetLength, carpetHeight, CARPET_DEPTH)
+	carpet.CFrame = facingCF * CFrame.new(0, carpetHeight / 2, 0)
+	carpet.Color = CARPET_COLOR
+	carpet.Material = Enum.Material.Fabric
+	carpet.Anchored = true
+	carpet.CanCollide = false
+	carpet.Parent = mapFolder
+
+	-- Gold trim along both long edges, same premium-accent color used
+	-- everywhere else (fountain rim, stand finials) -- raised to sit right
+	-- on top of the carpet's own top surface, not floating separately.
+	for _, zOffset in { -CARPET_DEPTH / 2, CARPET_DEPTH / 2 } do
+		local trim = Instance.new("Part")
+		trim.Name = "BattleGate_CarpetTrim"
+		trim.Size = Vector3.new(carpetLength, 0.3, CARPET_TRIM_WIDTH)
+		trim.CFrame = facingCF * CFrame.new(0, carpetHeight + 0.15, zOffset)
+		trim.Color = CARPET_TRIM_COLOR
+		trim.Material = Enum.Material.Metal
+		trim.Anchored = true
+		trim.CanCollide = false
+		trim.Parent = mapFolder
+	end
+end
+
 -- Just the flat black line painted on the ground, players face off across
 -- it -- no ProximityPrompt. BattlePanel.luau (client) shows its own 3-card
 -- menu automatically while in range (plain distance check against this
 -- part, same pattern as VIPProximityPanel.luau), and BattleManager.luau
 -- (server) owns the actual queue/matchmaking once a card is picked.
 local function buildBattleMarker(mapFolder: Folder, position: Vector2)
-	local facingCF = CFrame.lookAt(Vector3.new(position.X, GROUND_TOP_Y, position.Y), Vector3.new(0, GROUND_TOP_Y, 0))
+	-- PLAZA_TOP_Y, not GROUND_TOP_Y -- this marker's position sits inside
+	-- PathWest's footprint (a solid, elevated stone slab flush with the
+	-- plaza, not open grass), so anything built at grass-level Y here was
+	-- rendering embedded INSIDE that solid path part -- completely hidden,
+	-- not just hard to see. The line itself was invisible this whole
+	-- time too, just nobody noticed since its floating label (16 studs up,
+	-- well above the path) is all that was ever actually visible.
+	local baseY = PLAZA_TOP_Y
+	local facingCF = CFrame.lookAt(Vector3.new(position.X, baseY, position.Y), Vector3.new(0, baseY, 0))
 
 	local line = Instance.new("Part")
 	line.Name = "BattleMarker_Line"
@@ -805,7 +896,9 @@ local function buildBattleMarker(mapFolder: Folder, position: Vector2)
 	-- Floating world-space title above the line -- same BillboardGui
 	-- convention every other marker's label uses (addLabel), not a flat
 	-- 2D screen element.
-	addLabel(line, "LARP Battles", 16, UDim2.new(0, 180, 0, 32), BATTLE_MARKER_COLOR)
+	addLabel(line, "LARP Battles", 16, UDim2.new(0, 180, 0, 32), BATTLE_MARKER_COLOR, false, LARGE_LABEL_MAX_DISTANCE)
+
+	buildBattleCarpet(mapFolder, facingCF)
 end
 
 -- Bigger than before (was 5x6) -- text on a small board has a hard physical
@@ -905,9 +998,11 @@ local function buildLeaderboard(mapFolder: Folder, boardCF: CFrame, labelText: s
 	-- board's 7.5 studs =~ 17%) plus a margin -- otherwise Row 1's text
 	-- starts underneath/behind the Header part and the two SurfaceGuis' text
 	-- visibly bleeds together (Roblox doesn't depth-sort SurfaceGui text
-	-- against nearby geometry reliably when they're this close).
+	-- against nearby geometry reliably when they're this close). Premium
+	-- (Points) board reserves extra room below that for the "Resets in:
+	-- ..." strip (see the ResetTimer part built further down).
 	local displayPadding = Instance.new("UIPadding")
-	displayPadding.PaddingTop = UDim.new(0.22, 0)
+	displayPadding.PaddingTop = premium and UDim.new(0.30, 0) or UDim.new(0.22, 0)
 	displayPadding.PaddingLeft = UDim.new(0.02, 0)
 	displayPadding.PaddingRight = UDim.new(0.02, 0)
 	displayPadding.PaddingBottom = UDim.new(0.02, 0)
@@ -1025,6 +1120,40 @@ local function buildLeaderboard(mapFolder: Folder, boardCF: CFrame, labelText: s
 		finial.CFrame = finial.CFrame * CFrame.Angles(0, math.rad(45), 0)
 		addContinuousSpin(finial, 45)
 		addSparkle(finial, Color3.fromRGB(220, 245, 255), 14)
+
+		-- "Resets in: ..." strip, right below the header -- own physical
+		-- part + SurfaceGui (same pattern as Header, not squeezed into
+		-- displayGui's shared padding) so it can't fight the header/rows
+		-- for space. Placeholder text only -- LeaderboardManager.luau's
+		-- refresh loop fills in the real countdown (this only exists on
+		-- the Points board, the one category that actually resets).
+		local resetTimerHeight = 0.6
+		local resetTimer = place(
+			"ResetTimer",
+			Vector3.new(LEADERBOARD_WIDTH, resetTimerHeight, LEADERBOARD_DEPTH + 0.05),
+			Vector3.new(0, headerCenterY - LEADERBOARD_HEADER_HEIGHT / 2 - resetTimerHeight / 2 - 0.05, 0),
+			Color3.fromRGB(15, 15, 18),
+			Enum.Material.SmoothPlastic
+		)
+
+		local resetTimerGui = Instance.new("SurfaceGui")
+		resetTimerGui.Name = "ResetTimerLabel"
+		resetTimerGui.Face = Enum.NormalId.Front
+		resetTimerGui.LightInfluence = 0
+		resetTimerGui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+		resetTimerGui.PixelsPerStud = 100
+		resetTimerGui.Parent = resetTimer
+
+		local resetTimerText = Instance.new("TextLabel")
+		resetTimerText.Name = "Text"
+		resetTimerText.Size = UDim2.new(1, 0, 1, 0)
+		resetTimerText.BackgroundTransparency = 1
+		resetTimerText.TextColor3 = Color3.fromRGB(190, 235, 255)
+		resetTimerText.TextStrokeTransparency = 0
+		resetTimerText.Font = Enum.Font.FredokaOne
+		resetTimerText.TextScaled = true
+		resetTimerText.Text = "Resets in: ..."
+		resetTimerText.Parent = resetTimerGui
 	end
 end
 
@@ -1587,6 +1716,7 @@ function MapBuilder.Build()
 	buildStand(mapFolder, POTION_STAND_POSITION, 2, POTION_STAND_ROOF_COLOR, POTION_STAND_LABEL, "PotionShopPrompt")
 	buildIndexPedestal(mapFolder, INDEX_STAND_POSITION, INDEX_STAND_LABEL, "CatalogPrompt")
 	buildFloorMarker(mapFolder, "VIPMarker_Disk", VIP_MARKER_POSITION, PLAZA_TOP_Y, VIP_MARKER_COLOR, VIP_MARKER_LABEL, Color3.fromRGB(255, 221, 0))
+	buildFloorMarker(mapFolder, "CodesMarker_Disk", CODES_MARKER_POSITION, PLAZA_TOP_Y, CODES_MARKER_COLOR, CODES_MARKER_LABEL, Color3.fromRGB(200, 255, 230))
 	buildFloorMarker(
 		mapFolder,
 		"GroupRewardsMarker_Disk",
@@ -1595,7 +1725,8 @@ function MapBuilder.Build()
 		GROUP_REWARDS_MARKER_COLOR,
 		GROUP_REWARDS_MARKER_LABEL,
 		Color3.fromRGB(150, 205, 255),
-		true
+		true,
+		LARGE_LABEL_MAX_DISTANCE
 	)
 	buildFloorMarker(
 		mapFolder,
@@ -1605,7 +1736,8 @@ function MapBuilder.Build()
 		DAILY_REWARDS_MARKER_COLOR,
 		DAILY_REWARDS_MARKER_LABEL,
 		Color3.fromRGB(255, 160, 160),
-		true
+		true,
+		LARGE_LABEL_MAX_DISTANCE
 	)
 	buildFloorMarker(
 		mapFolder,
@@ -1646,6 +1778,63 @@ function MapBuilder.Build()
 	applyCartoonLighting()
 
 	mapFolder.Parent = Workspace
+
+	-- "Robux Man" -- a model placed directly in Workspace (not part of the
+	-- generated mapFolder, so it isn't destroyed/rebuilt above) -- pivoted
+	-- to the given plaza position every Build() call, at a fixed rotation
+	-- (not "preserve current rotation + drift" -- that would keep spinning
+	-- further every single server restart since Build() runs on every one).
+	-- Also strips its floating name -- Humanoid's default nameplate/health
+	-- display disabled, and any custom BillboardGui nametag destroyed, in
+	-- case the model came with one baked in.
+	local robuxMan = Workspace:FindFirstChild("Robux Man")
+	if robuxMan and robuxMan:IsA("Model") then
+		local robuxManPosition = Vector3.new(-52.56655502319336, 3.6999990940093994, -11.975993156433105)
+		-- Faces the fountain (plaza center, (0, ..., 0) -- see buildFountain)
+		-- via CFrame.lookAt instead of a hand-picked angle, same convention
+		-- the leaderboard boards already use to face the plaza.
+		robuxMan:PivotTo(CFrame.lookAt(robuxManPosition, Vector3.new(0, robuxManPosition.Y, 0)))
+
+		local humanoid = robuxMan:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+		end
+
+		for _, descendant in robuxMan:GetDescendants() do
+			if descendant:IsA("BillboardGui") then
+				descendant:Destroy()
+			end
+		end
+
+		-- Talk trigger -- just the prompt itself; the actual bubble-chat
+		-- greeting + branching reply choices are RobuxManManager.luau's job
+		-- (it listens for this exact prompt name), same split every other
+		-- physical trigger in this file uses (MapBuilder builds/places
+		-- things, a Manager owns what happens when you interact with them).
+		-- Attached to the HumanoidRootPart/PrimaryPart if present (a rigged
+		-- character model), else just its first BasePart.
+		local promptAnchor = robuxMan.PrimaryPart or robuxMan:FindFirstChild("HumanoidRootPart") or robuxMan:FindFirstChildWhichIsA("BasePart")
+		if promptAnchor and not promptAnchor:FindFirstChild("RobuxManPrompt") then
+			local talkPrompt = Instance.new("ProximityPrompt")
+			talkPrompt.Name = "RobuxManPrompt"
+			talkPrompt.ActionText = "Talk"
+			talkPrompt.ObjectText = "Robux Man"
+			talkPrompt.MaxActivationDistance = 10
+			talkPrompt.RequiresLineOfSight = false
+			talkPrompt.Parent = promptAnchor
+		end
+	end
+
+	-- "sf arena" -- another model placed directly in Workspace (same deal
+	-- as "Robux Man" above -- not part of the generated mapFolder, so it
+	-- survives the destroy/rebuild above) -- pivoted to the given LARP
+	-- Battles-area position every Build() call. Keeps whatever rotation it
+	-- already has -- no specific facing was asked for, unlike Robux Man.
+	local sfArena = Workspace:FindFirstChild("sf arena")
+	if sfArena and sfArena:IsA("Model") then
+		local currentPivot = sfArena:GetPivot()
+		sfArena:PivotTo(CFrame.new(-84.1661148071289, 4.1999993324279785, -0.3685937225818634) * currentPivot.Rotation)
+	end
 
 	print("[MapBuilder] Hub map built under Workspace.Map")
 end

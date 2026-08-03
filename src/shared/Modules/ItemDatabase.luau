@@ -185,7 +185,12 @@ local items: { [string]: Item } = {
 	ArmoredLimousine = { Id = "ArmoredLimousine", Name = "Armored Limousine", Rarity = "Ultra", Value = 120000, IncomePerSecond = 1800000, Image = "rbxassetid://131943850468806" },
 	Hypercar = { Id = "Hypercar", Name = "Hypercar", Rarity = "Ultra", Value = 162000, IncomePerSecond = 2430000, Image = "rbxassetid://123620891280974" },
 	GoldenPrivateJet = { Id = "GoldenPrivateJet", Name = "Golden Private Jet", Rarity = "Ultra", Value = 210000, IncomePerSecond = 3150000, Image = "rbxassetid://127950076146933" },
-	PrivateRocket = { Id = "PrivateRocket", Name = "Private Rocket", Rarity = "Ultra", Value = 270000, IncomePerSecond = 4050000, Image = "rbxassetid://0" },
+	-- Image was "rbxassetid://0" (broken/blank placeholder) -- unlike
+	-- GroupRewardChest/Day2SpecialItem, this item IS normally rollable, so
+	-- players were seeing a broken image in the reveal/inventory/equip UI.
+	-- Reusing GoldenPrivateJet's image as a stand-in until a dedicated
+	-- rocket image id is provided.
+	PrivateRocket = { Id = "PrivateRocket", Name = "Private Rocket", Rarity = "Ultra", Value = 270000, IncomePerSecond = 4050000, Image = "rbxassetid://127950076146933" },
 	DiamondSupercar = { Id = "DiamondSupercar", Name = "Diamond Supercar", Rarity = "Ultra", Value = 348000, IncomePerSecond = 5220000, Image = "rbxassetid://129814625035916" },
 	RaceCar = { Id = "RaceCar", Name = "Race Car", Rarity = "Ultra", Value = 42000, IncomePerSecond = 630000, Image = "rbxassetid://105809267920652" },
 	JeweledScepter = { Id = "JeweledScepter", Name = "Jeweled Scepter", Rarity = "Ultra", Value = 54000, IncomePerSecond = 810000, Image = "rbxassetid://135861272860998" },

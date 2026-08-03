@@ -7,15 +7,28 @@
 
 local BattlePointsConfig = {}
 
--- Monday 00:00 UTC of the week containing `nowUtc` -- a stable,
--- deterministic boundary every server agrees on (pure UTC math, no
--- per-server clock/timezone drift).
+-- Saturday 18:00 GMT+3 (= Saturday 15:00 UTC) of the week containing
+-- `nowUtc` -- a stable, deterministic boundary every server agrees on
+-- (pure UTC math, no per-server clock/timezone drift -- GMT+3 has no DST,
+-- so a flat +3 offset never drifts).
+local RESET_HOUR_UTC = 15
+
 function BattlePointsConfig.GetWeekStart(nowUtc: number): number
 	local info = os.date("!*t", nowUtc)
-	local secondsSinceMidnight = info.hour * 3600 + info.min * 60 + info.sec
-	-- os.date's wday: 1=Sunday..7=Saturday -> days since Monday (0..6).
-	local daysSinceMonday = (info.wday + 5) % 7
-	return nowUtc - secondsSinceMidnight - daysSinceMonday * 86400
+	-- os.date's wday: 1=Sunday..7=Saturday -> days since the most recent
+	-- Saturday (0..6).
+	local daysSinceSaturday = (info.wday - 7) % 7
+	local mostRecentSaturdayMidnight = nowUtc - (info.hour * 3600 + info.min * 60 + info.sec) - daysSinceSaturday * 86400
+	local candidate = mostRecentSaturdayMidnight + RESET_HOUR_UTC * 3600
+
+	-- If it's Saturday but still before 15:00 UTC, this week's reset
+	-- moment hasn't happened yet -- the CURRENT period actually started at
+	-- LAST week's reset instead.
+	if candidate > nowUtc then
+		candidate -= 7 * 86400
+	end
+
+	return candidate
 end
 
 -- Feeds the OrderedDataStore name (LeaderboardManager.luau) -- a fresh
@@ -23,6 +36,13 @@ end
 -- clear/cron job needed. Old weeks' stores just stop being read/written.
 function BattlePointsConfig.GetWeekKey(nowUtc: number): string
 	return os.date("!%Y-%m-%d", BattlePointsConfig.GetWeekStart(nowUtc))
+end
+
+-- Seconds until the CURRENT week's store stops being read/written (the
+-- next Monday 00:00 UTC) -- drives the "Resets in: ..." countdown on the
+-- physical TOP POINTS board (LeaderboardManager.luau's refresh loop).
+function BattlePointsConfig.GetSecondsUntilReset(nowUtc: number): number
+	return BattlePointsConfig.GetWeekStart(nowUtc) + 7 * 86400 - nowUtc
 end
 
 -- Zeroes a session's BattlePoints the moment they're found to belong to a

@@ -4,6 +4,7 @@
 
 local Players = game:GetService("Players")
 local DataStoreService = game:GetService("DataStoreService")
+local BadgeService = game:GetService("BadgeService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
@@ -15,6 +16,13 @@ local store = DataStoreService:GetDataStore("WealthRNG_PlayerData_V1")
 local RETRY_COUNT = 3
 local RETRY_BACKOFF_SECONDS = 2
 local AUTOSAVE_INTERVAL_SECONDS = 120
+
+-- Awarded exactly once, the moment a genuinely new player (no prior save
+-- found -- see Load's `else session = newDefaultSession()` branch) is
+-- first created -- not on every join, and not for a returning player whose
+-- Load merely failed (that path warns and falls back separately, see
+-- LoadedOk = false below).
+local NEW_PLAYER_BADGE_ID = 4105962588418819
 
 export type Session = {
 	Cash: number,
@@ -124,6 +132,16 @@ export type Session = {
 	-- between "grant the cash" and "acknowledge the receipt" would grant
 	-- it a second time.
 	GrantedCashPackPurchaseIds: { [string]: boolean },
+	-- Promo codes already redeemed this save (CodesManager.luau), keyed by
+	-- the UPPERCASED code string -- one redemption per code, forever, same
+	-- shape as GrantedCashPackPurchaseIds above.
+	RedeemedCodes: { [string]: boolean },
+	-- Robux "instant buy" potion purchases already granted (PotionManager.
+	-- luau's GrantPotionFree, called from CashPackManager.luau's shared
+	-- ProcessReceipt), keyed by PurchaseId -- same dedup shape/reasoning as
+	-- GrantedCashPackPurchaseIds, kept as its own field since it's a
+	-- distinct purchase flow.
+	GrantedPotionPurchaseIds: { [string]: boolean },
 	LoadedOk: boolean,
 }
 
@@ -158,6 +176,8 @@ local function newDefaultSession(): Session
 		BattlePointsWeekStart = 0,
 		BattleRankPoints = 0,
 		GrantedCashPackPurchaseIds = {},
+		RedeemedCodes = {},
+		GrantedPotionPurchaseIds = {},
 		LoadedOk = true,
 	}
 end
@@ -271,10 +291,24 @@ function DataManager.Load(player: Player): Session
 				BattlePointsWeekStart = data.BattlePointsWeekStart or 0,
 				BattleRankPoints = data.BattleRankPoints or 0,
 				GrantedCashPackPurchaseIds = data.GrantedCashPackPurchaseIds or {},
+				RedeemedCodes = data.RedeemedCodes or {},
+				GrantedPotionPurchaseIds = data.GrantedPotionPurchaseIds or {},
 				LoadedOk = true,
 			}
 		else
 			session = newDefaultSession()
+
+			-- Fire-and-forget -- AwardBadge is a yielding network call, and
+			-- a failed/slow badge award should never hold up the player's
+			-- actual data loading.
+			task.spawn(function()
+				local ok = pcall(function()
+					BadgeService:AwardBadge(player.UserId, NEW_PLAYER_BADGE_ID)
+				end)
+				if not ok then
+					warn(string.format("[DataManager] Failed to award new-player badge to %s (%d)", player.Name, player.UserId))
+				end
+			end)
 		end
 	else
 		-- Load failed: fall back to an in-memory-only default session and
@@ -324,6 +358,8 @@ function DataManager.Save(player: Player)
 		BattlePointsWeekStart = session.BattlePointsWeekStart,
 		BattleRankPoints = session.BattleRankPoints,
 		GrantedCashPackPurchaseIds = session.GrantedCashPackPurchaseIds,
+		RedeemedCodes = session.RedeemedCodes,
+		GrantedPotionPurchaseIds = session.GrantedPotionPurchaseIds,
 	}
 
 	local ok = attempt(function()
@@ -339,15 +375,72 @@ function DataManager.Release(player: Player)
 	sessions[player] = nil
 end
 
+-- One-off/admin direct patch of a player's PERSISTED save, for a player who
+-- is NOT currently online -- an online player's session lives in-memory
+-- (see `sessions` above) and the next autosave would just overwrite
+-- whatever this wrote underneath it. Callers must check
+-- Players:GetPlayerByUserId/DataManager.Get first and mutate the live
+-- Session directly in that case instead. `mutator` receives the raw saved
+-- table (the same shape Save() writes) and edits it in place; a no-op if
+-- this player has no save yet.
+-- Read-only counterpart to PatchOfflineSession, for an offline player --
+-- returns nil if this player has no save yet.
+function DataManager.GetOfflineBattlePoints(userId: number): number?
+	local key = "Player_" .. userId
+	local ok, data = attempt(function()
+		return store:GetAsync(key)
+	end)
+	if ok and data then
+		return data.BattlePoints or 0
+	end
+	return nil
+end
+
+function DataManager.PatchOfflineSession(userId: number, mutator: (any) -> ())
+	local key = "Player_" .. userId
+	attempt(function()
+		store:UpdateAsync(key, function(data)
+			if not data then
+				return nil
+			end
+			mutator(data)
+			return data
+		end)
+	end)
+end
+
 Players.PlayerRemoving:Connect(function(player)
 	DataManager.Save(player)
 	DataManager.Release(player)
 end)
 
 game:BindToClose(function()
-	for _, player in Players:GetPlayers() do
-		DataManager.Save(player)
+	-- Saving players one at a time here used to mean a slow/throttled save
+	-- for an early player in the list could eat most of Roblox's bounded
+	-- shutdown window, leaving later players never saved at all (losing up
+	-- to AUTOSAVE_INTERVAL_SECONDS of state, including any just-granted
+	-- Cash Pack/Potion purchase). Running every player's Save in its own
+	-- thread and waiting for all of them lets them race in parallel
+	-- instead, so the total time is bounded by the SLOWEST single save, not
+	-- the sum of all of them.
+	local players = Players:GetPlayers()
+	if #players == 0 then
+		return
 	end
+
+	local remaining = #players
+	local done = Instance.new("BindableEvent")
+	for _, player in players do
+		task.spawn(function()
+			DataManager.Save(player)
+			remaining -= 1
+			if remaining == 0 then
+				done:Fire()
+			end
+		end)
+	end
+	done.Event:Wait()
+	done:Destroy()
 end)
 
 task.spawn(function()

@@ -2,7 +2,8 @@
 -- ladder), but only AssetDatabase.MaxEquipped of them actively generate
 -- income at once -- Equip/Unequip picks which. Server-authoritative:
 -- price/ownership/equip-cap checks are all re-derived here, never trusted
--- from the client.
+-- from the client. No Sell -- once bought (or won), an Estate is yours for
+-- good.
 -- Never required by StatsManager (which needs Asset value/income for its
 -- own display) -- see IncomeConfig's header for why that would cycle.
 
@@ -17,14 +18,38 @@ local StatsManager = require(ServerScriptService.Managers.StatsManager)
 local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManager)
 
 local buyAsset = RemotesBootstrap:WaitForChild("BuyAsset")
-local sellAsset = RemotesBootstrap:WaitForChild("SellAsset")
 local equipAsset = RemotesBootstrap:WaitForChild("EquipAsset")
 local unequipAsset = RemotesBootstrap:WaitForChild("UnequipAsset")
 local assetUpdated = RemotesBootstrap:WaitForChild("AssetUpdated")
 local systemMessage = RemotesBootstrap:WaitForChild("SystemMessage")
 
+local AssetManager = {}
+
 local function pushUpdate(player: Player, session)
 	assetUpdated:FireClient(player, { Owned = session.OwnedAssets, Equipped = session.EquippedAssets })
+end
+
+-- Grants an Asset for free -- no Cash deducted, no ownership/price checks
+-- (unlike buyAsset below). Used by BattleLeaderboardRewardManager.luau to
+-- hand out the LARP Battles Top 3 reward estates. Idempotent -- a no-op if
+-- the player already owns it (can't happen twice for the same week, but
+-- safe regardless).
+function AssetManager.GrantAsset(player: Player, session, assetId: string)
+	if session.OwnedAssets[assetId] then
+		return
+	end
+
+	local asset = AssetDatabase.GetAsset(assetId)
+	if not asset then
+		return
+	end
+
+	session.OwnedAssets[assetId] = true
+
+	systemMessage:FireClient(player, string.format("You won %s!", asset.Name))
+	pushUpdate(player, session)
+	StatsManager.Recompute(player)
+	LeaderboardManager.MarkDirty(player)
 end
 
 buyAsset.OnServerEvent:Connect(function(player: Player, assetId: string)
@@ -106,34 +131,4 @@ unequipAsset.OnServerEvent:Connect(function(player: Player, assetId: string)
 	LeaderboardManager.MarkDirty(player)
 end)
 
-sellAsset.OnServerEvent:Connect(function(player: Player, assetId: string)
-	if typeof(assetId) ~= "string" then
-		return
-	end
-
-	local session = DataManager.Get(player)
-	if not session or not session.OwnedAssets[assetId] then
-		return
-	end
-
-	local asset = AssetDatabase.GetAsset(assetId)
-	if asset then
-		local payout = math.floor(asset.Price * 0.5)
-		session.Cash += payout
-		systemMessage:FireClient(player, string.format("Sold %s for %s!", asset.Name, NumberFormat.FormatCash(payout)))
-	end
-
-	session.OwnedAssets[assetId] = nil
-	local equippedIndex = table.find(session.EquippedAssets, assetId)
-	if equippedIndex then
-		table.remove(session.EquippedAssets, equippedIndex)
-	end
-
-	pushUpdate(player, session)
-	StatsManager.Recompute(player)
-	LeaderboardManager.MarkDirty(player)
-end)
-
--- Side-effect-only module -- see RollManager.luau's tail comment for why
--- this return is required even though nothing is exported.
-return true
+return AssetManager

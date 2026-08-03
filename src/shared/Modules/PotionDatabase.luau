@@ -10,11 +10,20 @@
 -- LuxuryTownhouse (Asset) -- a real, felt spend every time, especially
 -- since it's meant to be rebought repeatedly (every 10 min), not a single
 -- permanent purchase like an Upgrade level.
+--
+-- InstantProductId: a Developer Product (2 R$) that skips the Cash price
+-- entirely -- PotionShopPanel.luau shows it as a small button under the
+-- normal Buy one. Granted via CashPackManager.luau's shared ProcessReceipt
+-- (see PotionManager.GrantPotionFree) -- Roblox only allows ONE
+-- ProcessReceipt callback per game, so this can't own its own. 0 is a
+-- placeholder -- swap in the real Developer Product Id from the Creator
+-- Dashboard before this can actually be purchased.
 
 export type Potion = {
 	Id: string,
 	Name: string,
 	Price: number,
+	InstantProductId: number,
 	DurationSeconds: number,
 	Image: string,
 	LuckWeightMultiplier: { [string]: number }?,
@@ -29,6 +38,7 @@ local potions: { [string]: Potion } = {
 		Id = "LuckPotion",
 		Name = "Luck Potion",
 		Price = 250000,
+		InstantProductId = 3612976171,
 		DurationSeconds = 600,
 		Image = "rbxassetid://84813784990662",
 		-- Luxury deliberately milder (1.5x, not the old 3.5x) -- it stacks
@@ -44,6 +54,7 @@ local potions: { [string]: Potion } = {
 		Id = "SpeedPotion",
 		Name = "Speed Potion",
 		Price = 250000,
+		InstantProductId = 3612976254,
 		DurationSeconds = 600,
 		Image = "rbxassetid://127880368455184",
 		CooldownMultiplier = 0.6,
@@ -52,11 +63,21 @@ local potions: { [string]: Potion } = {
 		Id = "FortunePotion",
 		Name = "Fortune Potion",
 		Price = 250000,
+		InstantProductId = 3612976203,
 		DurationSeconds = 600,
 		Image = "rbxassetid://128041182972051",
 		CashBonusPercent = 40,
 	},
 }
+
+function PotionDatabase.GetPotionByInstantProductId(productId: number): Potion?
+	for _, potion in potions do
+		if potion.InstantProductId == productId and productId ~= 0 then
+			return potion
+		end
+	end
+	return nil
+end
 
 function PotionDatabase.GetPotion(id: string): Potion?
 	return potions[id]

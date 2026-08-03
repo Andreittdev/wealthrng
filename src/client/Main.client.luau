@@ -12,6 +12,17 @@ local MainUI = require(script.Parent.UI:WaitForChild("MainUI"))
 local NotificationToast = require(script.Parent.UI:WaitForChild("NotificationToast"))
 local HideOtherPlayers = require(script.Parent.UI:WaitForChild("HideOtherPlayers"))
 local BattlePanel = require(script.Parent.UI:WaitForChild("BattlePanel"))
+local ButtonClickSound = require(script.Parent.UI:WaitForChild("ButtonClickSound"))
+local BackgroundMusic = require(script.Parent.UI:WaitForChild("BackgroundMusic"))
+
+-- Before LoadingScreen/MainUI -- hooks every button game-wide via
+-- PlayerGui:GetDescendants()/DescendantAdded (see its own header comment),
+-- so it needs to start listening before MainUI.Init() builds every panel's
+-- buttons, not after.
+ButtonClickSound.Init()
+-- Starts during the loading screen too -- no reason to wait for the rest
+-- of the UI to finish building first.
+BackgroundMusic.Init()
 
 -- Called directly (not backgrounded) so the rest of the game's UI only
 -- starts building AFTER the loading screen has fully held its 6s and faded
@@ -26,10 +37,13 @@ NotificationToast.Init()
 HideOtherPlayers.Init()
 BattlePanel.Init(mainUIHandle.SetBattleZoneActive)
 
--- LeaderboardManager fires this only at the affected player (a rank
--- change on one of the top-100 boards) -- DisplaySystemMessage called
--- from the client only shows locally, which is exactly what a personal
--- "you're #67 now" notice should do, not a server-wide broadcast.
+-- Most SystemMessage pushes (rank changes, purchases, gamepass grants,
+-- etc.) target one specific player via FireClient -- DisplaySystemMessage
+-- called from the client only shows locally, which is exactly what a
+-- personal "you're #67 now" notice should do. RollManager.luau's Ultra-item
+-- unlock callout is the one exception: it's fired to everyone via
+-- FireAllClients, since seeing someone else pull something rare is the
+-- whole point of that one.
 local systemMessage = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("SystemMessage")
 systemMessage.OnClientEvent:Connect(function(text: string)
 	local ok = pcall(function()

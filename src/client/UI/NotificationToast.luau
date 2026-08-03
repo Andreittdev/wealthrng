@@ -65,7 +65,7 @@ function NotificationToast.Init()
 
 	local order = 0
 
-	local function show(text: string)
+	local function show(rawText: string)
 		order += 1
 		local currentOrder = order
 
@@ -79,6 +79,13 @@ function NotificationToast.Init()
 		Theme.Round(toast, UDim.new(0, 10))
 		local stroke = Theme.Stroke(toast, Color3.fromRGB(255, 215, 140), 1.5)
 		stroke.Transparency = 1
+
+		-- Strip rich-text tags (e.g. RollManager.luau's Ultra-unlock <font
+		-- color="..."> callout) -- this label's RichText is off, so an
+		-- untouched tag would render as literal "<font...>" text instead of
+		-- being interpreted; the chat side (TextChatService) still shows it
+		-- colored, this toast just shows the plain words.
+		local text = rawText:gsub("<[^>]->", "")
 
 		local label = Theme.Label(toast, UDim2.new(1, -20, 1, -12), text, false)
 		label.Position = UDim2.new(0, 10, 0, 6)

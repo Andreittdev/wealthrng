@@ -134,7 +134,8 @@ function TradePanel.Create(screenGui: ScreenGui, remotes: Folder)
 	-- ===== Incoming request popup =====
 	local requestPopup = Instance.new("Frame")
 	requestPopup.Size = UDim2.new(0, 300, 0, 110)
-	requestPopup.Position = UDim2.new(0.5, -150, 0, 16)
+	requestPopup.AnchorPoint = Vector2.new(0.5, 0)
+	requestPopup.Position = UDim2.new(0.5, 0, 0, 16)
 	requestPopup.BackgroundColor3 = Theme.Colors.Panel
 	requestPopup.BackgroundTransparency = 0
 	requestPopup.BorderSizePixel = 0
@@ -143,7 +144,9 @@ function TradePanel.Create(screenGui: ScreenGui, remotes: Folder)
 	requestPopup.Parent = screenGui
 	Theme.Round(requestPopup)
 	Theme.Stroke(requestPopup, Color3.fromRGB(255, 215, 140), 1)
-	Theme.Shadow(requestPopup)
+	local requestPopupShadow = Theme.Shadow(requestPopup)
+	Theme.AutoScale(screenGui, requestPopup, 300)
+	Theme.AutoScale(screenGui, requestPopupShadow, 300)
 
 	local requestLabel = Theme.Label(requestPopup, UDim2.new(1, -20, 0, 50), "", true)
 	requestLabel.Position = UDim2.new(0, 10, 0, 8)

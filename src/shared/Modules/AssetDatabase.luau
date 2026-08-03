@@ -39,6 +39,10 @@ export type Asset = {
 	Price: number,
 	IncomePerMinute: number,
 	Image: string,
+	-- Never shown/buyable in AssetShopPanel.luau -- exclusively granted by
+	-- BattleLeaderboardRewardManager.luau to the Top 3 of LARP Battles'
+	-- weekly Points leaderboard, same idea as ItemDatabase's NotRollable.
+	NotPurchasable: boolean?,
 }
 
 local AssetDatabase = {}
@@ -71,6 +75,16 @@ local assets: { [string]: Asset } = {
 	-- x15 figure, so this doesn't become an oddly-efficient outlier.
 	LuxuryHotelChain = { Id = "LuxuryHotelChain", Name = "Luxury Hotel Chain", Price = 2000000000000, IncomePerMinute = 215000000000, Image = "rbxassetid://120902816460043" },
 	RealEstateEmpire = { Id = "RealEstateEmpire", Name = "Real Estate Empire", Price = 100000000000000, IncomePerMinute = 192000000000, Image = "rbxassetid://97450504269002" },
+
+	-- LARP Battles weekly Points leaderboard Top 3 reward -- never
+	-- purchasable, granted automatically (BattleLeaderboardRewardManager.
+	-- luau) at each Saturday 18:00 GMT+3 reset. Price = 1000x Income, a
+	-- deliberately clean "prestige" ratio (not derived from the payback-time
+	-- pacing every purchasable tier follows) -- these exist to be flexed,
+	-- not to be efficient.
+	Top1Estate = { Id = "Top1Estate", Name = "Abra Ai Balt", Price = 150000000000000, IncomePerMinute = 150000000000, Image = "rbxassetid://79317381275203", NotPurchasable = true },
+	Top2Estate = { Id = "Top2Estate", Name = "Loira Chateau", Price = 90000000000000, IncomePerMinute = 90000000000, Image = "rbxassetid://121583618235564", NotPurchasable = true },
+	Top3Estate = { Id = "Top3Estate", Name = "Sol Stadium", Price = 60000000000000, IncomePerMinute = 60000000000, Image = "rbxassetid://97852370469373", NotPurchasable = true },
 }
 
 function AssetDatabase.GetAsset(id: string?): Asset?

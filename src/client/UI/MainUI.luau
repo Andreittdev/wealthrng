@@ -31,6 +31,8 @@ local VIPProximityPanel = require(script.Parent.VIPProximityPanel)
 local GroupRewardsProximityPanel = require(script.Parent.GroupRewardsProximityPanel)
 local DailyRewardsProximityPanel = require(script.Parent.DailyRewardsProximityPanel)
 local LuckyRollProximityPanel = require(script.Parent.LuckyRollProximityPanel)
+local CodesProximityPanel = require(script.Parent.CodesProximityPanel)
+local RobuxManDialogChoices = require(script.Parent.RobuxManDialogChoices)
 local NetWorthPanel = require(script.Parent.NetWorthPanel)
 local SettingsPanel = require(script.Parent.SettingsPanel)
 local ProfilePanel = require(script.Parent.ProfilePanel)
@@ -71,6 +73,8 @@ function MainUI.Init()
 	local groupRewardsProximityHandle = GroupRewardsProximityPanel.Create(screenGui, remotesFolder)
 	local dailyRewardsProximityHandle = DailyRewardsProximityPanel.Create(screenGui, remotesFolder)
 	local luckyRollProximityHandle = LuckyRollProximityPanel.Create(screenGui, remotesFolder)
+	local codesProximityHandle = CodesProximityPanel.Create(screenGui, remotesFolder)
+	RobuxManDialogChoices.Create(screenGui, remotesFolder)
 	local netWorthHandle = NetWorthPanel.Create(screenGui, remotesFolder)
 	local settingsHandle = SettingsPanel.Create(screenGui, remotesFolder)
 	local profileHandle = ProfilePanel.Create(screenGui)
@@ -107,6 +111,7 @@ function MainUI.Init()
 		groupRewardsProximityHandle.Frame,
 		dailyRewardsProximityHandle.Frame,
 		luckyRollProximityHandle.Frame,
+		codesProximityHandle.Frame,
 	}
 
 	-- inBattleZone is a 3rd independent source of "should the always-on HUD
@@ -134,6 +139,7 @@ function MainUI.Init()
 		local hudVisible = not anyModalOpen and not inBattleZone
 		rollHandle.SetHudVisible(hudVisible)
 		sidebarHandle.Frame.Visible = hudVisible
+		sidebarHandle.BottomFrame.Visible = hudVisible
 	end
 
 	for _, frame in modalFrames do

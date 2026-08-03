@@ -1,7 +1,8 @@
 -- Portfolio breakdown: Cash, rolled-items value, owned Assets, owned
--- Investments, and the Net Worth total. Assets are display-only here now
--- (name + income/sec, no Sell -- that's being reworked into something
--- else) -- Investments still get a Sell button, with a confirmation popup
+-- Investments, and the Net Worth total. Assets are display-only here (name
+-- + income/sec) -- Estates have no Sell anywhere in the game, once bought
+-- (or won via LARP Battles) they're yours for good. Investments still get
+-- a Sell button, with a confirmation popup
 -- first (same shared-instance pattern as InventoryPanel's sell confirm)
 -- since a sell can be a very large amount of value to lose to a misclick.
 -- The quantity-to-sell input for Investments lives IN that popup (a
@@ -82,7 +83,9 @@ function NetWorthPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	confirmPopup.Parent = screenGui
 	Theme.Round(confirmPopup)
 	Theme.Stroke(confirmPopup, Color3.fromRGB(255, 215, 140), 1)
-	Theme.Shadow(confirmPopup)
+	local confirmPopupShadow = Theme.Shadow(confirmPopup)
+	Theme.AutoScale(screenGui, confirmPopup, 300)
+	Theme.AutoScale(screenGui, confirmPopupShadow, 300)
 
 	local confirmLabel = Theme.Label(confirmPopup, UDim2.new(1, -24, 0, 56), "Are you sure you want to sell this?", true)
 	confirmLabel.Position = UDim2.new(0, 12, 0, 12)

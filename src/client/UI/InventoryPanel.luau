@@ -1,18 +1,23 @@
--- Centered modal, master-detail layout: a simple scrollable list (name +
--- roll chance per row) fills the whole panel. Clicking a row doesn't push
--- the list aside -- it pops a detail square on top of it (image, name,
--- chance, rarity, Equip/Sell), dismissed via its X button or by clicking
--- the dimmed backdrop behind it.
+-- Centered modal, master-detail layout: two tabs (Roll Items / Estates), a
+-- simple scrollable list (name + a detail line per row) fills the whole
+-- panel for whichever is open. Clicking a row doesn't push the list aside
+-- -- it pops a detail square on top of it (image, name, stats, Equip/Sell),
+-- dismissed via its X button or by clicking the dimmed backdrop behind it.
+-- The SAME detail popup is reused for both tabs (fields relabeled per
+-- selection) rather than duplicating the whole layout twice.
 --
 -- Items only earn IncomePerSecond while equipped -- only ItemDatabase.
 -- MaxEquipped (currently 1) can be equipped at once, so tapping Equip on
 -- the selected item just swaps out whichever one was equipped before
 -- (server-side swap in InventoryManager.Equip, this panel doesn't need to
--- know).
+-- know). Estates (AssetDatabase.MaxEquipped, currently 2) work the same
+-- way. Equip/Unequip for Estates lives ONLY here now -- AssetShopPanel.luau
+-- (the physical Shop kiosk) is buy-only once something's owned.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
+local AssetDatabase = require(ReplicatedStorage.Modules.AssetDatabase)
 local RarityConfig = require(ReplicatedStorage.Modules.RarityConfig)
 local RollOdds = require(ReplicatedStorage.Modules.RollOdds)
 local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
@@ -38,10 +43,22 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	local equipItem = remotes:WaitForChild("EquipItem")
 	local unequipItem = remotes:WaitForChild("UnequipItem")
 	local equippedItemsUpdated = remotes:WaitForChild("EquippedItemsUpdated")
+	-- Estates have no Sell -- equip-only once owned, see detailSellButton's
+	-- visibility toggle below.
+	local equipAsset = remotes:WaitForChild("EquipAsset")
+	local unequipAsset = remotes:WaitForChild("UnequipAsset")
+	local assetUpdated = remotes:WaitForChild("AssetUpdated")
 
 	local currentInventory: { { Uid: number, ItemId: string } } = {}
 	local equippedUids: { number } = {}
 	local selectedUid: number? = nil
+
+	local ownedAssetIds: { [string]: boolean } = {}
+	local equippedAssetIds: { string } = {}
+	local selectedAssetId: string? = nil
+
+	-- "Items" or "Estates" -- which tab is currently showing in `list`/`detail`.
+	local currentTab = "Items"
 
 	local panel = Theme.ResponsivePanel(screenGui, UDim2.new(0, 600, 0, 460), UDim2.new(0.5, -300, 0, 60))
 	panel.Visible = false
@@ -80,11 +97,28 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		panel.Visible = false
 	end)
 
-	-- ===== Search bar -- filters the list below by item name as you type,
-	-- same rarity-colored row list, just fewer rows visible. =====
+	-- ===== Tabs -- Roll Items / Estates -- same toggle-highlight convention
+	-- AssetShopPanel.luau's Assets/Investments tabs use. Both created plain
+	-- (accent=false, no baked-in gold gradient) -- highlightTabs() toggles
+	-- their flat BackgroundColor3/TextColor3 to show which is active, and a
+	-- permanent gradient on one but not the other would look inconsistent
+	-- once they swap states.
+	local itemsTabButton = Theme.Button(panel, UDim2.new(0.5, -20, 0, 32), UDim2.new(0, 16, 0, 50), "Roll Items")
+	local estatesTabButton = Theme.Button(panel, UDim2.new(0.5, -20, 0, 32), UDim2.new(0.5, 4, 0, 50), "Estates")
+
+	local TAB_MAX_TEXT_SIZE = 18
+	local itemsTabTextConstraint = Instance.new("UITextSizeConstraint")
+	itemsTabTextConstraint.MaxTextSize = TAB_MAX_TEXT_SIZE
+	itemsTabTextConstraint.Parent = itemsTabButton
+	local estatesTabTextConstraint = Instance.new("UITextSizeConstraint")
+	estatesTabTextConstraint.MaxTextSize = TAB_MAX_TEXT_SIZE
+	estatesTabTextConstraint.Parent = estatesTabButton
+
+	-- ===== Search bar -- filters the list below by name as you type, same
+	-- convention on both tabs, just fewer rows visible. =====
 	local searchBox = Instance.new("TextBox")
 	searchBox.Size = UDim2.new(1, -32, 0, 32)
-	searchBox.Position = UDim2.new(0, 16, 0, 56)
+	searchBox.Position = UDim2.new(0, 16, 0, 90)
 	searchBox.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
 	searchBox.BorderSizePixel = 0
 	searchBox.Text = ""
@@ -106,20 +140,11 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	searchBoxPadding.PaddingRight = UDim.new(0, 10)
 	searchBoxPadding.Parent = searchBox
 
-	-- Catches EVERY way the panel can close (Close button, Sidebar toggle,
-	-- clicking the Inventory sidebar icon again) in one place, instead of
-	-- duplicating a reset call at each individual close path.
-	panel:GetPropertyChangedSignal("Visible"):Connect(function()
-		if not panel.Visible then
-			searchBox.Text = ""
-		end
-	end)
-
 	-- ===== List, name + chance per row -- takes the full content width, no
 	-- space reserved for the detail pane (that's an overlay now, see below). =====
 	local list = Instance.new("ScrollingFrame")
-	list.Size = UDim2.new(1, -32, 1, -114)
-	list.Position = UDim2.new(0, 16, 0, 98)
+	list.Size = UDim2.new(1, -32, 1, -148)
+	list.Position = UDim2.new(0, 16, 0, 132)
 	list.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
 	list.BackgroundTransparency = 0
 	list.BorderSizePixel = 0
@@ -146,8 +171,15 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	listLayout.Parent = list
 
-	-- Dims the list and catches "click outside" to dismiss the detail
-	-- overlay -- sits between the list and the detail pane in ZIndex.
+	-- Dims the WHOLE SCREEN (not just the panel) and catches "click outside"
+	-- to dismiss the detail overlay -- both are parented to screenGui
+	-- directly, not `panel`, and ZIndex'd above it (panel's own ZIndex is
+	-- 10). They used to be nested inside `panel` at a FIXED 320x404 size
+	-- with no scaling -- on a short/narrow phone screen, ResponsivePanel
+	-- shrinks `panel` itself down (sometimes well under 320x404), so the
+	-- detail popup routinely overflowed past the panel's own edges,
+	-- reading as "buggy" when tapping an item. Detached + AutoScale'd
+	-- against the full screen, it now shrinks correctly instead.
 	local backdrop = Instance.new("TextButton")
 	backdrop.Size = UDim2.new(1, 0, 1, 0)
 	backdrop.BackgroundColor3 = Color3.new(0, 0, 0)
@@ -155,13 +187,13 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	backdrop.BorderSizePixel = 0
 	backdrop.Text = ""
 	backdrop.AutoButtonColor = false
-	backdrop.ZIndex = 5
+	backdrop.ZIndex = 11
 	backdrop.Visible = false
-	backdrop.Parent = panel
+	backdrop.Parent = screenGui
 
-	-- ===== Detail pane -- a floating square that appears ON TOP of the
-	-- list (centered over it) only while an item is selected, instead of
-	-- reserving a permanently-visible column next to the list. =====
+	-- ===== Detail pane -- a floating square that appears ON TOP of
+	-- everything (screen-centered) only while an item is selected, instead
+	-- of reserving a permanently-visible column next to the list. =====
 	local detail = Instance.new("Frame")
 	detail.Size = UDim2.new(0, 320, 0, 404)
 	detail.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -169,16 +201,18 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	detail.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
 	detail.BackgroundTransparency = 0
 	detail.BorderSizePixel = 0
-	detail.ZIndex = 6
+	detail.ZIndex = 12
 	detail.Visible = false
-	detail.Parent = panel
+	detail.Parent = screenGui
 	Theme.Round(detail, UDim.new(0, 8))
 	local detailStroke = Theme.Stroke(detail, Color3.fromRGB(110, 110, 122), 2)
 	detailStroke.Transparency = 0
-	Theme.Shadow(detail)
+	local detailShadow = Theme.Shadow(detail)
+	Theme.AutoScale(screenGui, detail, 320)
+	Theme.AutoScale(screenGui, detailShadow, 320)
 
 	local detailCloseButton = Theme.Button(detail, UDim2.new(0, 32, 0, 32), UDim2.new(1, -44, 0, 12), "X")
-	detailCloseButton.ZIndex = 7
+	detailCloseButton.ZIndex = 13
 
 	local detailIcon = Instance.new("ImageLabel")
 	detailIcon.Size = UDim2.new(0, 150, 0, 150)
@@ -225,9 +259,11 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	confirmPopup.Parent = screenGui
 	Theme.Round(confirmPopup)
 	Theme.Stroke(confirmPopup, Color3.fromRGB(255, 215, 140), 1)
-	Theme.Shadow(confirmPopup)
+	local confirmPopupShadow = Theme.Shadow(confirmPopup)
+	Theme.AutoScale(screenGui, confirmPopup, 300)
+	Theme.AutoScale(screenGui, confirmPopupShadow, 300)
 
-	local confirmLabel = Theme.Label(confirmPopup, UDim2.new(1, -24, 0, 56), "Are you sure you want to sell this item?", true)
+	local confirmLabel = Theme.Label(confirmPopup, UDim2.new(1, -24, 0, 56), "Are you sure you want to sell this?", true)
 	confirmLabel.Position = UDim2.new(0, 12, 0, 12)
 	confirmLabel.TextXAlignment = Enum.TextXAlignment.Center
 	confirmLabel.TextWrapped = true
@@ -239,6 +275,8 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	local noButton = Theme.Button(confirmPopup, UDim2.new(0, 68, 0, 68), UDim2.new(0.5, 10, 1, -84), "No")
 	noButton.BackgroundColor3 = Theme.Colors.Danger
 
+	-- Roll Items only -- Estates have no Sell (detailSellButton hides
+	-- entirely on that tab, see renderEstateDetail).
 	local pendingSellUid: number? = nil
 
 	local function hideConfirm()
@@ -257,12 +295,25 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	-- the file does NOT retroactively become visible to code above it, so
 	-- without this, handle.Toggle's calls would resolve to nil globals.
 	local renderList
+	local renderEstatesList
 	local renderDetail
+	local refreshStatusLabel
+
+	-- Dispatches to whichever tab is currently open -- every external
+	-- caller (search box, tab switch, data-update handlers) goes through
+	-- this instead of calling renderList/renderEstatesList directly.
+	local function refreshList()
+		if currentTab == "Items" then
+			renderList()
+		else
+			renderEstatesList()
+		end
+	end
 
 	local searchQuery = ""
 	searchBox:GetPropertyChangedSignal("Text"):Connect(function()
 		searchQuery = string.lower(searchBox.Text)
-		renderList()
+		refreshList()
 	end)
 
 	local handle = {}
@@ -280,7 +331,7 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		panel.Visible = not panel.Visible
 		if panel.Visible and pendingRerender then
 			pendingRerender = false
-			renderList()
+			refreshList()
 			renderDetail()
 		end
 	end
@@ -289,7 +340,11 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		if pendingSellUid then
 			sellItem:FireServer(pendingSellUid)
 			if selectedUid == pendingSellUid then
+				-- Hide the detail popup immediately instead of leaving the
+				-- just-sold item's stats/image on screen until the next
+				-- inventoryUpdated push arrives.
 				selectedUid = nil
+				renderDetail()
 			end
 		end
 		hideConfirm()
@@ -315,15 +370,34 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 
 	local function closeDetail()
 		selectedUid = nil
+		selectedAssetId = nil
 		detail.Visible = false
 		backdrop.Visible = false
-		renderList()
+		refreshList()
 	end
 
 	detailCloseButton.Activated:Connect(closeDetail)
 	backdrop.Activated:Connect(closeDetail)
 
-	function renderDetail()
+	-- Catches EVERY way the panel can close (Close button, Sidebar toggle,
+	-- clicking the Inventory sidebar icon again) in one place, instead of
+	-- duplicating a reset call at each individual close path. Now that
+	-- detail/backdrop are parented to screenGui (not `panel`), they no
+	-- longer auto-hide when `panel` itself does -- this closes them
+	-- explicitly, or they'd stay floating on screen after Inventory closes.
+	panel:GetPropertyChangedSignal("Visible"):Connect(function()
+		if not panel.Visible then
+			searchBox.Text = ""
+			closeDetail()
+		end
+	end)
+
+	-- Gold accent for the LARP Battles Top 3 reward estates -- reads as
+	-- extra-special even before you notice the description, matching the
+	-- icy/gold "premium" language used elsewhere on the map.
+	local EXCLUSIVE_ESTATE_COLOR = Color3.fromRGB(255, 215, 140)
+
+	local function renderItemDetail()
 		local entry = selectedUid and findEntry(selectedUid)
 		local item = entry and ItemDatabase.GetItem(entry.ItemId)
 
@@ -347,20 +421,75 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		detailRarity.TextColor3 = rarityColor
 		detailStroke.Color = isEquipped and Theme.Colors.Accent or rarityColor
 
+		-- Sell exists for Items, not Estates -- Equip sits higher to leave
+		-- room for it here; renderEstateDetail below moves Equip down into
+		-- Sell's spot instead of leaving a gap where Sell would've been.
+		detailSellButton.Visible = true
+		detailEquipButton.Position = UDim2.new(0, 12, 1, -78)
 		detailEquipButton.Text = isEquipped and "Unequip" or "Equip"
 		detailEquipButton.BackgroundColor3 = isEquipped and Theme.Colors.Surface or Theme.Colors.Accent
 		detailEquipButton.TextColor3 = isEquipped and Theme.Colors.TextPrimary or Color3.fromRGB(20, 20, 20)
 	end
 
-	detailEquipButton.Activated:Connect(function()
-		if not selectedUid then
+	local function renderEstateDetail()
+		local asset = selectedAssetId and AssetDatabase.GetAsset(selectedAssetId)
+
+		local show = asset ~= nil
+		detail.Visible = show
+		backdrop.Visible = show
+
+		if not asset then
 			return
 		end
-		local isEquipped = table.find(equippedUids, selectedUid) ~= nil
-		if isEquipped then
-			unequipItem:FireServer(selectedUid)
+
+		local isEquipped = table.find(equippedAssetIds, selectedAssetId) ~= nil
+		local accentColor = asset.NotPurchasable and EXCLUSIVE_ESTATE_COLOR or Theme.Colors.Accent
+
+		detailIcon.Image = asset.Image
+		detailName.Text = asset.Name
+		detailOdds.Text = "+" .. NumberFormat.FormatCash(asset.IncomePerMinute) .. "/min"
+		detailRarity.Text = "Value: " .. NumberFormat.FormatCash(asset.Price)
+		detailRarity.TextColor3 = accentColor
+		detailStroke.Color = isEquipped and Theme.Colors.Accent or accentColor
+
+		-- No Sell for Estates -- Equip takes over Sell's lower spot instead
+		-- of leaving an empty gap in the popup.
+		detailSellButton.Visible = false
+		detailEquipButton.Position = UDim2.new(0, 12, 1, -40)
+		detailEquipButton.Text = isEquipped and "Unequip" or "Equip"
+		detailEquipButton.BackgroundColor3 = isEquipped and Theme.Colors.Surface or Theme.Colors.Accent
+		detailEquipButton.TextColor3 = isEquipped and Theme.Colors.TextPrimary or Color3.fromRGB(20, 20, 20)
+	end
+
+	function renderDetail()
+		if currentTab == "Items" then
+			renderItemDetail()
 		else
-			equipItem:FireServer(selectedUid)
+			renderEstateDetail()
+		end
+	end
+
+	detailEquipButton.Activated:Connect(function()
+		if currentTab == "Items" then
+			if not selectedUid then
+				return
+			end
+			local isEquipped = table.find(equippedUids, selectedUid) ~= nil
+			if isEquipped then
+				unequipItem:FireServer(selectedUid)
+			else
+				equipItem:FireServer(selectedUid)
+			end
+		else
+			if not selectedAssetId then
+				return
+			end
+			local isEquipped = table.find(equippedAssetIds, selectedAssetId) ~= nil
+			if isEquipped then
+				unequipAsset:FireServer(selectedAssetId)
+			else
+				equipAsset:FireServer(selectedAssetId)
+			end
 		end
 	end)
 
@@ -370,10 +499,64 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		end
 	end)
 
+	-- Round green badge sitting right ON the row's top-right corner
+	-- (centered exactly on the border, half in/half out) -- a plain text
+	-- checkmark blended into whatever the row's own background color was
+	-- (gold Estates rows especially); a solid badge on the border reads
+	-- clearly regardless.
+	local function addEquippedCheck(row: Frame)
+		local badge = Instance.new("Frame")
+		badge.Size = UDim2.new(0, 24, 0, 24)
+		badge.AnchorPoint = Vector2.new(0.5, 0.5)
+		badge.Position = UDim2.new(1, 0, 0, 0)
+		badge.BackgroundColor3 = Theme.Colors.Success
+		badge.BorderSizePixel = 0
+		badge.ZIndex = 3
+		badge.Parent = row
+		Theme.Round(badge, UDim.new(1, 0))
+		local badgeStroke = Theme.Stroke(badge, Color3.new(0, 0, 0), 2)
+		badgeStroke.Transparency = 0
+
+		local check = Instance.new("TextLabel")
+		check.Size = UDim2.new(1, -6, 1, -6)
+		check.AnchorPoint = Vector2.new(0.5, 0.5)
+		check.Position = UDim2.new(0.5, 0, 0.5, 0)
+		check.BackgroundTransparency = 1
+		check.Font = Theme.Fonts.Header
+		check.TextScaled = true
+		check.Text = "\u{2714}"
+		check.TextColor3 = Color3.fromRGB(20, 20, 20)
+		check.ZIndex = 4
+		check.Parent = badge
+	end
+
+	-- Equipped-first display order, without disturbing currentInventory's
+	-- own stored sort (rarity/weight, see handle.Render) -- re-derived every
+	-- render instead of re-sorting the stored array, so it stays correct
+	-- the instant equip status changes, not just when new inventory data
+	-- arrives.
+	local function equippedFirstOrder(uids: { number }, entries: { { Uid: number, ItemId: string } }): { { Uid: number, ItemId: string } }
+		local ordered = {}
+		for index, entry in entries do
+			table.insert(ordered, { Entry = entry, Index = index, Equipped = table.find(uids, entry.Uid) ~= nil })
+		end
+		table.sort(ordered, function(a, b)
+			if a.Equipped ~= b.Equipped then
+				return a.Equipped
+			end
+			return a.Index < b.Index
+		end)
+		local result = {}
+		for _, wrapped in ordered do
+			table.insert(result, wrapped.Entry)
+		end
+		return result
+	end
+
 	function renderList()
 		clearList()
 
-		for order, entry in currentInventory do
+		for order, entry in equippedFirstOrder(equippedUids, currentInventory) do
 			local item = ItemDatabase.GetItem(entry.ItemId)
 			if not item then
 				continue
@@ -407,6 +590,10 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 			oddsLabel.Position = UDim2.new(0, 8, 0, 26)
 			oddsLabel.TextColor3 = Theme.Colors.TextSecondary
 
+			if isEquipped then
+				addEquippedCheck(row)
+			end
+
 			local button = Instance.new("TextButton")
 			button.Size = UDim2.new(1, 0, 1, 0)
 			button.BackgroundTransparency = 1
@@ -414,9 +601,92 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 			button.Parent = row
 			button.Activated:Connect(function()
 				selectedUid = entry.Uid
+				selectedAssetId = nil
 				renderList()
 				renderDetail()
 			end)
+		end
+	end
+
+	-- Equipped first, then most-valuable first -- the LARP Battles reward
+	-- estates (the most expensive by a wide margin, see AssetDatabase's
+	-- Price=1000x Income prestige ratio) surface at the top of the
+	-- non-equipped ones instead of getting buried among ordinary purchased
+	-- ones.
+	function renderEstatesList()
+		clearList()
+
+		local allAssets = AssetDatabase.GetAllAssets()
+		local ownedIds = {}
+		for id, owned in ownedAssetIds do
+			if owned then
+				table.insert(ownedIds, id)
+			end
+		end
+		table.sort(ownedIds, function(a, b)
+			local equippedA = table.find(equippedAssetIds, a) ~= nil
+			local equippedB = table.find(equippedAssetIds, b) ~= nil
+			if equippedA ~= equippedB then
+				return equippedA
+			end
+			return allAssets[a].Price > allAssets[b].Price
+		end)
+
+		local order = 0
+		for _, id in ownedIds do
+			local asset = allAssets[id]
+			if not asset then
+				continue
+			end
+			if searchQuery ~= "" and not string.find(string.lower(asset.Name), searchQuery, 1, true) then
+				continue
+			end
+			order += 1
+
+			local isEquipped = table.find(equippedAssetIds, id) ~= nil
+			local isSelected = selectedAssetId == id
+			local accentColor = asset.NotPurchasable and EXCLUSIVE_ESTATE_COLOR or Theme.Colors.Accent
+
+			local row = Instance.new("Frame")
+			row.LayoutOrder = order
+			row.Size = UDim2.new(1, 0, 0, 52)
+			row.BackgroundColor3 = accentColor:Lerp(Color3.new(0, 0, 0), isSelected and 0.35 or 0.55)
+			row.BackgroundTransparency = 0
+			row.BorderSizePixel = 0
+			row.Parent = list
+			Theme.Round(row, UDim.new(0, 6))
+			local rowStroke = Theme.Stroke(row, isEquipped and Theme.Colors.Accent or accentColor, isSelected and 3 or 2)
+			rowStroke.Transparency = 0
+
+			local nameLabel = Theme.Label(row, UDim2.new(1, -16, 0, 22), asset.Name, true)
+			nameLabel.Position = UDim2.new(0, 8, 0, 4)
+
+			local incomeLabel = Theme.Label(row, UDim2.new(1, -16, 0, 18), "+" .. NumberFormat.FormatCash(asset.IncomePerMinute) .. "/min")
+			incomeLabel.Position = UDim2.new(0, 8, 0, 26)
+			incomeLabel.TextColor3 = Theme.Colors.TextSecondary
+
+			if isEquipped then
+				addEquippedCheck(row)
+			end
+
+			local button = Instance.new("TextButton")
+			button.Size = UDim2.new(1, 0, 1, 0)
+			button.BackgroundTransparency = 1
+			button.Text = ""
+			button.Parent = row
+			button.Activated:Connect(function()
+				selectedAssetId = id
+				selectedUid = nil
+				renderEstatesList()
+				renderDetail()
+			end)
+		end
+
+		if order == 0 then
+			local emptyLabel = Theme.Label(list, UDim2.new(1, -16, 0, 40), "No Estates owned yet -- buy some at the Shop!")
+			emptyLabel.Position = UDim2.new(0, 8, 0, 8)
+			emptyLabel.TextColor3 = Theme.Colors.TextSecondary
+			emptyLabel.TextWrapped = true
 		end
 	end
 
@@ -445,14 +715,14 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		if selectedUid and not findEntry(selectedUid) then
 			selectedUid = nil
 		end
-		statusLabel.Text = string.format("%d/%d equipped", #equippedUids, ItemDatabase.MaxEquipped)
+		refreshStatusLabel()
 		-- The actual row-by-row rebuild (destroy + recreate one Frame per
 		-- item) only matters while the panel is on screen -- with Auto
 		-- Roll firing this on every single roll, rebuilding it unseen was
 		-- pure wasted work that scaled with however large the inventory
 		-- had grown. handle.Toggle catches up on open.
 		if panel.Visible then
-			renderList()
+			refreshList()
 			renderDetail()
 		else
 			pendingRerender = true
@@ -461,14 +731,69 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 
 	equippedItemsUpdated.OnClientEvent:Connect(function(uids: { number })
 		equippedUids = uids
-		statusLabel.Text = string.format("%d/%d equipped", #equippedUids, ItemDatabase.MaxEquipped)
+		refreshStatusLabel()
 		if panel.Visible then
-			renderList()
+			refreshList()
 			renderDetail()
 		else
 			pendingRerender = true
 		end
 	end)
+
+	assetUpdated.OnClientEvent:Connect(function(payload: { Owned: { [string]: boolean }, Equipped: { string } })
+		ownedAssetIds = payload.Owned
+		equippedAssetIds = payload.Equipped
+		if selectedAssetId and not ownedAssetIds[selectedAssetId] then
+			selectedAssetId = nil
+		end
+		refreshStatusLabel()
+		if panel.Visible then
+			refreshList()
+			renderDetail()
+		else
+			pendingRerender = true
+		end
+	end)
+
+	function refreshStatusLabel()
+		if currentTab == "Items" then
+			statusLabel.Text = string.format("%d/%d equipped", #equippedUids, ItemDatabase.MaxEquipped)
+		else
+			statusLabel.Text = string.format("%d/%d equipped", #equippedAssetIds, AssetDatabase.MaxEquipped)
+		end
+	end
+
+	local function highlightTabs()
+		local isItems = currentTab == "Items"
+		itemsTabButton.BackgroundColor3 = isItems and Theme.Colors.Accent or Theme.Colors.Surface
+		itemsTabButton.TextColor3 = isItems and Color3.fromRGB(20, 20, 20) or Theme.Colors.TextPrimary
+		estatesTabButton.BackgroundColor3 = (not isItems) and Theme.Colors.Accent or Theme.Colors.Surface
+		estatesTabButton.TextColor3 = (not isItems) and Color3.fromRGB(20, 20, 20) or Theme.Colors.TextPrimary
+	end
+
+	local function switchTab(tab: string)
+		if tab == currentTab then
+			return
+		end
+		currentTab = tab
+		selectedUid = nil
+		selectedAssetId = nil
+		detail.Visible = false
+		backdrop.Visible = false
+		highlightTabs()
+		refreshStatusLabel()
+		refreshList()
+	end
+
+	itemsTabButton.Activated:Connect(function()
+		switchTab("Items")
+	end)
+	estatesTabButton.Activated:Connect(function()
+		switchTab("Estates")
+	end)
+
+	highlightTabs()
+	refreshStatusLabel()
 
 	return handle
 end

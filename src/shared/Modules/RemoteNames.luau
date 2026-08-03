@@ -18,7 +18,6 @@ local RemoteNames = {
 		"EquippedItemsUpdated", -- server -> client, payload: { uid }
 		"StatsUpdated", -- server -> client, payload: { Cash, NetWorth, Title, IsVIP, OwnsAutoRoll, OwnsAutoClaim, OwnsLuckPass, OwnsUltraLuckPass, OwnsFastRoll, OwnsDoubleCash, BattleRankPoints, FriendBonusPercent, ItemsIncomePerSecond, AssetsIncomePerMinute }
 		"BuyAsset", -- client -> server, payload: assetId
-		"SellAsset", -- client -> server, payload: assetId
 		"EquipAsset", -- client -> server, payload: assetId
 		"UnequipAsset", -- client -> server, payload: assetId
 		"AssetUpdated", -- server -> client, payload: { Owned: {[assetId]: boolean}, Equipped: {assetId} }
@@ -38,9 +37,10 @@ local RemoteNames = {
 		"AutoSellDuplicatesUpdated", -- server -> client, payload: { [rarity]: boolean }
 		"SetPreference", -- client -> server, payload: key ("Music"/"SFX"/"VFX"), enabled (boolean)
 		"PreferencesUpdated", -- server -> client, payload: { [key]: boolean }
-		"SystemMessage", -- server -> client, payload: text (string) -- shown via TextChatService AND as a
-		-- toast (NotificationToast.luau), this player only. Fired for rank changes, purchases/sells
-		-- (Asset/Investment/Item/Potion/Upgrade), gamepass grants, and Group Rewards claims.
+		"SystemMessage", -- server -> client, payload: text (string, supports rich text) -- shown via
+		-- TextChatService AND as a toast (NotificationToast.luau). Fired at one player only for rank
+		-- changes, purchases/sells (Asset/Investment/Item/Potion/Upgrade), gamepass grants, and Group
+		-- Rewards claims; fired to EVERYONE (FireAllClients) for RollManager.luau's Ultra-item unlock callout.
 		"BuyUpgrade", -- client -> server, payload: trackId (string)
 		"UpgradesUpdated", -- server -> client, payload: { [trackId]: level }
 		"ClientReady", -- client -> server, no payload -- fired once MainUI has built every panel and
@@ -94,6 +94,19 @@ local RemoteNames = {
 		-- WinsOpponent: number, Won: boolean?, Categories: { { Name: string, Outcome: number } } }
 		-- -- Won is nil on a draw (no category winner reached 2/3). Outcome: 1 = this player won that
 		-- category, 2 = opponent won it, 0 = tied.
+		"RedeemCode", -- client -> server, payload: code (string) -- CodesProximityPanel.luau's Redeem
+		-- button, fired from the "Codes" plaza marker. Validated + granted server-side
+		-- (CodesManager.luau/CodesConfig.luau); case-insensitive, one redemption per code per save.
+		"CodeRedeemResult", -- server -> client, payload: success (boolean), message (string) -- direct
+		-- reply to THIS redeem attempt (shown inline in the panel), separate from the general
+		-- SystemMessage toast a successful redeem also fires.
+		"RobuxManShowChoices", -- server -> client, payload: { { Id: string, Text: string }, ... } --
+		-- fired at just the one player who triggered Robux Man's "Talk" prompt, right after his
+		-- greeting bubble, so only they see the small reply-choice buttons (MapBuilder.luau/
+		-- RobuxManDialogChoices.luau).
+		"RobuxManChoiceSelected", -- client -> server, payload: id (string) -- which choice button was
+		-- clicked; server replies with the matching bubble line (or nothing, for "End the
+		-- conversation") and the client hides the choice buttons either way.
 	},
 	Functions = {},
 }

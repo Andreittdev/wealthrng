@@ -275,6 +275,15 @@ local function refreshBoard(boardIndex: number, label: string, store: OrderedDat
 		return
 	end
 
+	-- "Resets in: ..." countdown -- only exists on the Points board
+	-- (MapBuilder.luau's premium=true branch), so this is a no-op (nil
+	-- lookup, early-guarded) for the other 3 categories.
+	local resetTimer = mapFolder:FindFirstChild("Leaderboard" .. boardIndex .. "_ResetTimer")
+	local resetTimerText = resetTimer and resetTimer:FindFirstChild("ResetTimerLabel") and resetTimer.ResetTimerLabel:FindFirstChild("Text")
+	if resetTimerText then
+		resetTimerText.Text = "Resets in: " .. NumberFormat.FormatDuration(BattlePointsConfig.GetSecondsUntilReset(os.time()))
+	end
+
 	local displayGui = board:FindFirstChild("Display")
 	if not displayGui then
 		return

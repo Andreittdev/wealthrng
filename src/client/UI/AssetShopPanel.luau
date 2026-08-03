@@ -13,7 +13,8 @@
 --
 -- Assets are bought outright (no upgrade ladder -- every type can be owned
 -- at once), but only AssetDatabase.MaxEquipped of them actively earn income
--- -- Equip/Unequip on each owned card picks which.
+-- -- Equip/Unequip lives in InventoryPanel.luau's "Estates" tab, not here
+-- (this panel is buy-only once something's owned).
 
 local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
@@ -36,8 +37,6 @@ local INVESTMENT_QUANTITIES = { 1, 10, 100 }
 
 function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	local buyAsset = remotes:WaitForChild("BuyAsset")
-	local equipAsset = remotes:WaitForChild("EquipAsset")
-	local unequipAsset = remotes:WaitForChild("UnequipAsset")
 	local assetUpdated = remotes:WaitForChild("AssetUpdated")
 	local buyInvestment = remotes:WaitForChild("BuyInvestment")
 	local investmentUpdated = remotes:WaitForChild("InvestmentUpdated")
@@ -249,24 +248,31 @@ function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		local order = 0
 		for _, id in sortedIdsByPrice(allAssets) do
 			local asset = allAssets[id]
+			local owned = ownedAssets[id]
+
+			-- NotPurchasable (LARP Battles Top 3 reward estates) never show
+			-- up as a tempting-but-unbuyable card for players who don't have
+			-- one -- but if you DID win one, it still shows here as an
+			-- "Owned"/"Equipped" status badge, same as any other owned Asset.
+			if asset.NotPurchasable and not owned then
+				continue
+			end
+
 			order += 1
 			local card = createCard(order, asset.Name, NumberFormat.FormatCash(asset.Price), "+" .. NumberFormat.FormatCash(asset.IncomePerMinute) .. "/min", asset.Image)
 
-			local owned = ownedAssets[id]
-			local equipped = table.find(equippedAssets, id) ~= nil
-
+			-- Buy only, here -- Equip/Unequip moved to the Inventory panel's
+			-- "Estates" tab (InventoryPanel.luau), the one place you manage
+			-- everything you own, roll items and estates alike. Owned cards
+			-- just show a status badge instead of a second interactive
+			-- control that'd do the exact same thing two different places.
 			if not owned then
 				addActionButton(card, "Buy", true, function()
 					buyAsset:FireServer(id)
 				end)
-			elseif equipped then
-				addActionButton(card, "Unequip", false, function()
-					unequipAsset:FireServer(id)
-				end)
 			else
-				addActionButton(card, "Equip", true, function()
-					equipAsset:FireServer(id)
-				end)
+				local equipped = table.find(equippedAssets, id) ~= nil
+				addStatusBadge(card, equipped and "Equipped" or "Owned", equipped and Theme.Colors.Success or Theme.Colors.TextSecondary)
 			end
 		end
 	end

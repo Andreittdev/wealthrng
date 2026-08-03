@@ -56,6 +56,7 @@ claimGroupReward.OnServerEvent:Connect(function(player: Player)
 		return
 	end
 
+	session.Cash += GroupRewardsConfig.RewardCashAmount
 	session.ClaimedGroupReward = true
 	claimInProgress[player] = nil
 	systemMessage:FireClient(player, "Group Rewards Claimed!")
