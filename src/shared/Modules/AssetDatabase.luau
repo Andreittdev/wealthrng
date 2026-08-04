@@ -58,7 +58,7 @@ AssetDatabase.MaxEquipped = 2
 -- above). RealEstateEmpire deliberately left untouched -- it's already the
 -- multi-day prestige capstone, not part of this pass.
 local assets: { [string]: Asset } = {
-	StudioApartment = { Id = "StudioApartment", Name = "Studio Apartment", Price = 30000, IncomePerMinute = 21600, Image = "rbxassetid://128312083744745" },
+	StudioApartment = { Id = "StudioApartment", Name = "Studio Apartment", Price = 100000, IncomePerMinute = 72000, Image = "rbxassetid://128312083744745" },
 	DowntownCondo = { Id = "DowntownCondo", Name = "Downtown Condo", Price = 225000, IncomePerMinute = 180000, Image = "rbxassetid://136840210779575" },
 	FamilyHouse = { Id = "FamilyHouse", Name = "Family House", Price = 1800000, IncomePerMinute = 1620000, Image = "rbxassetid://120133323186928" },
 	LuxuryTownhouse = { Id = "LuxuryTownhouse", Name = "Luxury Townhouse", Price = 15000000, IncomePerMinute = 6840000, Image = "rbxassetid://138923081012401" },
@@ -74,7 +74,14 @@ local assets: { [string]: Asset } = {
 	-- Price/Income payback ratio as every other x15 tier), not left at the
 	-- x15 figure, so this doesn't become an oddly-efficient outlier.
 	LuxuryHotelChain = { Id = "LuxuryHotelChain", Name = "Luxury Hotel Chain", Price = 2000000000000, IncomePerMinute = 215000000000, Image = "rbxassetid://120902816460043" },
-	RealEstateEmpire = { Id = "RealEstateEmpire", Name = "Real Estate Empire", Price = 100000000000000, IncomePerMinute = 192000000000, Image = "rbxassetid://97450504269002" },
+	-- Income bumped above LuxuryHotelChain's 215B/min (was 192B/min --
+	-- LESS than the tier below it, despite costing 50x more, since it was
+	-- left untouched during a rebalance pass that only scaled every OTHER
+	-- tier's income down to match its below-x15 price). Still a much worse
+	-- payback ratio than the tiers below (~5.5h vs ~9min) -- deliberately,
+	-- it's the prestige capstone, not an efficient buy -- just no longer
+	-- LESS absolute income than a cheaper asset, which was never intended.
+	RealEstateEmpire = { Id = "RealEstateEmpire", Name = "Real Estate Empire", Price = 100000000000000, IncomePerMinute = 1500000000000, Image = "rbxassetid://97450504269002" },
 
 	-- LARP Battles weekly Points leaderboard Top 3 reward -- never
 	-- purchasable, granted automatically (BattleLeaderboardRewardManager.

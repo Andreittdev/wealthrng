@@ -42,22 +42,39 @@ local CURRENT_COLOR = Color3.fromRGB(255, 205, 80)
 local LOCKED_COLOR = Color3.fromRGB(80, 80, 92)
 local LOCKED_TEXT_COLOR = Color3.fromRGB(120, 120, 132)
 
-local MONEY_ICON = "\u{1F4B0}" -- money bag, Cash
+local MONEY_ICON = "\u{1F4B0}" -- money bag, Cash -- fallback glyph only now, see CASH_ICON_IMAGE
+-- Same cash image CashHud.luau/ShopPanel.luau already use -- Cash-type days
+-- (1/3/5/6) get this real image instead of the generic money-bag emoji
+-- every other reward type still falls back to, matching the treatment Day
+-- 2 (Item)/Day 4 (Asset) already get below.
+local CASH_ICON_IMAGE = "rbxassetid://72463281853990"
 local GIFT_ICON = "\u{1F381}" -- gift, Item
 local HOUSE_ICON = "\u{1F3E0}" -- house, Asset
 local BOLT_ICON = "\u{26A1}" -- lightning bolt, AutoRollGamepass
 local CHECK_ICON = "\u{2714}"
--- Day 7's showcase icon -- the actual Auto Roll gamepass icon (same asset
--- RollPanel.luau's AUTO ROLL button uses), not a generic crown emoji like
--- every other day's plain-text icon, since Day 7 IS the Auto Roll gamepass.
-local AUTO_ROLL_ICON = "rbxassetid://115324216729484"
+
+-- Comma-separated full digits ("$100,000,000") instead of NumberFormat's
+-- usual abbreviation ("$100M") -- just for Day 7's showcase card/button,
+-- where the whole point is to read as the week's single biggest number at
+-- a glance, spelled out in full.
+local function formatFullCash(n: number): string
+	local digits = tostring(math.floor(n))
+	local reversed = digits:reverse():gsub("(%d%d%d)", "%1,"):reverse()
+	if reversed:sub(1, 1) == "," then
+		reversed = reversed:sub(2)
+	end
+	return "$" .. reversed
+end
 
 -- One place mapping a reward (see DailyRewardsConfig.Days) to what a card
 -- shows -- both the per-day grid cards and the bottom Claim button pull
--- from this so they can never disagree with each other.
-local function describeReward(reward): (string, string)
+-- from this so they can never disagree with each other. `day` is optional
+-- -- only Day 7 changes behavior (see formatFullCash above), every other
+-- caller can omit it.
+local function describeReward(reward, day: number?): (string, string)
 	if reward.Type == "Cash" then
-		return "+" .. NumberFormat.FormatCash(reward.Amount), MONEY_ICON
+		local amountText = day == 7 and formatFullCash(reward.Amount) or NumberFormat.FormatCash(reward.Amount)
+		return "+" .. amountText, MONEY_ICON
 	elseif reward.Type == "Item" then
 		local item = ItemDatabase.GetItem(reward.ItemId)
 		return item and item.Name or "Item", GIFT_ICON
@@ -161,9 +178,9 @@ function DailyRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Folder
 	gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	gridLayout.Parent = gridContainer
 
-	-- Day 7 is the showcase card (real Auto Roll gamepass reward) -- always
-	-- gold, not just tinted once it's actually reachable, so it reads as
-	-- the special day at a glance from across the plaza too.
+	-- Day 7 is the showcase card ($100M, the week's single biggest prize)
+	-- -- always gold, not just tinted once it's actually reachable, so it
+	-- reads as the special day at a glance from across the plaza too.
 	local bigCard = Instance.new("Frame")
 	bigCard.Size = UDim2.new(0, BIG_CARD_WIDTH, 0, CONTENT_HEIGHT)
 	bigCard.Position = UDim2.new(0, 16 + GRID_WIDTH + CARD_GAP, 0, 84)
@@ -208,9 +225,10 @@ function DailyRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Folder
 	-- underneath, still used for the CHECK_ICON glyph once that day is
 	-- actually claimed -- see refreshCards, which hides this and shows that
 	-- instead once claimed).
-	local function addIconImage(card: Frame, icon: TextLabel, imageId: string): ImageLabel
+	local function addIconImage(card: Frame, icon: TextLabel, imageId: string, sizeMultiplier: number?): ImageLabel
 		local image = Instance.new("ImageLabel")
-		image.Size = icon.Size
+		local scale = sizeMultiplier or 1
+		image.Size = UDim2.new(icon.Size.X.Scale * scale, icon.Size.X.Offset * scale, icon.Size.Y.Scale * scale, icon.Size.Y.Offset * scale)
 		image.AnchorPoint = icon.AnchorPoint
 		image.Position = icon.Position
 		image.BackgroundTransparency = 1
@@ -251,13 +269,18 @@ function DailyRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Folder
 			if day4Asset then
 				iconImage = addIconImage(card, icon, day4Asset.Image)
 			end
+		elseif DailyRewardsConfig.Days[day].Type == "Cash" then
+			-- A bit bigger than the standard 46px icon slot -- the cash
+			-- image reads small/cramped at that size compared to the
+			-- Item/Asset images next to it.
+			iconImage = addIconImage(card, icon, CASH_ICON_IMAGE, 1.35)
 		end
 
 		dayCards[day] = { Stroke = stroke, Icon = icon, IconImage = iconImage, Amount = amountLabel, DayLabel = dayLabel }
 	end
 
 	local bigDayLabel, bigIcon, bigAmount = createCard(bigCard, 7, "DAY 7", 100, 34)
-	local bigIconImage = addIconImage(bigCard, bigIcon, AUTO_ROLL_ICON)
+	local bigIconImage = addIconImage(bigCard, bigIcon, CASH_ICON_IMAGE, 1.3)
 
 	dayCards[7] = { Stroke = bigStroke, Icon = bigIcon, IconImage = bigIconImage, Amount = bigAmount, DayLabel = bigDayLabel }
 
@@ -286,14 +309,14 @@ function DailyRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Folder
 		for day = 1, 7 do
 			local card = dayCards[day]
 			local reward = DailyRewardsConfig.Days[day]
-			local amountText, rewardIcon = describeReward(reward)
+			local amountText, rewardIcon = describeReward(reward, day)
 
 			local claimed = day < currentDay
 			local current = day == currentDay
 
 			if card.IconImage then
-				-- Day 7: real Auto Roll image instead of a text glyph --
-				-- shown while not yet claimed, swapped for the same plain
+				-- Day 2/4/7: a real image instead of a text glyph -- shown
+				-- while not yet claimed, swapped for the same plain
 				-- CHECK_ICON text every other day uses once it has been.
 				card.IconImage.Visible = not claimed
 				card.IconImage.ImageColor3 = current and Color3.fromRGB(255, 255, 255) or LOCKED_TEXT_COLOR
@@ -331,7 +354,7 @@ function DailyRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Folder
 			bottomButton.BackgroundColor3 = Theme.Colors.Surface
 			bottomButton.TextColor3 = Theme.Colors.TextSecondary
 		elseif canClaim then
-			local amountText = describeReward(DailyRewardsConfig.Days[currentDay])
+			local amountText = describeReward(DailyRewardsConfig.Days[currentDay], currentDay)
 			bottomButton.Text = "CLAIM " .. amountText
 			bottomButton.Active = true
 			bottomButton.AutoButtonColor = true

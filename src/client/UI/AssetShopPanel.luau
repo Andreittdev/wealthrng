@@ -27,12 +27,20 @@ local Theme = require(script.Parent.Theme)
 
 local AssetShopPanel = {}
 
--- Taller than before (was 150) -- room for an icon image on Asset cards
--- (AssetDatabase.Asset.Image) above the name/price/detail text. Investment
--- cards don't have an Image field yet, so their cards just leave that top
--- strip empty -- one CellSize for the whole grid either way, simpler than
--- swapping it per tab.
-local CARD_SIZE = UDim2.new(0, 185, 0, 210)
+-- Two fixed pixel profiles, picked by screen height, instead of one
+-- Theme.AutoScale UIScale -- applying AutoScale directly to this panel's
+-- ScrollingFrame content caused double-scaling/clipped cards previously
+-- (see git history). PC keeps the original bigger card; a short screen
+-- (same HEIGHT_REFERENCE=700 threshold Theme.AutoScale itself uses) drops
+-- to the smaller one -- at the PC size on a short landscape phone, the
+-- ScrollingFrame's available height left room for barely HALF a card row,
+-- clipping every card's name/price/status text off (only the top image
+-- strip stayed visible).
+local CARD_PROFILES = {
+	PC = { CardSize = UDim2.new(0, 185, 0, 210), IconHeight = 64, TextTop = 68 },
+	Mobile = { CardSize = UDim2.new(0, 150, 0, 172), IconHeight = 50, TextTop = 54 },
+}
+local HEIGHT_THRESHOLD = 700
 local INVESTMENT_QUANTITIES = { 1, 10, 100 }
 
 function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
@@ -98,10 +106,23 @@ function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	content.Parent = panel
 
 	local gridLayout = Instance.new("UIGridLayout")
-	gridLayout.CellSize = CARD_SIZE
 	gridLayout.CellPadding = UDim2.new(0, 8, 0, 8)
 	gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	gridLayout.Parent = content
+
+	-- Picks CARD_PROFILES.PC/Mobile by current screen height -- re-evaluated
+	-- on every resize so e.g. rotating a phone or resizing a PC window
+	-- picks up the right profile without needing to reopen the shop.
+	local currentProfile = CARD_PROFILES.PC
+	local function updateProfile()
+		local screenHeight = screenGui.AbsoluteSize.Y
+		local profile = (screenHeight > 0 and screenHeight < HEIGHT_THRESHOLD) and CARD_PROFILES.Mobile or CARD_PROFILES.PC
+		local changed = profile ~= currentProfile
+		currentProfile = profile
+		gridLayout.CellSize = currentProfile.CardSize
+		return changed
+	end
+	updateProfile()
 
 	local function clearContent()
 		-- GuiObject (not just Frame) so the grid never accumulates leftover
@@ -142,12 +163,12 @@ function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		local textTop = 0
 		if hasImage then
 			local icon = Instance.new("ImageLabel")
-			icon.Size = UDim2.new(1, 0, 0, 64)
+			icon.Size = UDim2.new(1, 0, 0, currentProfile.IconHeight)
 			icon.BackgroundTransparency = 1
 			icon.ScaleType = Enum.ScaleType.Fit
 			icon.Image = imageId :: string
 			icon.Parent = card
-			textTop = 68
+			textTop = currentProfile.TextTop
 		end
 
 		local nameLabel = Theme.Label(card, UDim2.new(1, 0, 0, 20), name, true)
@@ -346,6 +367,16 @@ function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 			refresh()
 		end
 	end
+
+	-- Re-picks the card profile on every resize (rotating a phone, resizing
+	-- a PC window) -- only rebuilds the grid if the profile actually
+	-- changed AND the shop is open, same "don't do work while closed"
+	-- guard as refreshIfVisible above.
+	screenGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		if updateProfile() then
+			refreshIfVisible()
+		end
+	end)
 
 	assetUpdated.OnClientEvent:Connect(function(payload: { Owned: { [string]: boolean }, Equipped: { string } })
 		ownedAssets = payload.Owned

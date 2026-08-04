@@ -6,19 +6,18 @@
 -- Named distinctly from ItemDatabase's roll items (this is a shop
 -- purchase, not something you can roll) to avoid confusion in the UI.
 --
--- 11 tiers spanning $100 to $5T (~8x per tier, same idea as
+-- 11 tiers spanning $5,000 to $5T (~8x per tier, same idea as
 -- AssetDatabase's ladder) so there's an entry point at every stage of the
 -- game, not just once a player has hundreds of thousands to spare.
 --
--- Priced to stay roughly ~20x cheaper than the same-index AssetDatabase
--- tier, all the way up through the 2nd-to-last tier (MeteoriteOre vs
--- LuxuryHotelChain) -- the top tier (CelestialCore) is the one exception,
--- deliberately kept at that same ~20x-cheaper ratio against
--- AssetDatabase's NEW top tier (RealEstateEmpire, now $100T -- see that
--- file's header) instead of against the old $1.8T one, so it's still a
--- genuine multi-day "what do I do with my spare cash" capstone purchase
--- rather than becoming trivial pocket change the moment RealEstateEmpire
--- got its own capstone price bump.
+-- Every tier is re-derived as AssetDatabase[same index].Price / 20 --
+-- Price used to only hold that ~20x-cheaper ratio at the very top
+-- (CelestialCore vs RealEstateEmpire); several AssetDatabase repricing
+-- passes over time were never mirrored here, so the early/mid tiers had
+-- drifted down to ~166x-1000x cheaper instead, making the ladder feel
+-- cheap everywhere except a jarring 400x+ jump into the trillions right at
+-- the end. Re-deriving from AssetDatabase directly keeps both files honest
+-- going forward -- retune AssetDatabase first, then re-divide by 20 here.
 --
 -- Long-term appreciation: unlike Assets, Investments don't generate income,
 -- but holding one long enough still grows its value (real-world calendar
@@ -58,16 +57,16 @@ local APPRECIATION_PERIOD_SECONDS = 3.5 * 24 * 60 * 60 -- ~3.5 days
 local MAX_APPRECIATION_PERIODS = 25
 
 local investments: { [string]: Investment } = {
-	CopperOre = { Id = "CopperOre", Name = "Copper Ore", Price = 100, Image = "rbxassetid://85646899481683" },
-	IronOre = { Id = "IronOre", Name = "Iron Ore", Price = 800, Image = "rbxassetid://89229509277978" },
-	SilverBar = { Id = "SilverBar", Name = "Silver Bar", Price = 6000, Image = "rbxassetid://121708659018392" },
-	GoldBar = { Id = "GoldBar", Name = "Gold Bar", Price = 45000, Image = "rbxassetid://72838956813822" },
-	PlatinumBar = { Id = "PlatinumBar", Name = "Platinum Bar", Price = 350000, Image = "rbxassetid://82765577499842" },
-	DiamondOre = { Id = "DiamondOre", Name = "Diamond Ore", Price = 2500000, Image = "rbxassetid://104870970917124" },
-	EmeraldOre = { Id = "EmeraldOre", Name = "Emerald Ore", Price = 18000000, Image = "rbxassetid://128307788657328" },
-	RubyOre = { Id = "RubyOre", Name = "Ruby Ore", Price = 210000000, Image = "rbxassetid://73899233840909" },
-	SapphireOre = { Id = "SapphireOre", Name = "Sapphire Ore", Price = 1600000000, Image = "rbxassetid://133438648565815" },
-	MeteoriteOre = { Id = "MeteoriteOre", Name = "Meteorite Ore", Price = 12000000000, Image = "rbxassetid://105175920707349" },
+	CopperOre = { Id = "CopperOre", Name = "Copper Ore", Price = 5000, Image = "rbxassetid://85646899481683" },
+	IronOre = { Id = "IronOre", Name = "Iron Ore", Price = 11250, Image = "rbxassetid://89229509277978" },
+	SilverBar = { Id = "SilverBar", Name = "Silver Bar", Price = 90000, Image = "rbxassetid://121708659018392" },
+	GoldBar = { Id = "GoldBar", Name = "Gold Bar", Price = 750000, Image = "rbxassetid://72838956813822" },
+	PlatinumBar = { Id = "PlatinumBar", Name = "Platinum Bar", Price = 6375000, Image = "rbxassetid://82765577499842" },
+	DiamondOre = { Id = "DiamondOre", Name = "Diamond Ore", Price = 52500000, Image = "rbxassetid://104870970917124" },
+	EmeraldOre = { Id = "EmeraldOre", Name = "Emerald Ore", Price = 412500000, Image = "rbxassetid://128307788657328" },
+	RubyOre = { Id = "RubyOre", Name = "Ruby Ore", Price = 3150000000, Image = "rbxassetid://73899233840909" },
+	SapphireOre = { Id = "SapphireOre", Name = "Sapphire Ore", Price = 24000000000, Image = "rbxassetid://133438648565815" },
+	MeteoriteOre = { Id = "MeteoriteOre", Name = "Meteorite Ore", Price = 100000000000, Image = "rbxassetid://105175920707349" },
 	CelestialCore = { Id = "CelestialCore", Name = "Celestial Core", Price = 5000000000000, Image = "rbxassetid://106239809107728" },
 }
 

@@ -24,6 +24,7 @@ local CashHud = require(script.Parent.CashHud)
 local LuckSpeedHUD = require(script.Parent.LuckSpeedHUD)
 local BoardRankLabels = require(script.Parent.BoardRankLabels)
 local RollPanel = require(script.Parent.RollPanel)
+local AutoRollFreePanel = require(script.Parent.AutoRollFreePanel)
 local AssetShopPanel = require(script.Parent.AssetShopPanel)
 local PotionShopPanel = require(script.Parent.PotionShopPanel)
 local ShopPanel = require(script.Parent.ShopPanel)
@@ -65,7 +66,8 @@ function MainUI.Init()
 	local cashHudHandle = CashHud.Create(screenGui)
 	local luckSpeedHudHandle = LuckSpeedHUD.Create(screenGui)
 	BoardRankLabels.Init(remotesFolder)
-	local rollHandle = RollPanel.Create(screenGui, remotesFolder)
+	local autoRollFreeHandle = AutoRollFreePanel.Create(screenGui, remotesFolder)
+	local rollHandle = RollPanel.Create(screenGui, remotesFolder, autoRollFreeHandle.Show)
 	local assetShopHandle = AssetShopPanel.Create(screenGui, remotesFolder)
 	local potionShopHandle = PotionShopPanel.Create(screenGui, remotesFolder)
 	local shopHandle = ShopPanel.Create(screenGui)
@@ -96,6 +98,7 @@ function MainUI.Init()
 	}, cashHudHandle.Frame, luckSpeedHudHandle.Frame)
 
 	local modalFrames = {
+		autoRollFreeHandle.Frame,
 		inventoryHandle.Frame,
 		assetShopHandle.Frame,
 		potionShopHandle.Frame,

@@ -133,6 +133,13 @@ for _, player in Players:GetPlayers() do
 	onPlayerAdded(player)
 end
 
+-- AutoRollManager can't call StatsManager.Recompute itself (require cycle,
+-- see its own header comment) -- Main.server.luau already requires both
+-- with no such conflict, same as the real-gamepass grant path just below.
+AutoRollManager.FreeGranted.Event:Connect(function(player: Player)
+	StatsManager.Recompute(player)
+end)
+
 MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player: Player, gamePassId: number, wasPurchased: boolean)
 	if not wasPurchased then
 		return

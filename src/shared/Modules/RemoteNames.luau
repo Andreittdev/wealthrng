@@ -107,6 +107,13 @@ local RemoteNames = {
 		"RobuxManChoiceSelected", -- client -> server, payload: id (string) -- which choice button was
 		-- clicked; server replies with the matching bubble line (or nothing, for "End the
 		-- conversation") and the client hides the choice buttons either way.
+		"StartAutoRollFreeTimer", -- client -> server, no payload -- fired when a non-owner opens the
+		-- "Get Auto Roll Free" popup (AutoRollFreePanel.luau); idempotent, starting the
+		-- AutoRollConfig.FreeUnlockSeconds countdown only the first time, resending the current
+		-- remaining time on subsequent opens.
+		"AutoRollFreeTimerUpdated", -- server -> client, payload: secondsRemaining (number) -- the
+		-- actual grant, once the wait completes, rides the normal StatsUpdated.OwnsAutoRoll push
+		-- instead of a separate signal.
 	},
 	Functions = {},
 }

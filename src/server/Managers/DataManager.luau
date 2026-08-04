@@ -142,6 +142,11 @@ export type Session = {
 	-- GrantedCashPackPurchaseIds, kept as its own field since it's a
 	-- distinct purchase flow.
 	GrantedPotionPurchaseIds: { [string]: boolean },
+	-- Permanent, once true -- earned via RollPanel.luau's "Get Auto Roll
+	-- Free" 30-min-online offer (AutoRollManager.luau), functions exactly
+	-- like owning the real gamepass from then on (AutoRollManager.Owns
+	-- checks this OR the real MarketplaceService ownership). Never reset.
+	AutoRollFreeGranted: boolean,
 	LoadedOk: boolean,
 }
 
@@ -178,6 +183,7 @@ local function newDefaultSession(): Session
 		GrantedCashPackPurchaseIds = {},
 		RedeemedCodes = {},
 		GrantedPotionPurchaseIds = {},
+		AutoRollFreeGranted = false,
 		LoadedOk = true,
 	}
 end
@@ -293,6 +299,7 @@ function DataManager.Load(player: Player): Session
 				GrantedCashPackPurchaseIds = data.GrantedCashPackPurchaseIds or {},
 				RedeemedCodes = data.RedeemedCodes or {},
 				GrantedPotionPurchaseIds = data.GrantedPotionPurchaseIds or {},
+				AutoRollFreeGranted = data.AutoRollFreeGranted or false,
 				LoadedOk = true,
 			}
 		else
@@ -360,6 +367,7 @@ function DataManager.Save(player: Player)
 		GrantedCashPackPurchaseIds = session.GrantedCashPackPurchaseIds,
 		RedeemedCodes = session.RedeemedCodes,
 		GrantedPotionPurchaseIds = session.GrantedPotionPurchaseIds,
+		AutoRollFreeGranted = session.AutoRollFreeGranted,
 	}
 
 	local ok = attempt(function()

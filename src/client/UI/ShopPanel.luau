@@ -196,7 +196,7 @@ function ShopPanel.Create(screenGui: ScreenGui)
 		Color3.fromRGB(90, 170, 255),
 		"rbxassetid://115324216729484",
 		"Auto Roll",
-		"Buy",
+		"3 R$",
 		AutoRollConfig.GamepassId
 	)
 	local refreshLuckPass = createGamepassCard(

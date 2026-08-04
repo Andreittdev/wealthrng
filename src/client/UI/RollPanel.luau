@@ -21,13 +21,11 @@
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
-local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
 local RarityConfig = require(ReplicatedStorage.Modules.RarityConfig)
-local AutoRollConfig = require(ReplicatedStorage.Modules.AutoRollConfig)
 local FastRollConfig = require(ReplicatedStorage.Modules.FastRollConfig)
 local RollOdds = require(ReplicatedStorage.Modules.RollOdds)
 local SpecialRollConfig = require(ReplicatedStorage.Modules.SpecialRollConfig)
@@ -158,7 +156,7 @@ end
 
 local RollPanel = {}
 
-function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
+function RollPanel.Create(screenGui: ScreenGui, remotes: Folder, onAutoRollButtonWithoutOwnership: () -> ())
 	local rollRequested = remotes:WaitForChild("RollRequested")
 	local rollResult = remotes:WaitForChild("RollResult")
 	local setAutoRoll = remotes:WaitForChild("SetAutoRoll")
@@ -411,7 +409,10 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder)
 
 	autoRollButton.Activated:Connect(function()
 		if not ownsAutoRoll then
-			MarketplaceService:PromptGamePassPurchase(Players.LocalPlayer, AutoRollConfig.GamepassId)
+			-- "Get Auto Roll Free" popup (AutoRollFreePanel.luau) instead of
+			-- jumping straight to the Robux prompt -- that's now just one of
+			-- its 2 options.
+			onAutoRollButtonWithoutOwnership()
 			return
 		end
 		setAutoRoll:FireServer(not autoRollEnabled)
