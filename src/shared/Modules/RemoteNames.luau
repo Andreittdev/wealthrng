@@ -114,6 +114,14 @@ local RemoteNames = {
 		"AutoRollFreeTimerUpdated", -- server -> client, payload: secondsRemaining (number) -- the
 		-- actual grant, once the wait completes, rides the normal StatsUpdated.OwnsAutoRoll push
 		-- instead of a separate signal.
+		"RequestStadiumOfferState", -- client -> server, no payload -- fired when StadiumOfferPanel.luau
+		-- becomes visible, so the shared/global remaining stock count (StadiumOfferManager.luau) is
+		-- always fresh the moment the popup opens, not just whatever it was at some earlier push.
+		"StadiumOfferStateUpdated", -- server -> client, payload: { RemainingStock, TotalStock,
+		-- OwnedCount, MaxCashPurchases } -- pushed on join, on RequestStadiumOfferState, and after a
+		-- purchase (to EVERY online player, since stock is a shared global pool, not per-player).
+		"BuyStadiumOffer", -- client -> server, no payload -- cash purchase of one Sol Stadium copy
+		-- from the limited-stock Meshy Stadium vendor (StadiumOfferManager.luau).
 	},
 	Functions = {},
 }

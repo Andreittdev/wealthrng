@@ -5,6 +5,9 @@
 --   - Cash Packs (CashPackConfig) -- credits the flat Cash amount.
 --   - Potion instant-buys (PotionDatabase's InstantProductId, 2 R$) --
 --     delegates to PotionManager.GrantPotionFree.
+--   - Sol Stadium Robux purchases (StadiumOfferConfig.RobuxProductId) --
+--     +1 session.SolStadiumOwned, unlimited (no MaxCashPurchases cap),
+--     doesn't touch StadiumOfferManager.luau's shared stock pool.
 -- Each grant is marked in the player's own persisted session (a dedicated
 -- Granted*PurchaseIds set per purchase TYPE, see DataManager) before
 -- returning PurchaseGranted, so a retried receipt (Roblox resends until
@@ -12,11 +15,13 @@
 
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
+local DataStoreService = game:GetService("DataStoreService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local CashPackConfig = require(ReplicatedStorage.Modules.CashPackConfig)
 local PotionDatabase = require(ReplicatedStorage.Modules.PotionDatabase)
+local StadiumOfferConfig = require(ReplicatedStorage.Modules.StadiumOfferConfig)
 local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
 local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
 local DataManager = require(ServerScriptService.Managers.DataManager)
@@ -25,6 +30,7 @@ local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManag
 local PotionManager = require(ServerScriptService.Managers.PotionManager)
 
 local systemMessage = RemotesBootstrap:WaitForChild("SystemMessage")
+local stadiumOfferStateUpdated = RemotesBootstrap:WaitForChild("StadiumOfferStateUpdated")
 
 local CashPackManager = {}
 
@@ -57,10 +63,39 @@ local function processInstantPotion(player: Player, session, purchaseId: string,
 	return true
 end
 
+local function processStadiumOfferPurchase(player: Player, session, purchaseId: string): boolean
+	if session.GrantedStadiumOfferPurchaseIds[purchaseId] then
+		return true
+	end
+	session.GrantedStadiumOfferPurchaseIds[purchaseId] = true
+	session.SolStadiumOwned += 1
+
+	systemMessage:FireClient(player, string.format("Bought Sol Stadium with Robux! (%d owned)", session.SolStadiumOwned))
+	StatsManager.Recompute(player)
+	LeaderboardManager.MarkDirty(player)
+	-- Refreshes StadiumOfferPanel.luau's own OwnedCount display if it's
+	-- open -- doesn't touch the shared stock pool/RemainingStock at all,
+	-- unlike a cash purchase (StadiumOfferManager.luau), so no broadcast
+	-- to other players is needed.
+	local ok, remainingStock = pcall(function()
+		return DataStoreService:GetDataStore("WealthRNG_StadiumOffer"):GetAsync("RemainingStock")
+	end)
+	stadiumOfferStateUpdated:FireClient(player, {
+		RemainingStock = (ok and remainingStock) or StadiumOfferConfig.TotalStock,
+		TotalStock = StadiumOfferConfig.TotalStock,
+		OwnedCount = session.SolStadiumOwned,
+		MaxCashPurchases = StadiumOfferConfig.MaxCashPurchases,
+	})
+	-- Same immediate-save reasoning as processCashPack above.
+	task.spawn(DataManager.Save, player)
+	return true
+end
+
 MarketplaceService.ProcessReceipt = function(receiptInfo)
 	local pack = CashPackConfig.GetPack(receiptInfo.ProductId)
 	local instantPotion = not pack and PotionDatabase.GetPotionByInstantProductId(receiptInfo.ProductId)
-	if not pack and not instantPotion then
+	local isStadiumOffer = not pack and not instantPotion and receiptInfo.ProductId == StadiumOfferConfig.RobuxProductId
+	if not pack and not instantPotion and not isStadiumOffer then
 		return Enum.ProductPurchaseDecision.NotProcessed
 	end
 
@@ -79,8 +114,10 @@ MarketplaceService.ProcessReceipt = function(receiptInfo)
 	local purchaseId = receiptInfo.PurchaseId
 	if pack then
 		processCashPack(player, session, purchaseId, pack)
-	else
+	elseif instantPotion then
 		processInstantPotion(player, session, purchaseId, instantPotion.Id)
+	else
+		processStadiumOfferPurchase(player, session, purchaseId)
 	end
 
 	return Enum.ProductPurchaseDecision.PurchaseGranted

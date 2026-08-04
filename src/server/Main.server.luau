@@ -72,6 +72,7 @@ require(ServerScriptService.Managers.CodesManager)
 require(ServerScriptService.Managers.RobuxManManager)
 require(ServerScriptService.Managers.BattleLeaderboardRewardManager)
 require(ServerScriptService.Managers.OneTimeBattlePointsMerge)
+require(ServerScriptService.Managers.StadiumOfferManager)
 
 -- Initial pushes (saved Inventory/Assets/Investments/etc.) fire TWICE, on
 -- purpose: once immediately after DataManager.Load (the old behavior --

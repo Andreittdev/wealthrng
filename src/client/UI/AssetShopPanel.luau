@@ -271,8 +271,16 @@ function AssetShopPanel.Create(screenGui: ScreenGui, remotes: Folder)
 			local asset = allAssets[id]
 			local owned = ownedAssets[id]
 
-			-- NotPurchasable (LARP Battles Top 3 reward estates) never show
-			-- up as a tempting-but-unbuyable card for players who don't have
+			-- Top3Estate ("Sol Stadium") no longer shows in the Shop at all,
+			-- even for existing owners from before 3rd place stopped
+			-- receiving a reward Estate -- they can still see/equip it from
+			-- InventoryPanel's Estates tab, just not browse it here.
+			if id == "Top3Estate" then
+				continue
+			end
+
+			-- NotPurchasable (LARP Battles Top reward estates) never show up
+			-- as a tempting-but-unbuyable card for players who don't have
 			-- one -- but if you DID win one, it still shows here as an
 			-- "Owned"/"Equipped" status badge, same as any other owned Asset.
 			if asset.NotPurchasable and not owned then

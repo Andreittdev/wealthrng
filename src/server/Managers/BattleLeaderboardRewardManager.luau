@@ -31,7 +31,10 @@ local pendingGrantsStore = DataStoreService:GetDataStore("WealthRNG_PendingAsset
 
 -- Rank 1/2/3 -> which reward Asset -- kept here (not AssetDatabase) since
 -- it's specifically about THIS reward flow, not a general asset property.
-local RANK_REWARD_ASSET_IDS = { "Top1Estate", "Top2Estate", "Top3Estate" }
+-- Only 2 entries -- 3rd place no longer gets a reward Estate. Top3Estate
+-- (AssetDatabase.luau's "Sol Stadium") stays in the database as-is (any
+-- past winner keeps theirs) -- it's just no longer granted going forward.
+local RANK_REWARD_ASSET_IDS = { "Top1Estate", "Top2Estate" }
 
 local function attempt(fn): (boolean, any)
 	for i = 1, RETRY_COUNT do

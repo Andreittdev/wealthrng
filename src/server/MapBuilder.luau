@@ -17,6 +17,9 @@
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local StadiumOfferConfig = require(ReplicatedStorage.Modules.StadiumOfferConfig)
 
 local MapBuilder = {}
 
@@ -71,16 +74,11 @@ local FOUNTAIN_GEM_DIAMETER = 2.5
 -- 180/270), not diagonal, so each bench faces a flat side of the pool
 -- instead of straddling a corner; the N/S/E/W paths start way further out
 -- (at PLAZA_DIAMETER/2, radius 50+) so there's no collision this close in.
-local POOL_SIZE = 26
-local POOL_CURB_HEIGHT = 1.5
-local POOL_CURB_THICKNESS = 1.2
-local POOL_COLOR = Color3.fromRGB(150, 210, 235)
-
--- Just past the pool's flat-side outer edge (POOL_SIZE/2 + curb halfwidth
--- = 13.6), close enough to still read as "at the pool" rather than out in
--- the open plaza.
-local BENCH_RADIUS = 15.5
-local BENCH_ANGLES = { 0, 90, 180, 270 }
+-- Pulled in closer to the fountain per explicit request (was 15.5, from
+-- back when there was a square water pool here that this needed to clear).
+local BENCH_RADIUS = 10.5
+-- Down to 2 (was 4, opposite sides of the fountain) per explicit request.
+local BENCH_ANGLES = { 0, 180 }
 local BENCH_WIDTH = 6.5
 local BENCH_WOOD_COLOR = Color3.fromRGB(150, 105, 65)
 local BENCH_FRAME_COLOR = Color3.fromRGB(35, 35, 42)
@@ -125,7 +123,7 @@ local STAND_LABEL = "SHOP"
 -- Where players land on join/respawn, by exact XZ (same walked-to-and-
 -- picked-a-spot convention as the stands) -- inside the plaza radius, so it
 -- sits flush with the cobblestone plaza floor.
-local SPAWN_POSITION = Vector2.new(-16.85, -26.25)
+local SPAWN_POSITION = Vector2.new(-9.200676918029785, 26.894458770751953)
 
 -- Separate Potions stand -- temporary Cash-bought boosts, distinct from the
 -- Assets/Invest kiosk above, so it gets its own prompt name/panel.
@@ -140,7 +138,7 @@ local POTION_STAND_LABEL = "POTIONS"
 -- copy of the Shop/Potions kiosk (see buildIndexPedestal) -- a small
 -- marble pedestal + angled lectern instead, so it reads as its own
 -- distinct "premium" prop rather than a third identical house.
-local INDEX_STAND_POSITION = Vector2.new(-35.68, -28.12)
+local INDEX_STAND_POSITION = Vector2.new(42.69997787475586, -23.43633460998535)
 local INDEX_STAND_LABEL = "INDEX"
 local INDEX_MARBLE_COLOR = Color3.fromRGB(235, 230, 225)
 
@@ -187,7 +185,7 @@ local BATTLE_MARKER_POSITION = Vector2.new(-69.96, -0.25)
 -- above here), client-provided position (HumanoidRootPart.Position while
 -- standing there). Claim panel is CodesProximityPanel.luau (client) +
 -- CodesManager.luau (server).
-local CODES_MARKER_POSITION = Vector2.new(-16.345903396606445, -9.156595230102539)
+local CODES_MARKER_POSITION = Vector2.new(41.372745513916016, 24.04339599609375)
 local CODES_MARKER_COLOR = Color3.fromRGB(80, 220, 160)
 local CODES_MARKER_LABEL = "Codes"
 
@@ -210,7 +208,10 @@ local LEADERBOARD_LABELS = { "TOP TIME", "TOP NET WORTH", "TOP ROLLS" }
 -- Trees sit on a fixed, centered grid (not scattered randomly) so the
 -- forest reads as deliberately planted rows, not clutter -- isBlocked still
 -- skips any grid point that lands on the plaza or a path.
-local TREE_GRID_SPACING = 42
+-- Tighter than the original 42 -- more trees overall, per explicit request
+-- (after switching to the much-smaller-scaled "F Tree" model, more of them
+-- packed closer together reads right instead of sparse).
+local TREE_GRID_SPACING = 28
 local TREE_EXCLUSION_RADIUS = 57
 local GRASS_PLACEMENT_BOUND = 130
 
@@ -531,33 +532,6 @@ local function buildFountain(mapFolder: Folder)
 	gem.Parent = mapFolder
 	addContinuousSpin(gem, 40)
 	addSparkle(gem, Color3.fromRGB(255, 240, 180), 14)
-end
-
-local function buildPool(mapFolder: Folder)
-	local curbCenterY = PLAZA_TOP_Y + POOL_CURB_HEIGHT / 2
-	local half = POOL_SIZE / 2
-
-	local walls = {
-		{ name = "PoolCurbNorth", size = Vector3.new(POOL_SIZE, POOL_CURB_HEIGHT, POOL_CURB_THICKNESS), position = Vector3.new(0, curbCenterY, half) },
-		{ name = "PoolCurbSouth", size = Vector3.new(POOL_SIZE, POOL_CURB_HEIGHT, POOL_CURB_THICKNESS), position = Vector3.new(0, curbCenterY, -half) },
-		{ name = "PoolCurbEast", size = Vector3.new(POOL_CURB_THICKNESS, POOL_CURB_HEIGHT, POOL_SIZE), position = Vector3.new(half, curbCenterY, 0) },
-		{ name = "PoolCurbWest", size = Vector3.new(POOL_CURB_THICKNESS, POOL_CURB_HEIGHT, POOL_SIZE), position = Vector3.new(-half, curbCenterY, 0) },
-	}
-	for _, wall in walls do
-		local part = createBlock(wall.name, wall.size, wall.position, POOL_COLOR, Enum.Material.Ice)
-		part.Parent = mapFolder
-	end
-
-	local waterSize = POOL_SIZE - POOL_CURB_THICKNESS * 2
-	local water = createBlock(
-		"PoolWater",
-		Vector3.new(waterSize, 0.4, waterSize),
-		Vector3.new(0, PLAZA_TOP_Y + 0.2, 0),
-		FOUNTAIN_WATER_COLOR,
-		Enum.Material.Glass
-	)
-	water.Transparency = 0.3
-	water.Parent = mapFolder
 end
 
 -- Simple park bench: 2 dark frame legs + a wood seat + a wood backrest.
@@ -899,6 +873,83 @@ local function buildBattleMarker(mapFolder: Folder, position: Vector2)
 	addLabel(line, "LARP Battles", 16, UDim2.new(0, 180, 0, 32), BATTLE_MARKER_COLOR, false, LARGE_LABEL_MAX_DISTANCE)
 
 	buildBattleCarpet(mapFolder, facingCF)
+end
+
+-- Small standalone signboard -- a post + gold-trimmed board with a 2-line
+-- SurfaceGui (title + live countdown). NextUpdateCountdown.luau (client)
+-- finds it by these exact names ("NextUpdateBoard_Board" -> "Display" ->
+-- "CountdownLabel") and fills in/ticks the actual countdown -- this only
+-- builds the empty board with placeholder text, same split every other
+-- physical board/marker in this file uses.
+local NEXT_UPDATE_BOARD_POSITION = Vector2.new(0.2770043909549713, 8.67017650604248)
+
+local function buildNextUpdateBoard(mapFolder: Folder)
+	local boardCF = CFrame.lookAt(Vector3.new(NEXT_UPDATE_BOARD_POSITION.X, PLAZA_TOP_Y, NEXT_UPDATE_BOARD_POSITION.Y), Vector3.new(0, PLAZA_TOP_Y, 0))
+		* CFrame.Angles(0, math.rad(180), 0)
+
+	local function place(name: string, size: Vector3, localOffset: Vector3, color: Color3, material: Enum.Material?): Part
+		local part = Instance.new("Part")
+		part.Name = "NextUpdateBoard_" .. name
+		part.Size = size
+		part.CFrame = boardCF * CFrame.new(localOffset)
+		part.Color = color
+		part.Material = material or Enum.Material.SmoothPlastic
+		part.Anchored = true
+		part.TopSurface = Enum.SurfaceType.Smooth
+		part.BottomSurface = Enum.SurfaceType.Smooth
+		part.Parent = mapFolder
+		return part
+	end
+
+	-- Frame has to sit BEHIND the board (positive local Z, away from the
+	-- direction CFrame.lookAt's -Z front face points) so it reads as a
+	-- backing border peeking out around the edges -- had this backwards
+	-- (Frame in front of Board) originally, which made the solid Frame
+	-- part physically block the board's own front face, hiding the
+	-- SurfaceGui/text behind it entirely.
+	place("Post", Vector3.new(0.6, 5, 0.6), Vector3.new(0, 2.5, 0), Color3.fromRGB(90, 60, 40), Enum.Material.Wood)
+	place("Frame", Vector3.new(6.6, 3.6, 0.5), Vector3.new(0, 6, 0.2), FOUNTAIN_GOLD, Enum.Material.Metal)
+	local board = place("Board", Vector3.new(6, 3, 0.3), Vector3.new(0, 6, 0), Color3.fromRGB(20, 20, 26), Enum.Material.SmoothPlastic)
+
+	local displayGui = Instance.new("SurfaceGui")
+	displayGui.Name = "Display"
+	displayGui.Face = Enum.NormalId.Front
+	displayGui.LightInfluence = 0
+	displayGui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	displayGui.PixelsPerStud = 100
+	displayGui.Parent = board
+
+	local displayPadding = Instance.new("UIPadding")
+	displayPadding.PaddingTop = UDim.new(0.1, 0)
+	displayPadding.PaddingBottom = UDim.new(0.1, 0)
+	displayPadding.PaddingLeft = UDim.new(0.05, 0)
+	displayPadding.PaddingRight = UDim.new(0.05, 0)
+	displayPadding.Parent = displayGui
+
+	local titleLabel = Instance.new("TextLabel")
+	titleLabel.Name = "TitleLabel"
+	titleLabel.Size = UDim2.new(1, 0, 0.4, 0)
+	titleLabel.BackgroundTransparency = 1
+	titleLabel.Font = Enum.Font.LuckiestGuy
+	titleLabel.TextScaled = true
+	titleLabel.Text = "NEXT UPDATE IN:"
+	titleLabel.TextColor3 = FOUNTAIN_GOLD
+	titleLabel.TextStrokeTransparency = 0
+	titleLabel.Parent = displayGui
+
+	-- Placeholder only -- NextUpdateCountdown.luau overwrites this every
+	-- second with the live countdown.
+	local countdownLabel = Instance.new("TextLabel")
+	countdownLabel.Name = "CountdownLabel"
+	countdownLabel.Size = UDim2.new(1, 0, 0.5, 0)
+	countdownLabel.Position = UDim2.new(0, 0, 0.45, 0)
+	countdownLabel.BackgroundTransparency = 1
+	countdownLabel.Font = Enum.Font.LuckiestGuy
+	countdownLabel.TextScaled = true
+	countdownLabel.Text = "..."
+	countdownLabel.TextColor3 = Color3.new(1, 1, 1)
+	countdownLabel.TextStrokeTransparency = 0
+	countdownLabel.Parent = displayGui
 end
 
 -- Bigger than before (was 5x6) -- text on a small board has a hard physical
@@ -1288,6 +1339,12 @@ local function addTreeDecor(parent: Folder, trunkX: number, trunkZ: number)
 	end
 end
 
+-- Real 3D model ("F Tree", placed directly in Workspace) cloned across the
+-- same grid the procedural trees used to fill, replacing every single one
+-- -- the ORIGINAL model becomes the very first tree placed (moved into
+-- place, not left behind somewhere as a stray extra tree); every other
+-- grid position gets a clone. Falls back to the old procedural trunk+
+-- foliage per-position if the model isn't in Workspace.
 local function buildTrees(mapFolder: Folder)
 	local treesFolder = Instance.new("Folder")
 	treesFolder.Name = "Trees"
@@ -1297,6 +1354,10 @@ local function buildTrees(mapFolder: Folder)
 	-- rows line up evenly on both sides of the plaza.
 	local steps = math.floor((2 * GRASS_PLACEMENT_BOUND) / TREE_GRID_SPACING)
 	local gridStart = -steps / 2 * TREE_GRID_SPACING
+
+	local fTreeTemplate = Workspace:FindFirstChild("F Tree")
+	local fTreeIsModel = fTreeTemplate ~= nil and fTreeTemplate:IsA("Model")
+	local templateUsed = false
 
 	for row = 0, steps do
 		for col = 0, steps do
@@ -1309,29 +1370,66 @@ local function buildTrees(mapFolder: Folder)
 			-- Position is strictly on-grid; only size gets slight variation
 			-- so the rows still read as uniform, not identical toy soldiers.
 			local scale = random:NextNumber(0.9, 1.1)
-			local trunkHeight = 4.5 * scale
-			local foliageDiameter = 9 * scale
 
-			local trunk = createCylinder(
-				"TreeTrunk",
-				3 * scale,
-				trunkHeight,
-				Vector3.new(x, trunkHeight / 2, z),
-				Color3.fromRGB(110, 75, 45),
-				Enum.Material.Wood
-			)
-			trunk.Parent = treesFolder
+			if fTreeIsModel then
+				local treeModel = (not templateUsed) and fTreeTemplate or fTreeTemplate:Clone()
+				templateUsed = true
 
-			local foliage = Instance.new("Part")
-			foliage.Name = "TreeFoliage"
-			foliage.Shape = Enum.PartType.Ball
-			foliage.Size = Vector3.new(foliageDiameter, foliageDiameter, foliageDiameter)
-			foliage.CFrame = CFrame.new(x, trunkHeight + foliageDiameter / 2.5, z)
-			foliage.Color = Color3.fromRGB(45, 150, 60)
-			foliage.Material = Enum.Material.Grass
-			foliage.Anchored = true
-			foliage.CanCollide = false
-			foliage.Parent = treesFolder
+				-- "F Tree"'s own native size is much bigger than the old
+				-- procedural trees -- a 0.9-1.1x variance (right for the
+				-- OLD trees, which were already sized correctly) barely
+				-- touched it. This is a separate, much smaller multiplier
+				-- specifically for this model, not `scale` above.
+				local fTreeScale = random:NextNumber(0.04, 0.06)
+				pcall(function()
+					treeModel:ScaleTo(fTreeScale)
+				end)
+
+				treeModel:PivotTo(CFrame.new(x, GROUND_TOP_Y, z))
+
+				-- Same GetBoundingBox lift as every other replaced model --
+				-- the pivot isn't necessarily at the base.
+				local boundingCFrame, boundingSize = treeModel:GetBoundingBox()
+				local bottomY = boundingCFrame.Position.Y - boundingSize.Y / 2
+				local liftNeeded = GROUND_TOP_Y - bottomY
+				if liftNeeded ~= 0 then
+					treeModel:PivotTo(treeModel:GetPivot() + Vector3.new(0, liftNeeded, 0))
+				end
+
+				for _, descendant in treeModel:GetDescendants() do
+					if descendant:IsA("BasePart") then
+						descendant.Anchored = true
+					end
+				end
+
+				if treeModel ~= fTreeTemplate then
+					treeModel.Parent = treesFolder
+				end
+			else
+				local trunkHeight = 4.5 * scale
+				local foliageDiameter = 9 * scale
+
+				local trunk = createCylinder(
+					"TreeTrunk",
+					3 * scale,
+					trunkHeight,
+					Vector3.new(x, trunkHeight / 2, z),
+					Color3.fromRGB(110, 75, 45),
+					Enum.Material.Wood
+				)
+				trunk.Parent = treesFolder
+
+				local foliage = Instance.new("Part")
+				foliage.Name = "TreeFoliage"
+				foliage.Shape = Enum.PartType.Ball
+				foliage.Size = Vector3.new(foliageDiameter, foliageDiameter, foliageDiameter)
+				foliage.CFrame = CFrame.new(x, trunkHeight + foliageDiameter / 2.5, z)
+				foliage.Color = Color3.fromRGB(45, 150, 60)
+				foliage.Material = Enum.Material.Grass
+				foliage.Anchored = true
+				foliage.CanCollide = false
+				foliage.Parent = treesFolder
+			end
 
 			if random:NextNumber() < TREE_DECOR_CHANCE then
 				addTreeDecor(treesFolder, x, z)
@@ -1706,14 +1804,20 @@ function MapBuilder.Build()
 	buildPlaza(mapFolder)
 	buildPaths(mapFolder)
 	buildSpawn(mapFolder)
-	buildFountain(mapFolder)
-	buildPool(mapFolder)
-	for index, angle in BENCH_ANGLES do
-		buildBench(mapFolder, angle, index)
-	end
+	-- Fountain itself is built later (see "M Fountain" near Robux Man/
+	-- Meshy Stadium below) -- a real 3D model replaces the procedural
+	-- buildFountain centerpiece, with buildFountain as a fallback if that
+	-- model isn't in Workspace.
+	-- The square water pool that used to sit here was removed entirely.
+	-- Benches themselves are built later (see "S Bench" near Robux Man/
+	-- Meshy Stadium below) -- real 3D model clones replace the procedural
+	-- buildBench, with buildBench as a per-angle fallback if that model
+	-- isn't in Workspace.
 
-	buildStand(mapFolder, STAND_POSITION, 1, STAND_ROOF_COLOR, STAND_LABEL, "ShopPrompt")
-	buildStand(mapFolder, POTION_STAND_POSITION, 2, POTION_STAND_ROOF_COLOR, POTION_STAND_LABEL, "PotionShopPrompt")
+	-- Both shop kiosks are built later (see "Original Shop"/"Pots Shop"
+	-- near Robux Man/Meshy Stadium below) -- real 3D models replace the
+	-- procedural buildStand kiosk for both, with buildStand as a fallback
+	-- if either model isn't in Workspace.
 	buildIndexPedestal(mapFolder, INDEX_STAND_POSITION, INDEX_STAND_LABEL, "CatalogPrompt")
 	buildFloorMarker(mapFolder, "VIPMarker_Disk", VIP_MARKER_POSITION, PLAZA_TOP_Y, VIP_MARKER_COLOR, VIP_MARKER_LABEL, Color3.fromRGB(255, 221, 0))
 	buildFloorMarker(mapFolder, "CodesMarker_Disk", CODES_MARKER_POSITION, PLAZA_TOP_Y, CODES_MARKER_COLOR, CODES_MARKER_LABEL, Color3.fromRGB(200, 255, 230))
@@ -1750,6 +1854,7 @@ function MapBuilder.Build()
 		true
 	)
 	buildBattleMarker(mapFolder, BATTLE_MARKER_POSITION)
+	buildNextUpdateBoard(mapFolder)
 
 	local leaderboardClusterCF = CFrame.lookAt(Vector3.new(LEADERBOARD_CENTER.X, PLAZA_TOP_Y, LEADERBOARD_CENTER.Y), Vector3.new(0, PLAZA_TOP_Y, 0))
 	for index, labelText in LEADERBOARD_LABELS do
@@ -1835,6 +1940,285 @@ function MapBuilder.Build()
 		local currentPivot = sfArena:GetPivot()
 		sfArena:PivotTo(CFrame.new(-84.1661148071289, 4.1999993324279785, -0.3685937225818634) * currentPivot.Rotation)
 	end
+
+	-- "Original Shop" -- a real 3D model placed directly in Workspace
+	-- (same deal as "Robux Man"/"sf arena" above), replacing the
+	-- procedural buildStand kiosk for the main Assets/Invest shop -- same
+	-- position/facing AND the exact same "ShopPrompt" ProximityPrompt
+	-- AssetShopPanel.luau already listens for, just a different building.
+	-- Falls back to the old procedural kiosk if this model hasn't been
+	-- added to Workspace yet, so the Shop's trigger is never just silently
+	-- missing.
+	local originalShop = Workspace:FindFirstChild("Original Shop")
+	if originalShop and originalShop:IsA("Model") then
+		local shopCF = CFrame.lookAt(Vector3.new(STAND_POSITION.X, PLAZA_TOP_Y, STAND_POSITION.Y), Vector3.new(0, PLAZA_TOP_Y, 0))
+		originalShop:PivotTo(shopCF)
+
+		-- The model's pivot isn't necessarily at its base -- placing it
+		-- with Y = PLAZA_TOP_Y sank half of it into the plaza floor
+		-- (pivot sitting mid-height, not at the bottom). GetBoundingBox
+		-- gives the model's real extents regardless of where its pivot is,
+		-- so this lifts it by exactly however much is needed for its
+		-- actual BOTTOM to rest on PLAZA_TOP_Y, instead of guessing a
+		-- fixed offset that'd only happen to be right for this one model.
+		local boundingCFrame, boundingSize = originalShop:GetBoundingBox()
+		local bottomY = boundingCFrame.Position.Y - boundingSize.Y / 2
+		local liftNeeded = PLAZA_TOP_Y - bottomY
+		if liftNeeded ~= 0 then
+			originalShop:PivotTo(originalShop:GetPivot() + Vector3.new(0, liftNeeded, 0))
+		end
+
+		for _, descendant in originalShop:GetDescendants() do
+			if descendant:IsA("BasePart") then
+				descendant.Anchored = true
+			end
+		end
+
+		-- Dedicated invisible anchor at a KNOWN, sensible spot (the shop's
+		-- own position, out front toward the plaza) instead of trusting an
+		-- arbitrary BasePart found somewhere inside the model -- whichever
+		-- part FindFirstChildWhichIsA happened to land on could be
+		-- anywhere in a model this size (back wall, roof, etc.), making
+		-- the real trigger distance nothing like what it visually looked
+		-- like standing "right in front of" the building.
+		-- No "already exists" guard needed here (unlike originalShop's own
+		-- state above) -- mapFolder is destroyed and rebuilt from scratch
+		-- on every single Build() call, so this anchor is always freshly
+		-- created, never stale/duplicated.
+		local shopPromptAnchor = Instance.new("Part")
+		shopPromptAnchor.Name = "ShopPromptAnchor"
+		shopPromptAnchor.Size = Vector3.new(1, 1, 1)
+		shopPromptAnchor.CFrame = shopCF * CFrame.new(0, 2, -2)
+		shopPromptAnchor.Anchored = true
+		shopPromptAnchor.CanCollide = false
+		shopPromptAnchor.Transparency = 1
+		shopPromptAnchor.Parent = mapFolder
+
+		local shopPrompt = Instance.new("ProximityPrompt")
+		shopPrompt.Name = "ShopPrompt"
+		shopPrompt.ActionText = "Open Shop"
+		shopPrompt.ObjectText = STAND_LABEL
+		shopPrompt.MaxActivationDistance = 15
+		shopPrompt.RequiresLineOfSight = false
+		shopPrompt.Parent = shopPromptAnchor
+
+		addLabel(shopPromptAnchor, STAND_LABEL, 10, UDim2.new(0, 140, 0, 30), Color3.fromRGB(255, 255, 255))
+	else
+		buildStand(mapFolder, STAND_POSITION, 1, STAND_ROOF_COLOR, STAND_LABEL, "ShopPrompt")
+	end
+
+	-- "Pots Shop" -- same deal as "Original Shop" above, replacing the
+	-- procedural buildStand kiosk for the Potions stand with a real 3D
+	-- model placed directly in Workspace. Same position/facing AND the
+	-- exact same "PotionShopPrompt" ProximityPrompt PotionShopPanel.luau
+	-- already listens for. Falls back to the old procedural kiosk if this
+	-- model hasn't been added to Workspace yet.
+	local potsShop = Workspace:FindFirstChild("Pots Shop")
+	if potsShop and potsShop:IsA("Model") then
+		local potsShopCF = CFrame.lookAt(Vector3.new(POTION_STAND_POSITION.X, PLAZA_TOP_Y, POTION_STAND_POSITION.Y), Vector3.new(0, PLAZA_TOP_Y, 0))
+		potsShop:PivotTo(potsShopCF)
+
+		-- Same GetBoundingBox lift as "Original Shop" -- the model's pivot
+		-- isn't necessarily at its base, so this lifts it by exactly
+		-- however much is needed for its actual bottom to rest on
+		-- PLAZA_TOP_Y instead of guessing a fixed offset.
+		local potsBoundingCFrame, potsBoundingSize = potsShop:GetBoundingBox()
+		local potsBottomY = potsBoundingCFrame.Position.Y - potsBoundingSize.Y / 2
+		local potsLiftNeeded = PLAZA_TOP_Y - potsBottomY
+		if potsLiftNeeded ~= 0 then
+			potsShop:PivotTo(potsShop:GetPivot() + Vector3.new(0, potsLiftNeeded, 0))
+		end
+
+		for _, descendant in potsShop:GetDescendants() do
+			if descendant:IsA("BasePart") then
+				descendant.Anchored = true
+			end
+		end
+
+		-- Dedicated invisible anchor (same reasoning as ShopPromptAnchor
+		-- above -- an arbitrary Part found inside the model could be
+		-- anywhere, making the real trigger distance nothing like what it
+		-- visually looks like standing in front of the building).
+		local potsShopPromptAnchor = Instance.new("Part")
+		potsShopPromptAnchor.Name = "PotsShopPromptAnchor"
+		potsShopPromptAnchor.Size = Vector3.new(1, 1, 1)
+		potsShopPromptAnchor.CFrame = potsShopCF * CFrame.new(0, 2, -2)
+		potsShopPromptAnchor.Anchored = true
+		potsShopPromptAnchor.CanCollide = false
+		potsShopPromptAnchor.Transparency = 1
+		potsShopPromptAnchor.Parent = mapFolder
+
+		local potsShopPrompt = Instance.new("ProximityPrompt")
+		potsShopPrompt.Name = "PotionShopPrompt"
+		potsShopPrompt.ActionText = "Open Shop"
+		potsShopPrompt.ObjectText = POTION_STAND_LABEL
+		potsShopPrompt.MaxActivationDistance = 15
+		potsShopPrompt.RequiresLineOfSight = false
+		potsShopPrompt.Parent = potsShopPromptAnchor
+
+		addLabel(potsShopPromptAnchor, POTION_STAND_LABEL, 10, UDim2.new(0, 140, 0, 30), Color3.fromRGB(255, 255, 255))
+	else
+		buildStand(mapFolder, POTION_STAND_POSITION, 2, POTION_STAND_ROOF_COLOR, POTION_STAND_LABEL, "PotionShopPrompt")
+	end
+
+	-- "M Fountain" -- a real 3D model placed directly in Workspace,
+	-- replacing the procedural buildFountain centerpiece at the plaza's
+	-- exact center (0, PLAZA_TOP_Y, 0) -- same GetBoundingBox lift/anchor
+	-- treatment as the shop models above. Purely decorative (no
+	-- ProximityPrompt, unlike the shops), so no anchor/prompt needed --
+	-- keeps whatever rotation it already has, same as sf arena/Meshy
+	-- Stadium. Falls back to the old procedural fountain if this model
+	-- hasn't been added to Workspace yet.
+	local mFountain = Workspace:FindFirstChild("M Fountain")
+	if mFountain and mFountain:IsA("Model") then
+		local currentPivot = mFountain:GetPivot()
+		mFountain:PivotTo(CFrame.new(0, PLAZA_TOP_Y, 0) * currentPivot.Rotation)
+
+		local fountainBoundingCFrame, fountainBoundingSize = mFountain:GetBoundingBox()
+		local fountainBottomY = fountainBoundingCFrame.Position.Y - fountainBoundingSize.Y / 2
+		local fountainLiftNeeded = PLAZA_TOP_Y - fountainBottomY
+		if fountainLiftNeeded ~= 0 then
+			mFountain:PivotTo(mFountain:GetPivot() + Vector3.new(0, fountainLiftNeeded, 0))
+		end
+
+		for _, descendant in mFountain:GetDescendants() do
+			if descendant:IsA("BasePart") then
+				descendant.Anchored = true
+			end
+		end
+	else
+		buildFountain(mapFolder)
+	end
+
+	-- "S Bench" -- a real 3D model placed directly in Workspace, cloned 4x
+	-- (BENCH_ANGLES, same closer BENCH_RADIUS as the procedural fallback)
+	-- around the fountain. The ORIGINAL model becomes the first bench
+	-- (moved into place, not left behind somewhere as an unused template);
+	-- 3 clones (parented into mapFolder, so they're destroyed/rebuilt each
+	-- Build() call same as everything else generated) fill the rest. Falls
+	-- back to the old procedural buildBench per-angle if this model isn't
+	-- in Workspace.
+	local sBenchTemplate = Workspace:FindFirstChild("S Bench")
+	if sBenchTemplate and sBenchTemplate:IsA("Model") then
+		for index, angleDegrees in BENCH_ANGLES do
+			local benchModel = (index == 1) and sBenchTemplate or sBenchTemplate:Clone()
+			local x, z = polarToXZ(BENCH_RADIUS, angleDegrees)
+			-- Extra 180-degree spin -- the model's own "front" faces the
+			-- opposite way CFrame.lookAt assumes, same fix buildBench
+			-- itself already needed (see its own comment above).
+			local benchCF = CFrame.lookAt(Vector3.new(x, PLAZA_TOP_Y, z), Vector3.new(0, PLAZA_TOP_Y, 0)) * CFrame.Angles(0, math.rad(180), 0)
+			benchModel:PivotTo(benchCF)
+
+			-- Same GetBoundingBox lift as every other replaced model above.
+			local boundingCFrame, boundingSize = benchModel:GetBoundingBox()
+			local bottomY = boundingCFrame.Position.Y - boundingSize.Y / 2
+			local liftNeeded = PLAZA_TOP_Y - bottomY
+			if liftNeeded ~= 0 then
+				benchModel:PivotTo(benchModel:GetPivot() + Vector3.new(0, liftNeeded, 0))
+			end
+
+			for _, descendant in benchModel:GetDescendants() do
+				if descendant:IsA("BasePart") then
+					descendant.Anchored = true
+				end
+			end
+
+			if benchModel ~= sBenchTemplate then
+				benchModel.Name = "S Bench" .. index
+				benchModel.Parent = mapFolder
+			end
+		end
+	else
+		for index, angleDegrees in BENCH_ANGLES do
+			buildBench(mapFolder, angleDegrees, index)
+		end
+	end
+
+	-- "Meshy Stadium" -- another model placed directly in Workspace (same
+	-- deal as "Robux Man"/"sf arena" above). Keeps whatever rotation it
+	-- already has -- no specific facing was asked for. Also force-anchors
+	-- every BasePart under it -- imported meshes routinely come in with
+	-- Anchored = false on some/all of their parts, so a player walking into
+	-- it shoves it around like a loose physics prop instead of behaving as
+	-- solid scenery.
+	local meshyStadium = Workspace:FindFirstChild("Meshy Stadium")
+	if meshyStadium and meshyStadium:IsA("Model") then
+		local currentPivot = meshyStadium:GetPivot()
+		meshyStadium:PivotTo(CFrame.new(-32.52312088012695, 4.1999993324279785, -34.600303649902344) * currentPivot.Rotation)
+
+		for _, descendant in meshyStadium:GetDescendants() do
+			if descendant:IsA("BasePart") then
+				descendant.Anchored = true
+			end
+		end
+
+		-- Floating 3D info text above the model -- initial text only (the
+		-- real-time stock count) is StadiumOfferManager.luau's job (it
+		-- finds this exact BillboardGui/TextLabel by name and edits .Text
+		-- directly whenever the shared stock pool changes -- a plain
+		-- Instance property edit already replicates to every client, no
+		-- remote needed for a world-space label like this one).
+		local promptAnchor = meshyStadium.PrimaryPart or meshyStadium:FindFirstChildWhichIsA("BasePart")
+		if promptAnchor and not promptAnchor:FindFirstChild("StadiumInfoLabel") then
+			local billboard = Instance.new("BillboardGui")
+			billboard.Name = "StadiumInfoLabel"
+			billboard.Size = UDim2.new(0, 170, 0, 63)
+			billboard.StudsOffset = Vector3.new(0, 9, 0)
+			billboard.MaxDistance = LARGE_LABEL_MAX_DISTANCE
+			billboard.Adornee = promptAnchor
+			billboard.Parent = promptAnchor
+
+			local stockLine = Instance.new("TextLabel")
+			stockLine.Name = "StockLine"
+			stockLine.Size = UDim2.new(1, 0, 1 / 3, 0)
+			stockLine.Position = UDim2.new(0, 0, 0, 0)
+			stockLine.BackgroundTransparency = 1
+			stockLine.Font = Enum.Font.LuckiestGuy
+			stockLine.TextScaled = true
+			stockLine.Text = string.format("STOCK %d/%d", StadiumOfferConfig.TotalStock, StadiumOfferConfig.TotalStock)
+			stockLine.TextColor3 = Color3.fromRGB(255, 205, 90)
+			stockLine.TextStrokeTransparency = 0
+			stockLine.Parent = billboard
+
+			local exclusiveLine = Instance.new("TextLabel")
+			exclusiveLine.Name = "ExclusiveLine"
+			exclusiveLine.Size = UDim2.new(1, 0, 1 / 3, 0)
+			exclusiveLine.Position = UDim2.new(0, 0, 1 / 3, 0)
+			exclusiveLine.BackgroundTransparency = 1
+			exclusiveLine.Font = Enum.Font.LuckiestGuy
+			exclusiveLine.TextScaled = true
+			exclusiveLine.Text = "EXCLUSIVE"
+			exclusiveLine.TextColor3 = Color3.fromRGB(200, 120, 255)
+			exclusiveLine.TextStrokeTransparency = 0
+			exclusiveLine.Parent = billboard
+
+			local nameLine = Instance.new("TextLabel")
+			nameLine.Name = "NameLine"
+			nameLine.Size = UDim2.new(1, 0, 1 / 3, 0)
+			nameLine.Position = UDim2.new(0, 0, 2 / 3, 0)
+			nameLine.BackgroundTransparency = 1
+			nameLine.Font = Enum.Font.LuckiestGuy
+			nameLine.TextScaled = true
+			nameLine.Text = "SOL STADIUM"
+			nameLine.TextColor3 = Color3.fromRGB(80, 220, 110)
+			nameLine.TextStrokeTransparency = 0
+			nameLine.Parent = billboard
+		end
+	end
+
+	-- Invisible proximity anchor for StadiumOfferPanel.luau's popup --
+	-- parented into mapFolder (unlike the stadium model itself, which lives
+	-- directly in Workspace) since it's just a plain generated marker, same
+	-- as every other *Marker_Disk part, safe to destroy/rebuild every
+	-- Build() call.
+	local stadiumOfferMarker = Instance.new("Part")
+	stadiumOfferMarker.Name = "StadiumOfferMarker"
+	stadiumOfferMarker.Size = Vector3.new(1, 1, 1)
+	stadiumOfferMarker.CFrame = CFrame.new(-32.52312088012695, PLAZA_TOP_Y, -34.600303649902344)
+	stadiumOfferMarker.Anchored = true
+	stadiumOfferMarker.CanCollide = false
+	stadiumOfferMarker.Transparency = 1
+	stadiumOfferMarker.Parent = mapFolder
 
 	print("[MapBuilder] Hub map built under Workspace.Map")
 end

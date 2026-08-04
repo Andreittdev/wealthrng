@@ -74,6 +74,18 @@ local function getInvestmentValue(session): number
 	return total
 end
 
+-- Extra Sol Stadium copies bought from the limited-stock Meshy Stadium
+-- vendor (StadiumOfferManager.luau) -- separate from getAssetsValue above
+-- since session.SolStadiumOwned is a count, not a session.OwnedAssets flag.
+local function getStadiumOfferValue(session): number
+	local count = session.SolStadiumOwned or 0
+	if count <= 0 then
+		return 0
+	end
+	local asset = AssetDatabase.GetAsset("Top3Estate")
+	return asset and (asset.Price * count) or 0
+end
+
 -- Exposed so other managers (e.g. TradeManager's Net Worth gate) can read
 -- a fresh Net Worth without duplicating this formula -- read-only, doesn't
 -- push anything or touch lastStats, unlike Recompute.
@@ -82,7 +94,7 @@ function StatsManager.ComputeNetWorth(player: Player): number
 	if not session then
 		return 0
 	end
-	return session.Cash + InventoryManager.GetValue(player) + getAssetsValue(session) + getInvestmentValue(session)
+	return session.Cash + InventoryManager.GetValue(player) + getAssetsValue(session) + getInvestmentValue(session) + getStadiumOfferValue(session)
 end
 
 function StatsManager.Recompute(player: Player)

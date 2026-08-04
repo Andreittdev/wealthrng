@@ -14,6 +14,7 @@ local HideOtherPlayers = require(script.Parent.UI:WaitForChild("HideOtherPlayers
 local BattlePanel = require(script.Parent.UI:WaitForChild("BattlePanel"))
 local ButtonClickSound = require(script.Parent.UI:WaitForChild("ButtonClickSound"))
 local BackgroundMusic = require(script.Parent.UI:WaitForChild("BackgroundMusic"))
+local NextUpdateCountdown = require(script.Parent.UI:WaitForChild("NextUpdateCountdown"))
 
 -- Before LoadingScreen/MainUI -- hooks every button game-wide via
 -- PlayerGui:GetDescendants()/DescendantAdded (see its own header comment),
@@ -33,7 +34,7 @@ LoadingScreen.Run()
 
 local mainUIHandle = MainUI.Init()
 NotificationToast.Init()
--- NextUpdateCountdown.Init() -- disabled, see MapBuilder.luau's matching note
+NextUpdateCountdown.Init()
 HideOtherPlayers.Init()
 BattlePanel.Init(mainUIHandle.SetBattleZoneActive)
 

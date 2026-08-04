@@ -8,6 +8,7 @@ local BadgeService = game:GetService("BadgeService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
+local StadiumOfferConfig = require(ReplicatedStorage.Modules.StadiumOfferConfig)
 
 local DataManager = {}
 
@@ -147,6 +148,20 @@ export type Session = {
 	-- like owning the real gamepass from then on (AutoRollManager.Owns
 	-- checks this OR the real MarketplaceService ownership). Never reset.
 	AutoRollFreeGranted: boolean,
+	-- How many extra copies of Sol Stadium (AssetDatabase's Top3Estate)
+	-- this player has bought from the limited-stock Meshy Stadium vendor
+	-- (StadiumOfferManager.luau) -- deliberately separate from
+	-- session.OwnedAssets (a plain owned/not-owned flag every other Asset
+	-- uses) since this is the one Estate that can be owned more than once.
+	-- Capped at StadiumOfferConfig.MaxCashPurchases via cash; unlimited via
+	-- Robux (not implemented yet).
+	SolStadiumOwned: number,
+	-- Robux Developer Product purchases of Sol Stadium already granted
+	-- (CashPackManager.luau's ProcessReceipt), keyed by PurchaseId -- same
+	-- dedup shape/reasoning as GrantedCashPackPurchaseIds. Unlike the cash
+	-- path, Robux purchases are unlimited (no MaxCashPurchases cap) and
+	-- don't touch the shared stock pool (StadiumOfferManager.luau).
+	GrantedStadiumOfferPurchaseIds: { [string]: boolean },
 	LoadedOk: boolean,
 }
 
@@ -184,6 +199,8 @@ local function newDefaultSession(): Session
 		RedeemedCodes = {},
 		GrantedPotionPurchaseIds = {},
 		AutoRollFreeGranted = false,
+		SolStadiumOwned = 0,
+		GrantedStadiumOfferPurchaseIds = {},
 		LoadedOk = true,
 	}
 end
@@ -239,6 +256,10 @@ function DataManager.Load(player: Player): Session
 	end)
 
 	local session: Session
+	-- Set true by the Sol Stadium self-healing correction below if it
+	-- actually changes anything -- forces an immediate save afterward (see
+	-- that comment for why).
+	local needsImmediateSave = false
 	if ok then
 		if data then
 			-- Backfill Quantity = 1 on entries saved before that field
@@ -300,8 +321,34 @@ function DataManager.Load(player: Player): Session
 				RedeemedCodes = data.RedeemedCodes or {},
 				GrantedPotionPurchaseIds = data.GrantedPotionPurchaseIds or {},
 				AutoRollFreeGranted = data.AutoRollFreeGranted or false,
+				SolStadiumOwned = data.SolStadiumOwned or 0,
+				GrantedStadiumOfferPurchaseIds = data.GrantedStadiumOfferPurchaseIds or {},
 				LoadedOk = true,
 			}
+
+			-- Self-healing: a race condition (fixed in StadiumOfferManager.luau)
+			-- let a fast double/triple-click buy more than
+			-- StadiumOfferConfig.MaxCashPurchases CASH copies of Sol Stadium
+			-- before the fix landed -- clamp the CASH-sourced portion back
+			-- down to the max and refund the excess cash spent. Robux-sourced
+			-- copies (GrantedStadiumOfferPurchaseIds, unlimited by design) are
+			-- excluded from this check entirely, or a legitimate Robux buyer
+			-- with e.g. 5 copies would get wrongly clamped down to 3. Doesn't
+			-- restore the shared stock pool (StadiumOfferManager.luau owns
+			-- that store, requiring it here would risk a circular require).
+			local cashSourcedOwned = StadiumOfferConfig.CountCashOwned(session)
+			if cashSourcedOwned > StadiumOfferConfig.MaxCashPurchases then
+				local excess = cashSourcedOwned - StadiumOfferConfig.MaxCashPurchases
+				session.SolStadiumOwned -= excess
+				session.Cash += excess * StadiumOfferConfig.GetCashPrice()
+				-- This correction only lives in memory until saved -- without
+				-- forcing that save now, a crash/ungraceful shutdown before
+				-- the next autosave would leave the on-disk copy still over
+				-- the cap, so the NEXT Load would apply (and refund) this
+				-- same correction all over again -- a repeatable cash dupe
+				-- for any account this migration was meant to fix once.
+				needsImmediateSave = true
+			end
 		else
 			session = newDefaultSession()
 
@@ -326,6 +373,9 @@ function DataManager.Load(player: Player): Session
 	end
 
 	sessions[player] = session
+	if needsImmediateSave then
+		task.spawn(DataManager.Save, player)
+	end
 	return session
 end
 
@@ -368,6 +418,8 @@ function DataManager.Save(player: Player)
 		RedeemedCodes = session.RedeemedCodes,
 		GrantedPotionPurchaseIds = session.GrantedPotionPurchaseIds,
 		AutoRollFreeGranted = session.AutoRollFreeGranted,
+		SolStadiumOwned = session.SolStadiumOwned,
+		GrantedStadiumOfferPurchaseIds = session.GrantedStadiumOfferPurchaseIds,
 	}
 
 	local ok = attempt(function()

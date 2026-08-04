@@ -33,6 +33,7 @@ local GroupRewardsProximityPanel = require(script.Parent.GroupRewardsProximityPa
 local DailyRewardsProximityPanel = require(script.Parent.DailyRewardsProximityPanel)
 local LuckyRollProximityPanel = require(script.Parent.LuckyRollProximityPanel)
 local CodesProximityPanel = require(script.Parent.CodesProximityPanel)
+local StadiumOfferPanel = require(script.Parent.StadiumOfferPanel)
 local RobuxManDialogChoices = require(script.Parent.RobuxManDialogChoices)
 local NetWorthPanel = require(script.Parent.NetWorthPanel)
 local SettingsPanel = require(script.Parent.SettingsPanel)
@@ -76,6 +77,7 @@ function MainUI.Init()
 	local dailyRewardsProximityHandle = DailyRewardsProximityPanel.Create(screenGui, remotesFolder)
 	local luckyRollProximityHandle = LuckyRollProximityPanel.Create(screenGui, remotesFolder)
 	local codesProximityHandle = CodesProximityPanel.Create(screenGui, remotesFolder)
+	local stadiumOfferHandle = StadiumOfferPanel.Create(screenGui, remotesFolder)
 	RobuxManDialogChoices.Create(screenGui, remotesFolder)
 	local netWorthHandle = NetWorthPanel.Create(screenGui, remotesFolder)
 	local settingsHandle = SettingsPanel.Create(screenGui, remotesFolder)
@@ -115,6 +117,7 @@ function MainUI.Init()
 		dailyRewardsProximityHandle.Frame,
 		luckyRollProximityHandle.Frame,
 		codesProximityHandle.Frame,
+		stadiumOfferHandle.Frame,
 	}
 
 	-- inBattleZone is a 3rd independent source of "should the always-on HUD

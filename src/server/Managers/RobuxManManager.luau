@@ -33,7 +33,7 @@ local CHOICES = {
 	{
 		Id = "LarpBattlesLeaderboard",
 		Text = "What is the point of Larp Battles Leaderboard?",
-		Answer = "The Leaderboard resets weekly and it gives the Top 3 Players a Rare Estate that can't be obtained from anywhere else! You get points from Casual and Multiplayer gamemode!",
+		Answer = "The Leaderboard resets weekly and it gives the Top 2 Players a Rare Estate that can't be obtained from anywhere else! You get points from Casual and Multiplayer gamemode!",
 	},
 	{ Id = "End", Text = "End the conversation", Answer = nil },
 }

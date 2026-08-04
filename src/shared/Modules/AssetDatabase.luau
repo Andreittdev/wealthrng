@@ -91,7 +91,7 @@ local assets: { [string]: Asset } = {
 	-- not to be efficient.
 	Top1Estate = { Id = "Top1Estate", Name = "Abra Ai Balt", Price = 150000000000000, IncomePerMinute = 150000000000, Image = "rbxassetid://79317381275203", NotPurchasable = true },
 	Top2Estate = { Id = "Top2Estate", Name = "Loira Chateau", Price = 90000000000000, IncomePerMinute = 90000000000, Image = "rbxassetid://121583618235564", NotPurchasable = true },
-	Top3Estate = { Id = "Top3Estate", Name = "Sol Stadium", Price = 60000000000000, IncomePerMinute = 60000000000, Image = "rbxassetid://97852370469373", NotPurchasable = true },
+	Top3Estate = { Id = "Top3Estate", Name = "Sol Stadium", Price = 10000000000000, IncomePerMinute = 500000000000, Image = "rbxassetid://97852370469373", NotPurchasable = true },
 }
 
 function AssetDatabase.GetAsset(id: string?): Asset?

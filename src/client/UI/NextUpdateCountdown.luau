@@ -1,35 +1,18 @@
 -- Fills in and ticks the "NEXT UPDATE IN: ..." sign (MapBuilder's
--- buildNextUpdateBoard) with a live countdown to the next Sunday 7 PM
--- GMT+3. Pure wall-clock math (os.time() is UTC, same on every client) --
--- no server/remote involved, the value is identical for everyone.
+-- buildNextUpdateBoard) with a live countdown to the next Saturday 18:00
+-- GMT+3 -- reuses BattlePointsConfig's already-tested week-boundary math
+-- (the exact same reset moment LARP Battles' weekly leaderboard uses)
+-- instead of re-deriving separate weekday/timezone math here, so the two
+-- can never silently drift apart. Pure wall-clock math (os.time() is UTC,
+-- same on every client) -- no server/remote involved, the value is
+-- identical for everyone.
 
 local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local BattlePointsConfig = require(ReplicatedStorage.Modules.BattlePointsConfig)
 
 local NextUpdateCountdown = {}
-
-local GMT_OFFSET_SECONDS = 3 * 3600 -- GMT+3
-local TARGET_WEEKDAY = 1 -- os.date's wday: 1 = Sunday
-local TARGET_HOUR = 19 -- 7 PM
-
--- Shifts `nowUtc` by the fixed GMT+3 offset and reads it back with the "!"
--- (UTC) prefix -- the standard trick for fixed-offset-timezone wall-clock
--- math without needing a real timezone database: the shifted timestamp's
--- UTC calendar fields ARE the GMT+3 wall-clock fields.
-local function nextUpdateTimestampUtc(nowUtc: number): number
-	local shifted = nowUtc + GMT_OFFSET_SECONDS
-	local info = os.date("!*t", shifted)
-
-	local daysUntilSunday = (TARGET_WEEKDAY - info.wday) % 7
-	local secondsSinceLocalMidnight = info.hour * 3600 + info.min * 60 + info.sec
-	local localMidnightThisSunday = shifted - secondsSinceLocalMidnight + daysUntilSunday * 86400
-	local candidate = localMidnightThisSunday + TARGET_HOUR * 3600
-
-	if candidate <= shifted then
-		candidate += 7 * 86400
-	end
-
-	return candidate - GMT_OFFSET_SECONDS
-end
 
 local function formatCountdown(totalSeconds: number): string
 	totalSeconds = math.max(math.floor(totalSeconds), 0)
@@ -65,7 +48,7 @@ function NextUpdateCountdown.Init()
 
 		while true do
 			local nowUtc = os.time()
-			countdownLabel.Text = formatCountdown(nextUpdateTimestampUtc(nowUtc) - nowUtc)
+			countdownLabel.Text = formatCountdown(BattlePointsConfig.GetSecondsUntilReset(nowUtc))
 			task.wait(1)
 		end
 	end)
