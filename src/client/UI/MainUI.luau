@@ -41,6 +41,7 @@ local ProfilePanel = require(script.Parent.ProfilePanel)
 local TradePanel = require(script.Parent.TradePanel)
 local CatalogPanel = require(script.Parent.CatalogPanel)
 local UpgradesPanel = require(script.Parent.UpgradesPanel)
+local OnboardingTutorial = require(script.Parent.OnboardingTutorial)
 local Sidebar = require(script.Parent.Sidebar)
 
 local MainUI = {}
@@ -86,8 +87,6 @@ function MainUI.Init()
 	local catalogHandle = CatalogPanel.Create(screenGui, remotesFolder)
 	local upgradesHandle = UpgradesPanel.Create(screenGui, remotesFolder)
 
-	-- RollPanel's circular UPGRADE button next to ROLL is the only way to
-	-- open UpgradesPanel now -- the sidebar no longer has its own entry.
 	rollHandle.UpgradeButton.Activated:Connect(upgradesHandle.Toggle)
 
 	local sidebarHandle = Sidebar.Create(screenGui, {
@@ -98,6 +97,10 @@ function MainUI.Init()
 		Profile = profileHandle,
 		Trade = tradeHandle,
 	}, cashHudHandle.Frame, luckSpeedHudHandle.Frame)
+
+	-- Built last -- needs the real ROLL/Inventory buttons to already exist
+	-- so it can point its Step 1/2 highlights at them.
+	OnboardingTutorial.Create(screenGui, remotesFolder, rollHandle.RollButton, sidebarHandle.InventoryButton)
 
 	local modalFrames = {
 		autoRollFreeHandle.Frame,

@@ -122,6 +122,16 @@ local RemoteNames = {
 		-- purchase (to EVERY online player, since stock is a shared global pool, not per-player).
 		"BuyStadiumOffer", -- client -> server, no payload -- cash purchase of one Sol Stadium copy
 		-- from the limited-stock Meshy Stadium vendor (StadiumOfferManager.luau).
+		"TutorialHintsUpdated", -- server -> client, payload: { [hintId]: true } -- session.SeenTutorialHints,
+		-- pushed once on join (Main.server.luau's sendInitialState) so TutorialHint.luau knows which
+		-- one-time hints (e.g. "Upgrades") this player has already dismissed.
+		"MarkTutorialHintSeen", -- client -> server, payload: hintId (string) -- fired once a
+		-- TutorialHint.luau callout is dismissed, so it never shows again for this player.
+		"OnboardingStateUpdated", -- server -> client, payload: completed (boolean) --
+		-- session.CompletedOnboarding, pushed once on join so OnboardingTutorial.luau knows
+		-- whether to show the new-player roll -> equip -> explore walkthrough at all.
+		"MarkOnboardingComplete", -- client -> server, no payload -- fired once the onboarding
+		-- walkthrough's final step is shown, so it never shows again for this player.
 	},
 	Functions = {},
 }

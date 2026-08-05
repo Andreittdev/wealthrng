@@ -43,25 +43,42 @@ export type Track = {
 	Name: string,
 	MaxLevel: number,
 	BaseCost: number,
-	CostGrowth: number,
+	EarlyGrowth: number,
+	LateGrowth: number,
 }
 
+-- Two-phase cost curve, per explicit request: the first EARLY_LEVELS
+-- purchases stay relatively cheap (EarlyGrowth, mild), then every purchase
+-- after that compounds much faster (LateGrowth, steep) -- a player casually
+-- grabbing the first few levels barely notices the price, but pushing a
+-- track deep into its late levels costs dramatically more per step.
+local EARLY_LEVELS = 5
+
+-- BaseCost is deliberately tiny now (low thousands) -- per explicit
+-- request, the first EARLY_LEVELS purchases should read as pocket change
+-- ("in K"), with essentially ALL the real cost packed into LateGrowth's
+-- much steeper compounding afterward (2.6x per level, vs EarlyGrowth's
+-- mild 1.3x) -- by level 19 that reaches ~$2.8B-4.8B from a starting price
+-- under $10K.
 local tracks: { [string]: Track } = {
-	RollSpeed = { Id = "RollSpeed", Name = "Roll Speed", MaxLevel = 20, BaseCost = 500000, CostGrowth = 1.28 },
-	Luck = { Id = "Luck", Name = "Luck Chance", MaxLevel = 20, BaseCost = 750000, CostGrowth = 1.28 },
-	PotionBoost = { Id = "PotionBoost", Name = "Potion Boost Time", MaxLevel = 20, BaseCost = 375000, CostGrowth = 1.25 },
+	RollSpeed = { Id = "RollSpeed", Name = "Roll Speed", MaxLevel = 20, BaseCost = 2000, EarlyGrowth = 1.3, LateGrowth = 2.6 },
+	Luck = { Id = "Luck", Name = "Luck Chance", MaxLevel = 20, BaseCost = 3000, EarlyGrowth = 1.3, LateGrowth = 2.6 },
+	PotionBoost = { Id = "PotionBoost", Name = "Potion Boost Time", MaxLevel = 20, BaseCost = 1200, EarlyGrowth = 1.3, LateGrowth = 2.6 },
 }
 UpgradeConfig.Tracks = tracks
 
 -- Order matters for consistent UI listing, same idea as RarityConfig.Order.
 UpgradeConfig.Order = { "RollSpeed", "Luck", "PotionBoost" }
 
--- Luck's last purchase (level 19 -> 20) is a flat override, not
--- BaseCost*CostGrowth^19 (~$225M) -- a deliberate capstone price jump, same
--- idea as AssetDatabase's RealEstateEmpire/InvestmentDatabase's
--- CelestialCore breaking their own smooth per-tier curve. See
--- GetLuckMultiplier for what it buys.
-local LUCK_MAX_LEVEL_COST = 1500000000
+-- Luck's last purchase (level 19 -> 20) is a flat override, not the smooth
+-- curve's own result -- a deliberate capstone price jump, same idea as
+-- AssetDatabase's RealEstateEmpire/InvestmentDatabase's CelestialCore
+-- breaking their own smooth per-tier curve. See GetLuckMultiplier for what
+-- it buys. Sits well above the ~$2.8B the smooth curve reaches on its own
+-- by level 19, and above even Sol Stadium's 10T price -- this is meant to
+-- read as THE single most expensive purchase in the game, a true endgame
+-- flex.
+local LUCK_MAX_LEVEL_COST = 500000000000
 
 -- Cost to go from `currentLevel` to `currentLevel + 1`. nil once maxed.
 function UpgradeConfig.GetCost(trackId: string, currentLevel: number): number?
@@ -72,7 +89,11 @@ function UpgradeConfig.GetCost(trackId: string, currentLevel: number): number?
 	if trackId == "Luck" and currentLevel == track.MaxLevel - 1 then
 		return LUCK_MAX_LEVEL_COST
 	end
-	return math.floor(track.BaseCost * (track.CostGrowth ^ currentLevel))
+	if currentLevel < EARLY_LEVELS then
+		return math.floor(track.BaseCost * (track.EarlyGrowth ^ currentLevel))
+	end
+	local costAtEarlyEnd = track.BaseCost * (track.EarlyGrowth ^ EARLY_LEVELS)
+	return math.floor(costAtEarlyEnd * (track.LateGrowth ^ (currentLevel - EARLY_LEVELS)))
 end
 
 -- Roll Speed: -1.5% cooldown per level, -30% at max level (0.7x) -- same

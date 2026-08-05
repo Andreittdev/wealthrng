@@ -129,7 +129,7 @@ function StadiumOfferPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	end)
 
 	-- ===== Header: EXCLUSIVE pill + gold gradient title =====
-	pillBadge(panel, UDim2.new(0, 130, 0, 26), UDim2.new(0.5, -65, 0, 16), "\u{2726} EXCLUSIVE \u{2726}", PURPLE, Color3.new(1, 1, 1))
+	pillBadge(panel, UDim2.new(0, 190, 0, 26), UDim2.new(0.5, -95, 0, 16), "\u{2726} FIRST EXCLUSIVE \u{2726}", PURPLE, Color3.new(1, 1, 1))
 
 	-- Was the item name (redundant with the name already shown on the card
 	-- below) -- now shows the live stock count instead, updated in
@@ -208,6 +208,9 @@ function StadiumOfferPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	robuxButton.Parent = buttonsRow
 	Theme.Round(robuxButton, UDim.new(0, 12))
 	Theme.Stroke(robuxButton, Color3.fromRGB(190, 240, 200), 1.5)
+	local robuxTextSize = Instance.new("UITextSizeConstraint")
+	robuxTextSize.MaxTextSize = 26
+	robuxTextSize.Parent = robuxButton
 
 	-- Real price fetched async (GetProductInfo, the standard Roblox way to
 	-- show an accurate Developer Product price without hardcoding it here
@@ -241,6 +244,9 @@ function StadiumOfferPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	Theme.Round(cashButton, UDim.new(0, 12))
 	local cashButtonStroke = Theme.Stroke(cashButton, Color3.fromRGB(255, 235, 180), 2)
 	cashButtonStroke.Transparency = 0
+	local cashTextSize = Instance.new("UITextSizeConstraint")
+	cashTextSize.MaxTextSize = 26
+	cashTextSize.Parent = cashButton
 
 	local remainingStock = StadiumOfferConfig.TotalStock
 	local ownedCount = 0

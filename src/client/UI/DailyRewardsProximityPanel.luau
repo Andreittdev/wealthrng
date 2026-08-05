@@ -342,6 +342,16 @@ function DailyRewardsProximityPanel.Create(screenGui: ScreenGui, remotes: Folder
 				card.Amount.TextColor3 = LOCKED_TEXT_COLOR
 			end
 
+			-- Day 7's card is always gold (see bigCard's comment) -- the
+			-- normal claimed/current/locked text colors above read poorly
+			-- against that background, so its text always stays plain white
+			-- regardless of state instead.
+			if day == 7 then
+				card.Icon.TextColor3 = Color3.new(1, 1, 1)
+				card.DayLabel.TextColor3 = Color3.new(1, 1, 1)
+				card.Amount.TextColor3 = Color3.new(1, 1, 1)
+			end
+
 			card.Amount.Text = amountText
 		end
 	end

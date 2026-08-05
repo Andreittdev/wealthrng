@@ -162,6 +162,15 @@ export type Session = {
 	-- path, Robux purchases are unlimited (no MaxCashPurchases cap) and
 	-- don't touch the shared stock pool (StadiumOfferManager.luau).
 	GrantedStadiumOfferPurchaseIds: { [string]: boolean },
+	-- One-time tutorial hint callouts (TutorialHint.luau client-side, e.g.
+	-- the "UPGRADES" pointer shown the first time that panel opens) --
+	-- keyed by an arbitrary hint id, true once shown/dismissed so it never
+	-- shows again for this player.
+	SeenTutorialHints: { [string]: boolean },
+	-- True once a player has clicked through the new-player onboarding
+	-- overlay (OnboardingTutorial.luau: roll -> equip -> explore), so it
+	-- never shows again on a later join.
+	CompletedOnboarding: boolean,
 	LoadedOk: boolean,
 }
 
@@ -201,6 +210,8 @@ local function newDefaultSession(): Session
 		AutoRollFreeGranted = false,
 		SolStadiumOwned = 0,
 		GrantedStadiumOfferPurchaseIds = {},
+		SeenTutorialHints = {},
+		CompletedOnboarding = false,
 		LoadedOk = true,
 	}
 end
@@ -323,6 +334,8 @@ function DataManager.Load(player: Player): Session
 				AutoRollFreeGranted = data.AutoRollFreeGranted or false,
 				SolStadiumOwned = data.SolStadiumOwned or 0,
 				GrantedStadiumOfferPurchaseIds = data.GrantedStadiumOfferPurchaseIds or {},
+				SeenTutorialHints = data.SeenTutorialHints or {},
+				CompletedOnboarding = data.CompletedOnboarding or false,
 				LoadedOk = true,
 			}
 
@@ -420,6 +433,8 @@ function DataManager.Save(player: Player)
 		AutoRollFreeGranted = session.AutoRollFreeGranted,
 		SolStadiumOwned = session.SolStadiumOwned,
 		GrantedStadiumOfferPurchaseIds = session.GrantedStadiumOfferPurchaseIds,
+		SeenTutorialHints = session.SeenTutorialHints,
+		CompletedOnboarding = session.CompletedOnboarding,
 	}
 
 	local ok = attempt(function()

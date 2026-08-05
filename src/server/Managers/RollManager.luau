@@ -73,10 +73,25 @@ local function announceRareUnlock(player: Player, item)
 	systemMessage:FireAllClients(text)
 end
 
-local function pickRarity(session, isVIP: boolean, nowUnix: number, ownsLuckPass: boolean, ownsUltraLuckPass: boolean): string
+-- `restrictToCommonRare` is only true for a brand-new player's very first
+-- roll ever (see pickItem below) -- part of the new-player onboarding
+-- walkthrough (OnboardingTutorial.luau), so their first pull is always
+-- something manageable to equip, never an Epic+ before they've even seen
+-- the Inventory panel.
+local function pickRarity(
+	session,
+	isVIP: boolean,
+	nowUnix: number,
+	ownsLuckPass: boolean,
+	ownsUltraLuckPass: boolean,
+	restrictToCommonRare: boolean?
+): string
 	local totalWeight = 0
 	local weights: { [string]: number } = {}
 	for _, rarity in RarityConfig.Order do
+		if restrictToCommonRare and rarity ~= "Common" and rarity ~= "Rare" then
+			continue
+		end
 		local weight = RarityConfig.Tiers[rarity].Weight
 		if isVIP then
 			weight *= VIPConfig.LuckWeightMultiplier[rarity]
@@ -96,12 +111,14 @@ local function pickRarity(session, isVIP: boolean, nowUnix: number, ownsLuckPass
 	local roll = random:NextNumber() * totalWeight
 	local cumulative = 0
 	for _, rarity in RarityConfig.Order do
-		cumulative += weights[rarity]
-		if roll <= cumulative then
-			return rarity
+		if weights[rarity] then
+			cumulative += weights[rarity]
+			if roll <= cumulative then
+				return rarity
+			end
 		end
 	end
-	return RarityConfig.Order[1]
+	return restrictToCommonRare and "Common" or RarityConfig.Order[1]
 end
 
 -- Shared by both a normal roll (rarity from pickRarity) and a Special Roll
@@ -132,7 +149,12 @@ local function pickItemForRarity(rarity: string)
 end
 
 local function pickItem(session, isVIP: boolean, nowUnix: number, ownsLuckPass: boolean, ownsUltraLuckPass: boolean)
-	local rarity = pickRarity(session, isVIP, nowUnix, ownsLuckPass, ownsUltraLuckPass)
+	-- A brand-new player's very first roll ever (see OnboardingTutorial.luau)
+	-- is always Common/Rare -- keeps the guided "roll -> equip" walkthrough
+	-- predictable instead of risking an Epic+ before they've even opened
+	-- Inventory once.
+	local restrictToCommonRare = session.TotalRolls == 0
+	local rarity = pickRarity(session, isVIP, nowUnix, ownsLuckPass, ownsUltraLuckPass, restrictToCommonRare)
 	return pickItemForRarity(rarity)
 end
 
@@ -284,6 +306,13 @@ function RollManager.TryRoll(player: Player): boolean
 		end
 	end
 
+	-- Captured BEFORE AddItem (which increments OwnedItemCounts) -- this is
+	-- the player's very first copy of this exact item ever, not just this
+	-- session. Fired as a SystemMessage, same as every other toast here --
+	-- notably NOT gated by Hide Rolls (that only skips RollPanel's reveal
+	-- animation client-side, never SystemMessage), so it always shows.
+	local isNewDiscovery = (session.OwnedItemCounts[item.Id] or 0) == 0
+
 	local entry = InventoryManager.AddItem(player, item.Id)
 	if not entry then
 		return false
@@ -291,6 +320,9 @@ function RollManager.TryRoll(player: Player): boolean
 
 	if RARE_ANNOUNCE_RARITIES[item.Rarity] then
 		announceRareUnlock(player, item)
+	end
+	if isNewDiscovery then
+		systemMessage:FireClient(player, "New item discovered!")
 	end
 
 	session.TotalRolls += 1
@@ -388,6 +420,9 @@ function RollManager.TrySpecialRoll(player: Player, tierId: string): boolean
 		end
 	end
 
+	-- Same "first copy ever" check as TryRoll above.
+	local isNewDiscovery = (session.OwnedItemCounts[item.Id] or 0) == 0
+
 	local entry = InventoryManager.AddItem(player, item.Id)
 	if not entry then
 		return false
@@ -395,6 +430,9 @@ function RollManager.TrySpecialRoll(player: Player, tierId: string): boolean
 
 	if RARE_ANNOUNCE_RARITIES[item.Rarity] then
 		announceRareUnlock(player, item)
+	end
+	if isNewDiscovery then
+		systemMessage:FireClient(player, "New item discovered!")
 	end
 
 	session.TotalRolls += 1

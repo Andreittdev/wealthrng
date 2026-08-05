@@ -388,8 +388,8 @@ function LuckyRollProximityPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		-- fill it.
 		local billboard = Instance.new("BillboardGui")
 		billboard.Name = "LuckyRollCallout"
-		billboard.Size = UDim2.new(0, 80, 0, 76)
-		billboard.StudsOffset = Vector3.new(0, 5, 0)
+		billboard.Size = UDim2.new(0, 80, 0, 40)
+		billboard.StudsOffset = Vector3.new(0, 8, 0)
 		billboard.AlwaysOnTop = true
 		-- Bigger than the default 40 (MapBuilder.luau's floor marker
 		-- labels) -- Lucky Roll's marker sits out on the open grass, same
@@ -398,18 +398,12 @@ function LuckyRollProximityPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		billboard.Adornee = marker
 		billboard.Parent = marker
 
-		local billboardDiceIcon = Instance.new("ImageLabel")
-		billboardDiceIcon.Size = UDim2.new(0, 36, 0, 36)
-		billboardDiceIcon.AnchorPoint = Vector2.new(0.5, 0)
-		billboardDiceIcon.Position = UDim2.new(0.5, 0, 0, 0)
-		billboardDiceIcon.BackgroundTransparency = 1
-		billboardDiceIcon.ScaleType = Enum.ScaleType.Fit
-		billboardDiceIcon.Image = DICE_IMAGE
-		billboardDiceIcon.Parent = billboard
-
+		-- No dice icon here anymore -- the real "3 Dices" 3D model
+		-- (MapBuilder.luau) sits at this exact spot now, so a floating 2D
+		-- dice image on top of it was redundant. Text-only callout.
 		local oddsBillboardLabel = Instance.new("TextLabel")
 		oddsBillboardLabel.Size = UDim2.new(1, 0, 0, 14)
-		oddsBillboardLabel.Position = UDim2.new(0, 0, 0, 36)
+		oddsBillboardLabel.Position = UDim2.new(0, 0, 0, 0)
 		oddsBillboardLabel.BackgroundTransparency = 1
 		oddsBillboardLabel.TextColor3 = LUCKY_COLOR
 		oddsBillboardLabel.TextStrokeTransparency = 0
@@ -424,7 +418,7 @@ function LuckyRollProximityPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		-- shows odds/timer/claim-state.
 		local timerBillboardLabel = Instance.new("TextLabel")
 		timerBillboardLabel.Size = UDim2.new(1, 0, 0, 14)
-		timerBillboardLabel.Position = UDim2.new(0, 0, 0, 50)
+		timerBillboardLabel.Position = UDim2.new(0, 0, 0, 14)
 		timerBillboardLabel.BackgroundTransparency = 1
 		timerBillboardLabel.TextColor3 = Color3.new(1, 1, 1)
 		timerBillboardLabel.TextStrokeTransparency = 0
@@ -436,7 +430,7 @@ function LuckyRollProximityPanel.Create(screenGui: ScreenGui, remotes: Folder)
 
 		local stateBillboardLabel = Instance.new("TextLabel")
 		stateBillboardLabel.Size = UDim2.new(1, 0, 0, 12)
-		stateBillboardLabel.Position = UDim2.new(0, 0, 0, 64)
+		stateBillboardLabel.Position = UDim2.new(0, 0, 0, 28)
 		stateBillboardLabel.BackgroundTransparency = 1
 		stateBillboardLabel.TextStrokeTransparency = 0
 		stateBillboardLabel.Font = Enum.Font.LuckiestGuy

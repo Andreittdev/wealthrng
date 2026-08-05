@@ -47,6 +47,7 @@ buyInvestment.OnServerEvent:Connect(function(player: Player, investmentId: strin
 
 	local totalCost = investment.Price * quantity
 	if session.Cash < totalCost then
+		systemMessage:FireClient(player, "You don't have enough money!")
 		return
 	end
 

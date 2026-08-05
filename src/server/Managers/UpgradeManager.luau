@@ -28,7 +28,11 @@ buyUpgrade.OnServerEvent:Connect(function(player: Player, trackId: unknown)
 
 	local currentLevel = session.Upgrades[trackId] or 0
 	local cost = UpgradeConfig.GetCost(trackId, currentLevel)
-	if not cost or session.Cash < cost then
+	if not cost then
+		return
+	end
+	if session.Cash < cost then
+		systemMessage:FireClient(player, "You don't have enough money!")
 		return
 	end
 

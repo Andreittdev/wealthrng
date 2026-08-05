@@ -138,6 +138,11 @@ function Sidebar.Create(screenGui: ScreenGui, handles: PanelHandles, cashHudFram
 	gridFrame.BackgroundTransparency = 1
 	gridFrame.Parent = iconContainer
 
+	-- Exposed on `handle` below (only Inventory needed so far) so
+	-- OnboardingTutorial.luau can point its Step 2 arrow/glow at the real
+	-- button instead of guessing its screen position.
+	local buttonsByKey: { [string]: TextButton } = {}
+
 	for index, buttonData in BUTTONS do
 		local row = math.floor((index - 1) / COLUMNS)
 		local col = (index - 1) % COLUMNS
@@ -173,6 +178,8 @@ function Sidebar.Create(screenGui: ScreenGui, handles: PanelHandles, cashHudFram
 		caption.TextStrokeColor3 = Color3.new(0, 0, 0)
 		caption.ZIndex = 2
 		caption.Parent = button
+
+		buttonsByKey[buttonData.Key] = button
 
 		local panelHandle = handles[buttonData.Key]
 		if panelHandle then
@@ -251,6 +258,7 @@ function Sidebar.Create(screenGui: ScreenGui, handles: PanelHandles, cashHudFram
 	local handle = {}
 	handle.Frame = iconContainer
 	handle.BottomFrame = bottomContainer
+	handle.InventoryButton = buttonsByKey.Inventory
 	return handle
 end
 

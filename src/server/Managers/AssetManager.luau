@@ -67,7 +67,11 @@ buyAsset.OnServerEvent:Connect(function(player: Player, assetId: string)
 	end
 
 	local asset = AssetDatabase.GetAsset(assetId)
-	if not asset or session.Cash < asset.Price then
+	if not asset then
+		return
+	end
+	if session.Cash < asset.Price then
+		systemMessage:FireClient(player, "You don't have enough money!")
 		return
 	end
 

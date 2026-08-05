@@ -65,7 +65,11 @@ buyPotion.OnServerEvent:Connect(function(player: Player, potionId: string)
 	end
 
 	local potion = PotionDatabase.GetPotion(potionId)
-	if not potion or session.Cash < potion.Price then
+	if not potion then
+		return
+	end
+	if session.Cash < potion.Price then
+		systemMessage:FireClient(player, "You don't have enough money!")
 		return
 	end
 

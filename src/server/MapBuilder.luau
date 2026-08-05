@@ -752,7 +752,8 @@ local function buildFloorMarker(
 	labelText: string,
 	textColor: Color3,
 	withBeam: boolean?,
-	labelMaxDistance: number?
+	labelMaxDistance: number?,
+	labelStudsUp: number?
 ): Part
 	local diskY = baseY + 0.05
 	local disk = createCylinder(diskName, 6, 0.15, Vector3.new(position.X, diskY, position.Y), color, Enum.Material.Neon)
@@ -775,7 +776,7 @@ local function buildFloorMarker(
 	-- already covers that space, and a static "Lucky Roll" title floating
 	-- right underneath it just doubled up.
 	if labelText ~= "" then
-		addLabel(disk, labelText, 7, UDim2.new(0, 75, 0, 22), textColor, withBeam, labelMaxDistance)
+		addLabel(disk, labelText, labelStudsUp or 7, UDim2.new(0, 75, 0, 22), textColor, withBeam, labelMaxDistance)
 	end
 	return disk
 end
@@ -1821,6 +1822,9 @@ function MapBuilder.Build()
 	buildIndexPedestal(mapFolder, INDEX_STAND_POSITION, INDEX_STAND_LABEL, "CatalogPrompt")
 	buildFloorMarker(mapFolder, "VIPMarker_Disk", VIP_MARKER_POSITION, PLAZA_TOP_Y, VIP_MARKER_COLOR, VIP_MARKER_LABEL, Color3.fromRGB(255, 221, 0))
 	buildFloorMarker(mapFolder, "CodesMarker_Disk", CODES_MARKER_POSITION, PLAZA_TOP_Y, CODES_MARKER_COLOR, CODES_MARKER_LABEL, Color3.fromRGB(200, 255, 230))
+	-- No beam ("that 3D line") anymore -- per request, just the disk +
+	-- floating text label now that "G Gift" (built later) gives this zone
+	-- its own real prop to look at.
 	buildFloorMarker(
 		mapFolder,
 		"GroupRewardsMarker_Disk",
@@ -1829,9 +1833,13 @@ function MapBuilder.Build()
 		GROUP_REWARDS_MARKER_COLOR,
 		GROUP_REWARDS_MARKER_LABEL,
 		Color3.fromRGB(150, 205, 255),
-		true,
-		LARGE_LABEL_MAX_DISTANCE
+		false,
+		LARGE_LABEL_MAX_DISTANCE,
+		16
 	)
+	-- No beam ("that 3D line") anymore -- per request, just the disk +
+	-- floating text label now that "D Chest" (built later) gives this zone
+	-- its own real prop to look at.
 	buildFloorMarker(
 		mapFolder,
 		"DailyRewardsMarker_Disk",
@@ -1840,10 +1848,17 @@ function MapBuilder.Build()
 		DAILY_REWARDS_MARKER_COLOR,
 		DAILY_REWARDS_MARKER_LABEL,
 		Color3.fromRGB(255, 160, 160),
-		true,
-		LARGE_LABEL_MAX_DISTANCE
+		false,
+		LARGE_LABEL_MAX_DISTANCE,
+		16
 	)
-	buildFloorMarker(
+	-- No beam, and the disk itself made fully invisible right after --
+	-- per request, the "3 Dices" model (built later, near Robux Man/Meshy
+	-- Stadium below) should be the ONLY thing visibly marking this zone.
+	-- The disk Part still has to exist (LuckyRollProximityPanel.luau uses
+	-- it as its ProximityWatcher target AND its 3D billboard's Adornee),
+	-- it just no longer renders.
+	local luckyRollDisk = buildFloorMarker(
 		mapFolder,
 		"LuckyRollMarker_Disk",
 		LUCKY_ROLL_MARKER_POSITION,
@@ -1851,8 +1866,10 @@ function MapBuilder.Build()
 		LUCKY_ROLL_MARKER_COLOR,
 		"",
 		Color3.fromRGB(220, 180, 255),
-		true
+		false
 	)
+	luckyRollDisk.Transparency = 1
+
 	buildBattleMarker(mapFolder, BATTLE_MARKER_POSITION)
 	buildNextUpdateBoard(mapFolder)
 
@@ -2090,6 +2107,107 @@ function MapBuilder.Build()
 		buildFountain(mapFolder)
 	end
 
+	-- "3 Dices" -- a real 3D model placed directly in Workspace, purely
+	-- decorative flair for the Lucky Roll zone (sits right at
+	-- LUCKY_ROLL_MARKER_POSITION, same spot as its glowing floor disk) --
+	-- the zone's actual proximity trigger is unrelated to this model
+	-- (LuckyRollProximityPanel.luau reads distance to the marker position
+	-- directly), this just gives the disk something to visually sit next
+	-- to. Same GetBoundingBox lift/force-anchor treatment as every other
+	-- placed model. No fallback -- if it's missing from Workspace, the zone
+	-- still works fine, it just has no dice prop.
+	local threeDices = Workspace:FindFirstChild("3 Dices")
+	if threeDices and threeDices:IsA("Model") then
+		local currentPivot = threeDices:GetPivot()
+		-- Extra 90-degree turn on top of whatever rotation it already had --
+		-- makes it face the fountain instead of whichever way it happened to
+		-- be placed.
+		threeDices:PivotTo(
+			CFrame.new(LUCKY_ROLL_MARKER_POSITION.X, GROUND_TOP_Y, LUCKY_ROLL_MARKER_POSITION.Y) * currentPivot.Rotation * CFrame.Angles(0, math.rad(90), 0)
+		)
+
+		local diceBoundingCFrame, diceBoundingSize = threeDices:GetBoundingBox()
+		local diceBottomY = diceBoundingCFrame.Position.Y - diceBoundingSize.Y / 2
+		-- +1 extra stud on top of the exact bounding-box lift -- this model's
+		-- geometry sits slightly lower than its own bounding box implies
+		-- (still read as "sunk into the ground" with a lift of exactly 0),
+		-- same class of fix as every other imported-mesh model that needed
+		-- manual tuning on top of the formula.
+		local diceLiftNeeded = (GROUND_TOP_Y - diceBottomY) + 1
+		if diceLiftNeeded ~= 0 then
+			threeDices:PivotTo(threeDices:GetPivot() + Vector3.new(0, diceLiftNeeded, 0))
+		end
+
+		for _, descendant in threeDices:GetDescendants() do
+			if descendant:IsA("BasePart") then
+				descendant.Anchored = true
+				-- Turns off the model's own glowing lamp posts -- Neon reads
+				-- as "lit" regardless of any actual Light instance, so the
+				-- material itself has to change, not just Enabled = false on
+				-- a light source.
+				if descendant.Material == Enum.Material.Neon then
+					descendant.Material = Enum.Material.SmoothPlastic
+				end
+			end
+			if descendant:IsA("Light") then
+				descendant.Enabled = false
+			end
+		end
+	end
+
+	-- "D Chest" -- a real 3D model placed directly in Workspace, purely
+	-- decorative flair for the Daily Rewards zone (sits right at
+	-- DAILY_REWARDS_MARKER_POSITION, same spot as its glowing floor disk) --
+	-- same GetBoundingBox lift/force-anchor treatment as every other placed
+	-- model. No fallback -- if it's missing from Workspace, the zone still
+	-- works fine, it just has no chest prop.
+	local dChest = Workspace:FindFirstChild("D Chest")
+	if dChest and dChest:IsA("Model") then
+		local currentPivot = dChest:GetPivot()
+		-- Extra 180-degree turn on top of whatever rotation it already had.
+		dChest:PivotTo(
+			CFrame.new(DAILY_REWARDS_MARKER_POSITION.X, GROUND_TOP_Y, DAILY_REWARDS_MARKER_POSITION.Y) * currentPivot.Rotation * CFrame.Angles(0, math.rad(180), 0)
+		)
+
+		local chestBoundingCFrame, chestBoundingSize = dChest:GetBoundingBox()
+		local chestBottomY = chestBoundingCFrame.Position.Y - chestBoundingSize.Y / 2
+		local chestLiftNeeded = GROUND_TOP_Y - chestBottomY
+		if chestLiftNeeded ~= 0 then
+			dChest:PivotTo(dChest:GetPivot() + Vector3.new(0, chestLiftNeeded, 0))
+		end
+
+		for _, descendant in dChest:GetDescendants() do
+			if descendant:IsA("BasePart") then
+				descendant.Anchored = true
+			end
+		end
+	end
+
+	-- "G Gift" -- a real 3D model placed directly in Workspace, purely
+	-- decorative flair for the Group Rewards zone (sits right at
+	-- GROUP_REWARDS_MARKER_POSITION, same spot as its glowing floor disk) --
+	-- same GetBoundingBox lift/force-anchor treatment as every other placed
+	-- model. No fallback -- if it's missing from Workspace, the zone still
+	-- works fine, it just has no gift prop.
+	local gGift = Workspace:FindFirstChild("G Gift")
+	if gGift and gGift:IsA("Model") then
+		local currentPivot = gGift:GetPivot()
+		gGift:PivotTo(CFrame.new(GROUP_REWARDS_MARKER_POSITION.X, GROUND_TOP_Y, GROUP_REWARDS_MARKER_POSITION.Y) * currentPivot.Rotation)
+
+		local giftBoundingCFrame, giftBoundingSize = gGift:GetBoundingBox()
+		local giftBottomY = giftBoundingCFrame.Position.Y - giftBoundingSize.Y / 2
+		local giftLiftNeeded = GROUND_TOP_Y - giftBottomY
+		if giftLiftNeeded ~= 0 then
+			gGift:PivotTo(gGift:GetPivot() + Vector3.new(0, giftLiftNeeded, 0))
+		end
+
+		for _, descendant in gGift:GetDescendants() do
+			if descendant:IsA("BasePart") then
+				descendant.Anchored = true
+			end
+		end
+	end
+
 	-- "S Bench" -- a real 3D model placed directly in Workspace, cloned 4x
 	-- (BENCH_ANGLES, same closer BENCH_RADIUS as the procedural fallback)
 	-- around the fountain. The ORIGINAL model becomes the first bench
@@ -2187,7 +2305,7 @@ function MapBuilder.Build()
 			exclusiveLine.BackgroundTransparency = 1
 			exclusiveLine.Font = Enum.Font.LuckiestGuy
 			exclusiveLine.TextScaled = true
-			exclusiveLine.Text = "EXCLUSIVE"
+			exclusiveLine.Text = "FIRST EXCLUSIVE"
 			exclusiveLine.TextColor3 = Color3.fromRGB(200, 120, 255)
 			exclusiveLine.TextStrokeTransparency = 0
 			exclusiveLine.Parent = billboard

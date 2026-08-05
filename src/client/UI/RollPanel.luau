@@ -1021,6 +1021,9 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder, onAutoRollButto
 	-- require UpgradesPanel itself, keeping the same "MainUI wires
 	-- cross-panel interactions" pattern as the modalFrames coordinator.
 	handle.UpgradeButton = upgradeButton
+	-- Exposed so OnboardingTutorial.luau can point its Step 1 arrow/glow at
+	-- the actual dice button instead of guessing its screen position.
+	handle.RollButton = rollButton
 
 	function handle.SetOwnsAutoRoll(owns: boolean)
 		ownsAutoRoll = owns

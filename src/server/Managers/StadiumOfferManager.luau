@@ -171,7 +171,12 @@ buyStadiumOffer.OnServerEvent:Connect(function(player: Player)
 	end
 
 	local price = StadiumOfferConfig.GetCashPrice()
-	if price <= 0 or session.Cash < price then
+	if price <= 0 then
+		finish()
+		return
+	end
+	if session.Cash < price then
+		systemMessage:FireClient(player, "You don't have enough money!")
 		finish()
 		return
 	end

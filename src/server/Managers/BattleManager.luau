@@ -462,16 +462,18 @@ local function runBotBattle(player: Player)
 		won = true
 		BattlePointsConfig.EnsureCurrentWeek(session)
 		session.BattlePoints += 1
-		LeaderboardManager.MarkDirty(player)
 	elseif winsBot > winsMine then
 		won = false
 	end
 
-	-- Deliberately does NOT touch BattleRankPoints -- ranked is meant to
-	-- reflect real competition, and letting a solo player grind Diamond
-	-- against a bot with no real opposition would cheapen it permanently
-	-- (unlike the weekly Points leaderboard above, which resets and is
-	-- lower-stakes either way).
+	-- Now also affects BattleRankPoints, per explicit request -- same
+	-- ApplyRPChange formula the real Multiplayer path uses (win/loss/draw),
+	-- so Casual is no longer risk-free for rank. MarkDirty unconditionally
+	-- (not just on a win) since RP can change either way now, unlike the
+	-- weekly Points counter above which only ever increments on a win.
+	session.BattleRankPoints = BattleRankConfig.ApplyRPChange(session.BattleRankPoints, won)
+	LeaderboardManager.MarkDirty(player)
+
 	-- No real bot account to read a net worth from -- fabricate one that
 	-- matches the bot's OWN named tier (see getBotNetWorthRange above),
 	-- not the player's.
