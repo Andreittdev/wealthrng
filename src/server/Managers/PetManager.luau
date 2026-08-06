@@ -21,12 +21,13 @@
 -- lets the HRP-side Attachment's Position be tweened for a gentle bob
 -- without fighting a rigid weld.
 --
--- Every pet model is rescaled so its LARGEST dimension matches
--- TARGET_SIZE_STUDS, not a flat multiplier -- Estate models range from a
--- Studio Apartment to a full Real Estate Empire complex, so a single scale
--- factor would leave pets wildly inconsistent in size; normalizing by
--- bounding box keeps every pet reading as "about the same size" regardless
--- of the source model's native scale.
+-- Pet size is NOT touched here -- whatever scale the source model already
+-- has in Workspace/PetModels is used as-is. An earlier version force-
+-- normalized every pet's largest dimension to a fixed TARGET_SIZE_STUDS,
+-- which fought against models the source already had manually scaled to
+-- look right, making some come out too big/small at equip time. Scale each
+-- source model directly in Workspace/PetModels to the size it should
+-- appear as a pet.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -42,7 +43,6 @@ local InventoryManager = require(ServerScriptService.Managers.InventoryManager)
 
 local PetManager = {}
 
-local TARGET_SIZE_STUDS = 4
 -- Slot 1 sits left-behind, slot 2 right-behind -- offset from
 -- HumanoidRootPart in ITS local space (+Z is behind a character's default
 -- facing, +Y is up). Y was 3 (level with/above head) -- lowered to sit
@@ -50,7 +50,7 @@ local TARGET_SIZE_STUDS = 4
 -- Crate-exclusive Estate item (session.EquippedItemId, separate from the up-
 -- to-2 equipped Assets in slots 1-2) -- centered, a bit further back so it
 -- doesn't overlap either Asset slot.
-local SLOT_OFFSETS = { Vector3.new(-3.5, 0.5, 6), Vector3.new(3.5, 0.5, 6), Vector3.new(0, 0.5, 8) }
+local SLOT_OFFSETS = { Vector3.new(-2, 0.5, 6), Vector3.new(2, 0.5, 6), Vector3.new(0, 0.5, 8) }
 local BOB_HEIGHT_STUDS = 1.4
 local BOB_SECONDS = 1.8
 
@@ -84,15 +84,6 @@ local function findPetTemplate(source: { Name: string, Id: string }): Model?
 	return nil
 end
 
-local function normalizeScale(model: Model)
-	local _, boundingSize = model:GetBoundingBox()
-	local largestDimension = math.max(boundingSize.X, boundingSize.Y, boundingSize.Z)
-	if largestDimension <= 0 then
-		return
-	end
-	model:ScaleTo(TARGET_SIZE_STUDS / largestDimension)
-end
-
 local function clearPets(player: Player)
 	local pets = activePets[player]
 	if not pets then
@@ -112,7 +103,6 @@ local function spawnPet(player: Player, character: Model, hrp: BasePart, source:
 
 	local pet = template:Clone()
 	pet.Name = "Pet_" .. source.Id
-	normalizeScale(pet)
 
 	-- Anchor at the model's real bounding-box CENTER, not its native pivot
 	-- -- an imported mesh's pivot is frequently off-center (often near its
