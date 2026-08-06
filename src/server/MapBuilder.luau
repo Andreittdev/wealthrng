@@ -2208,6 +2208,33 @@ function MapBuilder.Build()
 		end
 	end
 
+	-- "Vip Crown" -- a real 3D model placed directly in Workspace, purely
+	-- decorative flair for the VIP zone (sits right at VIP_MARKER_POSITION,
+	-- same spot as its glowing gold floor disk) -- same GetBoundingBox
+	-- lift/force-anchor treatment as every other placed model. No fallback
+	-- -- if it's missing from Workspace, the zone still works fine, it just
+	-- has no crown prop.
+	local vipCrown = Workspace:FindFirstChild("Vip Crown")
+	if vipCrown and vipCrown:IsA("Model") then
+		local currentPivot = vipCrown:GetPivot()
+		vipCrown:PivotTo(CFrame.new(VIP_MARKER_POSITION.X, PLAZA_TOP_Y, VIP_MARKER_POSITION.Y) * currentPivot.Rotation)
+
+		local crownBoundingCFrame, crownBoundingSize = vipCrown:GetBoundingBox()
+		local crownBottomY = crownBoundingCFrame.Position.Y - crownBoundingSize.Y / 2
+		-- +1 extra stud on top of the exact bounding-box lift -- same "sunk
+		-- into the ground even at a lift of exactly 0" fix "3 Dices" needed.
+		local crownLiftNeeded = (PLAZA_TOP_Y - crownBottomY) + 1
+		if crownLiftNeeded ~= 0 then
+			vipCrown:PivotTo(vipCrown:GetPivot() + Vector3.new(0, crownLiftNeeded, 0))
+		end
+
+		for _, descendant in vipCrown:GetDescendants() do
+			if descendant:IsA("BasePart") then
+				descendant.Anchored = true
+			end
+		end
+	end
+
 	-- "S Bench" -- a real 3D model placed directly in Workspace, cloned 4x
 	-- (BENCH_ANGLES, same closer BENCH_RADIUS as the procedural fallback)
 	-- around the fountain. The ORIGINAL model becomes the first bench
@@ -2262,7 +2289,18 @@ function MapBuilder.Build()
 	local meshyStadium = Workspace:FindFirstChild("Meshy Stadium")
 	if meshyStadium and meshyStadium:IsA("Model") then
 		local currentPivot = meshyStadium:GetPivot()
-		meshyStadium:PivotTo(CFrame.new(-32.52312088012695, 4.1999993324279785, -34.600303649902344) * currentPivot.Rotation)
+		meshyStadium:PivotTo(CFrame.new(-32.52312088012695, PLAZA_TOP_Y, -34.600303649902344) * currentPivot.Rotation)
+
+		-- Same GetBoundingBox lift as every other placed model -- the old
+		-- hardcoded Y (4.2) put the model's pivot at that height regardless
+		-- of where its actual base sat relative to the pivot, which is what
+		-- left it floating above the plaza floor instead of resting on it.
+		local stadiumBoundingCFrame, stadiumBoundingSize = meshyStadium:GetBoundingBox()
+		local stadiumBottomY = stadiumBoundingCFrame.Position.Y - stadiumBoundingSize.Y / 2
+		local stadiumLiftNeeded = PLAZA_TOP_Y - stadiumBottomY
+		if stadiumLiftNeeded ~= 0 then
+			meshyStadium:PivotTo(meshyStadium:GetPivot() + Vector3.new(0, stadiumLiftNeeded, 0))
+		end
 
 		for _, descendant in meshyStadium:GetDescendants() do
 			if descendant:IsA("BasePart") then

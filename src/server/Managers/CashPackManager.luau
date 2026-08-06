@@ -8,6 +8,8 @@
 --   - Sol Stadium Robux purchases (StadiumOfferConfig.RobuxProductId) --
 --     +1 session.SolStadiumOwned, unlimited (no MaxCashPurchases cap),
 --     doesn't touch StadiumOfferManager.luau's shared stock pool.
+--   - Exclusive Crate purchases (CrateConfig.PurchaseTiers) -- delegates to
+--     CrateManager.OpenCrates for the actual item grants.
 -- Each grant is marked in the player's own persisted session (a dedicated
 -- Granted*PurchaseIds set per purchase TYPE, see DataManager) before
 -- returning PurchaseGranted, so a retried receipt (Roblox resends until
@@ -22,12 +24,14 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local CashPackConfig = require(ReplicatedStorage.Modules.CashPackConfig)
 local PotionDatabase = require(ReplicatedStorage.Modules.PotionDatabase)
 local StadiumOfferConfig = require(ReplicatedStorage.Modules.StadiumOfferConfig)
+local CrateConfig = require(ReplicatedStorage.Modules.CrateConfig)
 local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
 local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local StatsManager = require(ServerScriptService.Managers.StatsManager)
 local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManager)
 local PotionManager = require(ServerScriptService.Managers.PotionManager)
+local CrateManager = require(ServerScriptService.Managers.CrateManager)
 
 local systemMessage = RemotesBootstrap:WaitForChild("SystemMessage")
 local stadiumOfferStateUpdated = RemotesBootstrap:WaitForChild("StadiumOfferStateUpdated")
@@ -91,11 +95,24 @@ local function processStadiumOfferPurchase(player: Player, session, purchaseId: 
 	return true
 end
 
+local function processCratePurchase(player: Player, session, purchaseId: string, tier: CrateConfig.PurchaseTier): boolean
+	if session.GrantedCratePurchaseIds[purchaseId] then
+		return true
+	end
+	session.GrantedCratePurchaseIds[purchaseId] = true
+	CrateManager.OpenCrates(player, session, tier.Quantity)
+	systemMessage:FireClient(player, string.format("Opened %d Crate%s!", tier.Quantity, tier.Quantity == 1 and "" or "s"))
+	-- Same immediate-save reasoning as processCashPack above.
+	task.spawn(DataManager.Save, player)
+	return true
+end
+
 MarketplaceService.ProcessReceipt = function(receiptInfo)
 	local pack = CashPackConfig.GetPack(receiptInfo.ProductId)
 	local instantPotion = not pack and PotionDatabase.GetPotionByInstantProductId(receiptInfo.ProductId)
 	local isStadiumOffer = not pack and not instantPotion and receiptInfo.ProductId == StadiumOfferConfig.RobuxProductId
-	if not pack and not instantPotion and not isStadiumOffer then
+	local crateTier = not pack and not instantPotion and not isStadiumOffer and CrateConfig.GetTierByProductId(receiptInfo.ProductId)
+	if not pack and not instantPotion and not isStadiumOffer and not crateTier then
 		return Enum.ProductPurchaseDecision.NotProcessed
 	end
 
@@ -116,8 +133,10 @@ MarketplaceService.ProcessReceipt = function(receiptInfo)
 		processCashPack(player, session, purchaseId, pack)
 	elseif instantPotion then
 		processInstantPotion(player, session, purchaseId, instantPotion.Id)
-	else
+	elseif isStadiumOffer then
 		processStadiumOfferPurchase(player, session, purchaseId)
+	else
+		processCratePurchase(player, session, purchaseId, crateTier)
 	end
 
 	return Enum.ProductPurchaseDecision.PurchaseGranted

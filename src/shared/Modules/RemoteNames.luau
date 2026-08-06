@@ -132,6 +132,10 @@ local RemoteNames = {
 		-- whether to show the new-player roll -> equip -> explore walkthrough at all.
 		"MarkOnboardingComplete", -- client -> server, no payload -- fired once the onboarding
 		-- walkthrough's final step is shown, so it never shows again for this player.
+		"CrateOpenResult", -- server -> client, payload: { { ItemId, Uid }, ... } -- fired once
+		-- per Crate Developer Product purchase (CrateManager.OpenCrates, called from
+		-- CashPackManager.luau's ProcessReceipt), one entry per crate opened in that
+		-- purchase, so CrateShopPanel.luau can show a single batch reveal.
 	},
 	Functions = {},
 }

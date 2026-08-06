@@ -171,6 +171,11 @@ export type Session = {
 	-- overlay (OnboardingTutorial.luau: roll -> equip -> explore), so it
 	-- never shows again on a later join.
 	CompletedOnboarding: boolean,
+	-- Robux Developer Product purchases of Exclusive Crates already granted
+	-- (CrateManager.OpenCrates, called from CashPackManager.luau's
+	-- ProcessReceipt), keyed by PurchaseId -- same dedup shape/reasoning as
+	-- GrantedCashPackPurchaseIds/GrantedStadiumOfferPurchaseIds.
+	GrantedCratePurchaseIds: { [string]: boolean },
 	LoadedOk: boolean,
 }
 
@@ -212,6 +217,7 @@ local function newDefaultSession(): Session
 		GrantedStadiumOfferPurchaseIds = {},
 		SeenTutorialHints = {},
 		CompletedOnboarding = false,
+		GrantedCratePurchaseIds = {},
 		LoadedOk = true,
 	}
 end
@@ -336,6 +342,7 @@ function DataManager.Load(player: Player): Session
 				GrantedStadiumOfferPurchaseIds = data.GrantedStadiumOfferPurchaseIds or {},
 				SeenTutorialHints = data.SeenTutorialHints or {},
 				CompletedOnboarding = data.CompletedOnboarding or false,
+				GrantedCratePurchaseIds = data.GrantedCratePurchaseIds or {},
 				LoadedOk = true,
 			}
 
@@ -435,6 +442,7 @@ function DataManager.Save(player: Player)
 		GrantedStadiumOfferPurchaseIds = session.GrantedStadiumOfferPurchaseIds,
 		SeenTutorialHints = session.SeenTutorialHints,
 		CompletedOnboarding = session.CompletedOnboarding,
+		GrantedCratePurchaseIds = session.GrantedCratePurchaseIds,
 	}
 
 	local ok = attempt(function()

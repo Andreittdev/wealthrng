@@ -19,6 +19,13 @@ local DataManager = require(ServerScriptService.Managers.DataManager)
 
 local InventoryManager = {}
 
+-- Fired whenever session.EquippedItemId actually changes (Equip/Unequip
+-- succeeding, or RemoveItem force-unequipping a sold equipped item) --
+-- PetManager.luau listens for this the same way it listens to
+-- AssetManager.EquippedAssetsChanged, to float a pet for an equipped
+-- Crate-exclusive Estate item too, not just equipped Assets.
+InventoryManager.EquippedItemChanged = Instance.new("BindableEvent")
+
 function InventoryManager.AddItem(player: Player, itemId: string)
 	local session = DataManager.Get(player)
 	if not session then
@@ -69,6 +76,7 @@ function InventoryManager.RemoveItem(player: Player, uid: number)
 			if equippedIndex then
 				table.remove(session.EquippedItemUids, equippedIndex)
 				session.EquippedItemId = nil
+				InventoryManager.EquippedItemChanged:Fire(player)
 			end
 
 			return entry
@@ -114,6 +122,7 @@ function InventoryManager.Equip(player: Player, uid: number): boolean
 	-- Only meaningful while MaxEquipped stays 1 -- see EquippedItemId's
 	-- comment in DataManager.luau.
 	session.EquippedItemId = ownedItemId
+	InventoryManager.EquippedItemChanged:Fire(player)
 	return true
 end
 
@@ -130,6 +139,7 @@ function InventoryManager.Unequip(player: Player, uid: number): boolean
 
 	table.remove(session.EquippedItemUids, index)
 	session.EquippedItemId = nil
+	InventoryManager.EquippedItemChanged:Fire(player)
 	return true
 end
 

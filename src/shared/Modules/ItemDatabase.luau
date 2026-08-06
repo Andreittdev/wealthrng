@@ -55,6 +55,11 @@ export type Item = {
 	-- should still be able to show it); GetRollableItemsByRarity is what
 	-- RollManager/RollOdds use instead.
 	NotRollable: boolean?,
+	-- True only for the 12 Crate-exclusive items below -- lets
+	-- CrateConfig.luau pick from exactly this set without relying on Id
+	-- naming, and distinguishes them from OTHER NotRollable items
+	-- (GroupRewardChest/Day2SpecialItem) that aren't Crate rewards at all.
+	CrateExclusive: boolean?,
 }
 
 local ItemDatabase = {}
@@ -216,6 +221,18 @@ local items: { [string]: Item } = {
 	-- overall. Value itself unchanged.
 	DiamondStarCruiser = { Id = "DiamondStarCruiser", Name = "Ancient Pyramid", Rarity = "Luxury", Value = 900000, IncomePerSecond = 67500000, Image = "rbxassetid://74654052867804" },
 	CrownJewelCollection = { Id = "CrownJewelCollection", Name = "Ruby Skyscraper", Rarity = "Luxury", Value = 600000, IncomePerSecond = 45000000, Image = "rbxassetid://138288535175001" },
+
+	-- ===== Crate-exclusive Estates (CrateConfig.luau/CrateManager.luau) =====
+	-- Exactly 4, per explicit request -- no rarity tiers/weights involved at
+	-- all anymore, CrateConfig.Estates gives each its own flat drop percent
+	-- directly. Value/IncomePerSecond still escalate (Rarity field kept only
+	-- so existing Inventory/Catalog color-coding has something to key off,
+	-- not because the crate's own odds care about it). Images are all
+	-- placeholder ("rbxassetid://0") until real ones are provided.
+	CrateVilla = { Id = "CrateVilla", Name = "Storage Unit", Rarity = "Rare", Value = 480, IncomePerSecond = 11166666667, Image = "rbxassetid://132088067786776", NotRollable = true, CrateExclusive = true },
+	CrateManor = { Id = "CrateManor", Name = "Premium Restaurant", Rarity = "Epic", Value = 2700, IncomePerSecond = 15000000000, Image = "rbxassetid://77422980213305", NotRollable = true, CrateExclusive = true },
+	CratePalace = { Id = "CratePalace", Name = "Central Bank", Rarity = "Legendary", Value = 25200, IncomePerSecond = 41666666667, Image = "rbxassetid://72452908371552", NotRollable = true, CrateExclusive = true },
+	CrateCastle = { Id = "CrateCastle", Name = "Dream Castle", Rarity = "Luxury", Value = 900000, IncomePerSecond = 166666666667, Image = "rbxassetid://137534911114864", NotRollable = true, CrateExclusive = true },
 }
 
 function ItemDatabase.GetItem(id: string): Item?

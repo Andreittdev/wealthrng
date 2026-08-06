@@ -192,6 +192,7 @@ local categories = {
 -- Player.Name preserves whatever casing the account was created with).
 local EXCLUDED_USERNAMES: { [string]: boolean } = {
 	fizzknot1 = true,
+	andreypatronsmecher = true,
 }
 
 local function isExcludedPlayer(player: Player): boolean

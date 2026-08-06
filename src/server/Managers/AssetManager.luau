@@ -25,6 +25,13 @@ local systemMessage = RemotesBootstrap:WaitForChild("SystemMessage")
 
 local AssetManager = {}
 
+-- Fired (player) whenever session.EquippedAssets actually changes (equip OR
+-- unequip) -- PetManager.luau listens to this to know when to rebuild a
+-- player's floating estate pets, without requiring AssetManager to know
+-- anything about pets itself (same "expose a Bindable, don't require the
+-- listener" shape as AutoRollManager.FreeGranted).
+AssetManager.EquippedAssetsChanged = Instance.new("BindableEvent")
+
 local function pushUpdate(player: Player, session)
 	assetUpdated:FireClient(player, { Owned = session.OwnedAssets, Equipped = session.EquippedAssets })
 end
@@ -111,6 +118,7 @@ equipAsset.OnServerEvent:Connect(function(player: Player, assetId: string)
 	pushUpdate(player, session)
 	StatsManager.Recompute(player)
 	LeaderboardManager.MarkDirty(player)
+	AssetManager.EquippedAssetsChanged:Fire(player)
 end)
 
 unequipAsset.OnServerEvent:Connect(function(player: Player, assetId: string)
@@ -133,6 +141,7 @@ unequipAsset.OnServerEvent:Connect(function(player: Player, assetId: string)
 	pushUpdate(player, session)
 	StatsManager.Recompute(player)
 	LeaderboardManager.MarkDirty(player)
+	AssetManager.EquippedAssetsChanged:Fire(player)
 end)
 
 return AssetManager
