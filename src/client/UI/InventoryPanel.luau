@@ -19,6 +19,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
 local AssetDatabase = require(ReplicatedStorage.Modules.AssetDatabase)
 local RarityConfig = require(ReplicatedStorage.Modules.RarityConfig)
+local EstateRarityConfig = require(ReplicatedStorage.Modules.EstateRarityConfig)
 local RollOdds = require(ReplicatedStorage.Modules.RollOdds)
 local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
 local Theme = require(script.Parent.Theme)
@@ -392,11 +393,6 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		end
 	end)
 
-	-- Gold accent for the LARP Battles Top 3 reward estates -- reads as
-	-- extra-special even before you notice the description, matching the
-	-- icy/gold "premium" language used elsewhere on the map.
-	local EXCLUSIVE_ESTATE_COLOR = Color3.fromRGB(255, 215, 140)
-
 	local function renderItemDetail()
 		local entry = selectedUid and findEntry(selectedUid)
 		local item = entry and ItemDatabase.GetItem(entry.ItemId)
@@ -443,12 +439,12 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		end
 
 		local isEquipped = table.find(equippedAssetIds, selectedAssetId) ~= nil
-		local accentColor = asset.NotPurchasable and EXCLUSIVE_ESTATE_COLOR or Theme.Colors.Accent
+		local accentColor = EstateRarityConfig.GetColor(asset.Rarity)
 
 		detailIcon.Image = asset.Image
 		detailName.Text = asset.Name
-		detailOdds.Text = "+" .. NumberFormat.FormatCash(asset.IncomePerMinute) .. "/min"
-		detailRarity.Text = "Value: " .. NumberFormat.FormatCash(asset.Price)
+		detailOdds.Text = "+" .. NumberFormat.FormatCash(asset.IncomePerMinute) .. "/min  \u{2022}  " .. NumberFormat.FormatCash(asset.Price)
+		detailRarity.Text = asset.Rarity
 		detailRarity.TextColor3 = accentColor
 		detailStroke.Color = isEquipped and Theme.Colors.Accent or accentColor
 
@@ -608,11 +604,8 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		end
 	end
 
-	-- Equipped first, then most-valuable first -- the LARP Battles reward
-	-- estates (the most expensive by a wide margin, see AssetDatabase's
-	-- Price=1000x Income prestige ratio) surface at the top of the
-	-- non-equipped ones instead of getting buried among ordinary purchased
-	-- ones.
+	-- Equipped first (both slots), then weakest to strongest -- matches
+	-- Roll Items' own ordering convention (see handle.Render below).
 	function renderEstatesList()
 		clearList()
 
@@ -623,13 +616,17 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 				table.insert(ownedIds, id)
 			end
 		end
+		-- Equipped first (both slots), then weakest to strongest -- same
+		-- "weak first" convention handle.Render uses for Roll Items
+		-- (Common tier first, rarer/pricier later), not the old "priciest
+		-- non-equipped first" order.
 		table.sort(ownedIds, function(a, b)
 			local equippedA = table.find(equippedAssetIds, a) ~= nil
 			local equippedB = table.find(equippedAssetIds, b) ~= nil
 			if equippedA ~= equippedB then
 				return equippedA
 			end
-			return allAssets[a].Price > allAssets[b].Price
+			return allAssets[a].Price < allAssets[b].Price
 		end)
 
 		local order = 0
@@ -645,7 +642,7 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 
 			local isEquipped = table.find(equippedAssetIds, id) ~= nil
 			local isSelected = selectedAssetId == id
-			local accentColor = asset.NotPurchasable and EXCLUSIVE_ESTATE_COLOR or Theme.Colors.Accent
+			local accentColor = EstateRarityConfig.GetColor(asset.Rarity)
 
 			local row = Instance.new("Frame")
 			row.LayoutOrder = order
@@ -661,7 +658,7 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 			local nameLabel = Theme.Label(row, UDim2.new(1, -16, 0, 22), asset.Name, true)
 			nameLabel.Position = UDim2.new(0, 8, 0, 4)
 
-			local incomeLabel = Theme.Label(row, UDim2.new(1, -16, 0, 18), "+" .. NumberFormat.FormatCash(asset.IncomePerMinute) .. "/min")
+			local incomeLabel = Theme.Label(row, UDim2.new(1, -16, 0, 18), string.format("%s  \u{2022}  +%s/min", asset.Rarity, NumberFormat.FormatCash(asset.IncomePerMinute)))
 			incomeLabel.Position = UDim2.new(0, 8, 0, 26)
 			incomeLabel.TextColor3 = Theme.Colors.TextSecondary
 

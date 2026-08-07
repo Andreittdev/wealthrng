@@ -141,6 +141,18 @@ local RemoteNames = {
 		-- same schedule for every player at once, so this is broadcast to everyone, not per-player.
 		-- Fired on every start/end transition AND once to a freshly-joined player so they don't have
 		-- to wait for the next transition to learn the current state.
+		"DiscoveredItemsUpdated", -- server -> client, payload: { [itemId]: true } -- session.
+		-- DiscoveredItemIds, pushed on join and again whenever a new ItemId is discovered for the
+		-- first time (RollManager.luau/CrateManager.luau) -- backs CatalogPanel.luau's Index
+		-- "unlocked" state, permanent even if every copy is later sold.
+		"ClaimIndexReward", -- client -> server, payload: category ("Roll" | "Estate"), tier (string,
+		-- e.g. "Common"/"Godly") -- CatalogPanel.luau's Claim button on a 100%-complete tier.
+		-- Rejected server-side unless that tier is actually complete and not already claimed
+		-- (IndexRewardManager.luau).
+		"ClaimedIndexRewardsUpdated", -- server -> client, payload: { Roll: {[tier]: true},
+		-- Estate: {[tier]: true} } -- session.ClaimedRollIndexTiers/ClaimedEstateIndexTiers, pushed
+		-- on join and again after a successful claim. The Luck%/Cash Earnings% bonus only counts
+		-- CLAIMED tiers, not just completed ones.
 	},
 	Functions = {},
 }

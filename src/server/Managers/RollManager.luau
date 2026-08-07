@@ -2,9 +2,11 @@
 -- weighted item pick within that rarity, grants the item, pushes updates.
 -- Luck/cooldown get boosted by VIP (permanent), an active Luck/Speed
 -- Potion (temporary, via PotionConfig), the Luck/Roll Speed Upgrade
--- tracks (permanent, via UpgradeConfig), and the recurring server-wide
--- "X2 Luck" event (LuckEventConfig.luau, same window for every player) --
--- all four stack multiplicatively.
+-- tracks (permanent, via UpgradeConfig), the recurring server-wide "X2
+-- Luck" event (LuckEventConfig.luau, same window for every player), and
+-- Index completion rewards (IndexRewardConfig.luau, permanent, grows as
+-- CatalogPanel.luau's Roll rarity tiers get fully discovered) -- all five
+-- stack multiplicatively.
 --
 -- TryRoll/TrySpecialRoll are exposed as functions (not folded directly
 -- into the remote handlers) purely so they read as one obvious code path
@@ -23,6 +25,7 @@ local RollConfig = require(ReplicatedStorage.Modules.RollConfig)
 local VIPConfig = require(ReplicatedStorage.Modules.VIPConfig)
 local PotionConfig = require(ReplicatedStorage.Modules.PotionConfig)
 local LuckEventConfig = require(ReplicatedStorage.Modules.LuckEventConfig)
+local IndexRewardConfig = require(ReplicatedStorage.Modules.IndexRewardConfig)
 local UpgradeConfig = require(ReplicatedStorage.Modules.UpgradeConfig)
 local LuckPassConfig = require(ReplicatedStorage.Modules.LuckPassConfig)
 local UltraLuckPassConfig = require(ReplicatedStorage.Modules.UltraLuckPassConfig)
@@ -48,6 +51,7 @@ local inventoryUpdated = RemotesBootstrap:WaitForChild("InventoryUpdated")
 local rollSpecial = RemotesBootstrap:WaitForChild("RollSpecial")
 local specialRollStateUpdated = RemotesBootstrap:WaitForChild("SpecialRollStateUpdated")
 local systemMessage = RemotesBootstrap:WaitForChild("SystemMessage")
+local discoveredItemsUpdated = RemotesBootstrap:WaitForChild("DiscoveredItemsUpdated")
 
 local RollManager = {}
 
@@ -101,6 +105,7 @@ local function pickRarity(
 		end
 		weight *= PotionConfig.GetLuckMultiplier(session, rarity, nowUnix)
 		weight *= LuckEventConfig.GetLuckMultiplier(rarity, nowUnix)
+		weight *= IndexRewardConfig.GetLuckMultiplier(session.ClaimedRollIndexTiers, rarity)
 		weight *= UpgradeConfig.GetLuckMultiplier(session.Upgrades.Luck or 0, rarity)
 		if ownsLuckPass then
 			weight *= LuckPassConfig.LuckWeightMultiplier[rarity]
@@ -310,12 +315,13 @@ function RollManager.TryRoll(player: Player): boolean
 		end
 	end
 
-	-- Captured BEFORE AddItem (which increments OwnedItemCounts) -- this is
-	-- the player's very first copy of this exact item ever, not just this
-	-- session. Fired as a SystemMessage, same as every other toast here --
-	-- notably NOT gated by Hide Rolls (that only skips RollPanel's reveal
-	-- animation client-side, never SystemMessage), so it always shows.
-	local isNewDiscovery = (session.OwnedItemCounts[item.Id] or 0) == 0
+	-- session.DiscoveredItemIds, NOT OwnedItemCounts -- the latter drops
+	-- back to 0 if every copy is later sold, which would wrongly re-fire
+	-- this on a future re-roll of the same item (and would also make
+	-- CatalogPanel.luau's Index show an already-found item as locked again).
+	-- DiscoveredItemIds is permanent, checked/set before AddItem so this
+	-- reads "first copy ever", not "first copy this session".
+	local isNewDiscovery = not session.DiscoveredItemIds[item.Id]
 
 	local entry = InventoryManager.AddItem(player, item.Id)
 	if not entry then
@@ -326,6 +332,8 @@ function RollManager.TryRoll(player: Player): boolean
 		announceRareUnlock(player, item)
 	end
 	if isNewDiscovery then
+		session.DiscoveredItemIds[item.Id] = true
+		discoveredItemsUpdated:FireClient(player, session.DiscoveredItemIds)
 		systemMessage:FireClient(player, "New item discovered!")
 	end
 
@@ -424,8 +432,9 @@ function RollManager.TrySpecialRoll(player: Player, tierId: string): boolean
 		end
 	end
 
-	-- Same "first copy ever" check as TryRoll above.
-	local isNewDiscovery = (session.OwnedItemCounts[item.Id] or 0) == 0
+	-- Same "first copy ever" check as TryRoll above (session.
+	-- DiscoveredItemIds, permanent even if every copy is later sold).
+	local isNewDiscovery = not session.DiscoveredItemIds[item.Id]
 
 	local entry = InventoryManager.AddItem(player, item.Id)
 	if not entry then
@@ -436,6 +445,8 @@ function RollManager.TrySpecialRoll(player: Player, tierId: string): boolean
 		announceRareUnlock(player, item)
 	end
 	if isNewDiscovery then
+		session.DiscoveredItemIds[item.Id] = true
+		discoveredItemsUpdated:FireClient(player, session.DiscoveredItemIds)
 		systemMessage:FireClient(player, "New item discovered!")
 	end
 

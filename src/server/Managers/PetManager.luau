@@ -194,13 +194,31 @@ local function spawnPet(player: Player, character: Model, hrp: BasePart, source:
 	table.insert(pets, pet)
 end
 
+-- If an equip/unequip races the character not being fully loaded yet
+-- (just joined, mid-respawn, a network hiccup), refreshPets used to just
+-- silently give up -- EquippedAssetsChanged/EquippedItemChanged only fire
+-- ONCE per change, so a missed attempt meant no pet at all until the next
+-- equip toggle or respawn happened to trigger a fresh refresh. Retrying
+-- for a bounded window instead closes that gap.
+local REFRESH_RETRY_SECONDS = 0.5
+local REFRESH_MAX_WAIT_SECONDS = 10
+
 local function refreshPets(player: Player)
 	local character = player.Character
-	if not character then
-		return
-	end
-	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if not hrp then
+	local hrp = character and (character:FindFirstChild("HumanoidRootPart") :: BasePart?)
+	if not character or not hrp then
+		task.spawn(function()
+			local waited = 0
+			while waited < REFRESH_MAX_WAIT_SECONDS do
+				task.wait(REFRESH_RETRY_SECONDS)
+				waited += REFRESH_RETRY_SECONDS
+				local retryCharacter = player.Character
+				if retryCharacter and retryCharacter:FindFirstChild("HumanoidRootPart") then
+					refreshPets(player)
+					return
+				end
+			end
+		end)
 		return
 	end
 

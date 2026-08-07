@@ -23,6 +23,7 @@ local VIPConfig = require(ReplicatedStorage.Modules.VIPConfig)
 local RollConfig = require(ReplicatedStorage.Modules.RollConfig)
 local PotionConfig = require(ReplicatedStorage.Modules.PotionConfig)
 local LuckEventConfig = require(ReplicatedStorage.Modules.LuckEventConfig)
+local IndexRewardConfig = require(ReplicatedStorage.Modules.IndexRewardConfig)
 local UpgradeConfig = require(ReplicatedStorage.Modules.UpgradeConfig)
 local Theme = require(script.Parent.Theme)
 
@@ -86,6 +87,7 @@ function LuckSpeedHUD.Create(screenGui: ScreenGui)
 	local isVIP = false
 	local upgrades: { [string]: number } = {}
 	local activePotions: { [string]: number } = {}
+	local claimedRollTiers: { [string]: boolean } = {}
 
 	local function refresh()
 		local now = os.time()
@@ -98,6 +100,7 @@ function LuckSpeedHUD.Create(screenGui: ScreenGui)
 		luck *= PotionConfig.GetLuckMultiplier(potionSession, DISPLAY_RARITY, now)
 		luck *= UpgradeConfig.GetLuckMultiplier(upgrades.Luck or 0, DISPLAY_RARITY)
 		luck *= LuckEventConfig.GetLuckMultiplier(DISPLAY_RARITY, now)
+		luck *= IndexRewardConfig.GetLuckMultiplier(claimedRollTiers, DISPLAY_RARITY)
 		luckValueLabel.Text = string.format("x%.2f", luck)
 
 		local cooldown = isVIP and VIPConfig.RollCooldownSeconds or RollConfig.BaseCooldownSeconds
@@ -136,6 +139,11 @@ function LuckSpeedHUD.Create(screenGui: ScreenGui)
 
 	function handle.SetActivePotions(potions: { [string]: number })
 		activePotions = potions
+		refresh()
+	end
+
+	function handle.SetClaimedRollTiers(claimed: { [string]: boolean })
+		claimedRollTiers = claimed
 		refresh()
 	end
 

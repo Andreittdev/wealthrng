@@ -17,6 +17,7 @@ local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManag
 
 local inventoryUpdated = RemotesBootstrap:WaitForChild("InventoryUpdated")
 local crateOpenResult = RemotesBootstrap:WaitForChild("CrateOpenResult")
+local discoveredItemsUpdated = RemotesBootstrap:WaitForChild("DiscoveredItemsUpdated")
 
 local CrateManager = {}
 
@@ -29,18 +30,29 @@ local random = Random.new()
 -- batch-reveal instead of N popups.
 function CrateManager.OpenCrates(player: Player, session, quantity: number)
 	local wonItems = {}
+	local discoveredSomethingNew = false
 
 	for _ = 1, quantity do
 		local itemId = CrateConfig.RollItemId(random)
 		local entry = InventoryManager.AddItem(player, itemId)
 		if entry then
 			table.insert(wonItems, { ItemId = itemId, Uid = entry.Uid })
+			-- Same permanent discovery tracking as RollManager.luau -- backs
+			-- CatalogPanel.luau's Index "unlocked" state for the 4
+			-- Crate-exclusive Estates.
+			if not session.DiscoveredItemIds[itemId] then
+				session.DiscoveredItemIds[itemId] = true
+				discoveredSomethingNew = true
+			end
 		end
 	end
 
 	if #wonItems > 0 then
 		crateOpenResult:FireClient(player, wonItems)
 		inventoryUpdated:FireClient(player, session.Inventory)
+		if discoveredSomethingNew then
+			discoveredItemsUpdated:FireClient(player, session.DiscoveredItemIds)
+		end
 		StatsManager.Recompute(player)
 		LeaderboardManager.MarkDirty(player)
 	end

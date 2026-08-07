@@ -13,6 +13,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local IncomeConfig = require(ReplicatedStorage.Modules.IncomeConfig)
 local VIPConfig = require(ReplicatedStorage.Modules.VIPConfig)
 local PotionConfig = require(ReplicatedStorage.Modules.PotionConfig)
+local IndexRewardConfig = require(ReplicatedStorage.Modules.IndexRewardConfig)
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local VIPManager = require(ServerScriptService.Managers.VIPManager)
 local StatsManager = require(ServerScriptService.Managers.StatsManager)
@@ -37,7 +38,8 @@ task.spawn(function()
 					VIPConfig.SellBonusPercent,
 					PotionConfig.GetCashBonusPercent(session, os.time()),
 					FriendBoostManager.GetBonusPercent(player),
-					DoubleCashManager.GetBonusPercent(player)
+					DoubleCashManager.GetBonusPercent(player),
+					IndexRewardConfig.GetEstateTotalBonusPercent(session.ClaimedEstateIndexTiers)
 				)
 				if rate > 0 then
 					session.Cash += math.floor(rate * ITEMS_TICK_INTERVAL_SECONDS)
@@ -61,7 +63,8 @@ task.spawn(function()
 					VIPConfig.SellBonusPercent,
 					PotionConfig.GetCashBonusPercent(session, os.time()),
 					FriendBoostManager.GetBonusPercent(player),
-					DoubleCashManager.GetBonusPercent(player)
+					DoubleCashManager.GetBonusPercent(player),
+					IndexRewardConfig.GetEstateTotalBonusPercent(session.ClaimedEstateIndexTiers)
 				)
 				if payout > 0 then
 					session.Cash += math.floor(payout)

@@ -11,6 +11,7 @@ local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
 local RarityConfig = require(ReplicatedStorage.Modules.RarityConfig)
 local VIPConfig = require(ReplicatedStorage.Modules.VIPConfig)
 local PotionConfig = require(ReplicatedStorage.Modules.PotionConfig)
+local IndexRewardConfig = require(ReplicatedStorage.Modules.IndexRewardConfig)
 local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
 local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
 local DataManager = require(ServerScriptService.Managers.DataManager)
@@ -30,7 +31,8 @@ local systemMessage = RemotesBootstrap:WaitForChild("SystemMessage")
 local SellManager = {}
 
 function SellManager.ComputeSellValue(session, isVIP: boolean, item: ItemDatabase.Item, doubleCashBonusPercent: number): number
-	local bonusPercent = PotionConfig.GetCashBonusPercent(session, os.time()) + doubleCashBonusPercent
+	local estateIndexBonusPercent = IndexRewardConfig.GetEstateTotalBonusPercent(session.ClaimedEstateIndexTiers)
+	local bonusPercent = PotionConfig.GetCashBonusPercent(session, os.time()) + doubleCashBonusPercent + estateIndexBonusPercent
 	if isVIP then
 		bonusPercent += VIPConfig.SellBonusPercent
 	end

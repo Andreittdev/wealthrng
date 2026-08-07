@@ -10,6 +10,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local PotionDatabase = require(ReplicatedStorage.Modules.PotionDatabase)
 local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
 local BattleRankConfig = require(ReplicatedStorage.Modules.BattleRankConfig)
+local IndexRewardConfig = require(ReplicatedStorage.Modules.IndexRewardConfig)
 local Theme = require(script.Parent.Theme)
 
 local ProfilePanel = {}
@@ -66,7 +67,7 @@ function ProfilePanel.Create(screenGui: ScreenGui)
 
 	local card = Instance.new("Frame")
 	card.LayoutOrder = 1
-	card.Size = UDim2.new(1, 0, 0, 202)
+	card.Size = UDim2.new(1, 0, 0, 246)
 	card.BackgroundColor3 = Theme.Colors.Surface
 	card.BorderSizePixel = 0
 	card.Parent = content
@@ -118,6 +119,15 @@ function ProfilePanel.Create(screenGui: ScreenGui)
 	local rankLabel = Theme.Label(card, UDim2.new(1, 0, 0, 22), "Rank: Bronze (0 RP)")
 	rankLabel.TextColor3 = BattleRankConfig.Tiers[1].Color
 
+	-- Index (CatalogPanel.luau) completion rewards -- Roll tab's Luck bonus
+	-- and Estates tab's Cash Earnings bonus, see IndexRewardConfig.luau's
+	-- header for how each stacks.
+	local luckBonusLabel = Theme.Label(card, UDim2.new(1, 0, 0, 22), "Total Luck Bonus: +0%")
+	luckBonusLabel.TextColor3 = Theme.Colors.Accent
+
+	local cashBonusLabel = Theme.Label(card, UDim2.new(1, 0, 0, 22), "Total Cash Earnings Bonus: +0%")
+	cashBonusLabel.TextColor3 = Theme.Colors.Success
+
 	local potionsHeader = Theme.Label(content, UDim2.new(1, 0, 0, 22), "Active Potions")
 	potionsHeader.LayoutOrder = 2
 	potionsHeader.TextColor3 = Theme.Colors.Accent
@@ -135,6 +145,13 @@ function ProfilePanel.Create(screenGui: ScreenGui)
 	potionsLayout.Parent = potionsList
 
 	local activePotions: { [string]: number } = {}
+	local claimedRollTiers: { [string]: boolean } = {}
+	local claimedEstateTiers: { [string]: boolean } = {}
+
+	local function refreshIndexBonuses()
+		luckBonusLabel.Text = string.format("Total Luck Bonus: +%d%%", IndexRewardConfig.GetTotalBonusPercent(claimedRollTiers))
+		cashBonusLabel.Text = string.format("Total Cash Earnings Bonus: +%d%%", IndexRewardConfig.GetEstateTotalBonusPercent(claimedEstateTiers))
+	end
 
 	local function refreshPotions()
 		local now = os.time()
@@ -194,6 +211,16 @@ function ProfilePanel.Create(screenGui: ScreenGui)
 	function handle.UpdatePotions(potions: { [string]: number })
 		activePotions = potions
 		refreshPotions()
+	end
+
+	function handle.SetClaimedRollTiers(claimed: { [string]: boolean })
+		claimedRollTiers = claimed
+		refreshIndexBonuses()
+	end
+
+	function handle.SetClaimedEstateTiers(claimed: { [string]: boolean })
+		claimedEstateTiers = claimed
+		refreshIndexBonuses()
 	end
 
 	return handle

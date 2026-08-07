@@ -53,6 +53,7 @@ function MainUI.Init()
 	local statsUpdated = remotesFolder:WaitForChild("StatsUpdated")
 	local potionUpdated = remotesFolder:WaitForChild("PotionUpdated")
 	local upgradesUpdated = remotesFolder:WaitForChild("UpgradesUpdated")
+	local claimedIndexRewardsUpdated = remotesFolder:WaitForChild("ClaimedIndexRewardsUpdated")
 	local clientReady = remotesFolder:WaitForChild("ClientReady")
 
 	local player = Players.LocalPlayer
@@ -174,6 +175,11 @@ function MainUI.Init()
 		luckSpeedHudHandle.SetActivePotions(potions)
 	end)
 	upgradesUpdated.OnClientEvent:Connect(luckSpeedHudHandle.SetUpgrades)
+	claimedIndexRewardsUpdated.OnClientEvent:Connect(function(claimed: { Roll: { [string]: boolean }, Estate: { [string]: boolean } })
+		luckSpeedHudHandle.SetClaimedRollTiers(claimed.Roll or {})
+		profileHandle.SetClaimedRollTiers(claimed.Roll or {})
+		profileHandle.SetClaimedEstateTiers(claimed.Estate or {})
+	end)
 
 	-- Every panel above is built and every OnClientEvent listener above is
 	-- connected -- safe now to tell the server it can send the "here's your

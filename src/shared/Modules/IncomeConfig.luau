@@ -28,15 +28,17 @@ local function combineBonusPercent(
 	vipBonusPercent: number,
 	potionBonusPercent: number,
 	friendBonusPercent: number,
-	doubleCashBonusPercent: number
+	doubleCashBonusPercent: number,
+	estateIndexBonusPercent: number
 ): number
 	-- VIP's permanent bonus, a Fortune Potion's temporary one, Friend Boost
 	-- (FriendBoostConfig.luau -- online with 1+ Roblox friends on the same
-	-- server), and the Double Cash gamepass (DoubleCashConfig.luau) all
-	-- stack additively (25% + 40% + 20% + 100% = +185%), not overwrite each
-	-- other -- same "stack, don't replace" shape used everywhere else in
-	-- this economy.
-	local bonusPercent = potionBonusPercent + friendBonusPercent + doubleCashBonusPercent
+	-- server), the Double Cash gamepass (DoubleCashConfig.luau), and the
+	-- Estates Index's completion reward (IndexRewardConfig.luau) all stack
+	-- additively (25% + 40% + 20% + 100% + 190% = +375%), not overwrite
+	-- each other -- same "stack, don't replace" shape used everywhere else
+	-- in this economy.
+	local bonusPercent = potionBonusPercent + friendBonusPercent + doubleCashBonusPercent + estateIndexBonusPercent
 	if isVIP then
 		bonusPercent += vipBonusPercent
 	end
@@ -49,7 +51,8 @@ function IncomeConfig.ComputeItemsRatePerSecond(
 	vipBonusPercent: number,
 	potionBonusPercent: number,
 	friendBonusPercent: number,
-	doubleCashBonusPercent: number
+	doubleCashBonusPercent: number,
+	estateIndexBonusPercent: number
 ): number
 	-- Only equipped items earn income -- unequipped ones still count their
 	-- Value toward Net Worth via InventoryManager.GetValue, just not this.
@@ -66,7 +69,7 @@ function IncomeConfig.ComputeItemsRatePerSecond(
 		total = item.IncomePerSecond
 	end
 
-	total *= 1 + combineBonusPercent(isVIP, vipBonusPercent, potionBonusPercent, friendBonusPercent, doubleCashBonusPercent) / 100
+	total *= 1 + combineBonusPercent(isVIP, vipBonusPercent, potionBonusPercent, friendBonusPercent, doubleCashBonusPercent, estateIndexBonusPercent) / 100
 	return total
 end
 
@@ -76,7 +79,8 @@ function IncomeConfig.ComputeAssetsRatePerMinute(
 	vipBonusPercent: number,
 	potionBonusPercent: number,
 	friendBonusPercent: number,
-	doubleCashBonusPercent: number
+	doubleCashBonusPercent: number,
+	estateIndexBonusPercent: number
 ): number
 	local total = 0
 
@@ -87,7 +91,7 @@ function IncomeConfig.ComputeAssetsRatePerMinute(
 		end
 	end
 
-	total *= 1 + combineBonusPercent(isVIP, vipBonusPercent, potionBonusPercent, friendBonusPercent, doubleCashBonusPercent) / 100
+	total *= 1 + combineBonusPercent(isVIP, vipBonusPercent, potionBonusPercent, friendBonusPercent, doubleCashBonusPercent, estateIndexBonusPercent) / 100
 	return total
 end
 

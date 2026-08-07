@@ -40,6 +40,7 @@ local upgradesUpdated = remotesFolder:WaitForChild("UpgradesUpdated")
 local groupRewardStateUpdated = remotesFolder:WaitForChild("GroupRewardStateUpdated")
 local tutorialHintsUpdated = remotesFolder:WaitForChild("TutorialHintsUpdated")
 local onboardingStateUpdated = remotesFolder:WaitForChild("OnboardingStateUpdated")
+local discoveredItemsUpdated = remotesFolder:WaitForChild("DiscoveredItemsUpdated")
 local systemMessage = remotesFolder:WaitForChild("SystemMessage")
 local clientReady = remotesFolder:WaitForChild("ClientReady")
 
@@ -81,6 +82,7 @@ require(ServerScriptService.Managers.OnboardingManager)
 require(ServerScriptService.Managers.PetManager)
 require(ServerScriptService.Managers.TitleTagManager)
 local LuckEventManager = require(ServerScriptService.Managers.LuckEventManager)
+local IndexRewardManager = require(ServerScriptService.Managers.IndexRewardManager)
 require(ServerScriptService.Managers.StadiumOfferManager)
 
 -- Initial pushes (saved Inventory/Assets/Investments/etc.) fire TWICE, on
@@ -112,10 +114,12 @@ local function sendInitialState(player: Player)
 	groupRewardStateUpdated:FireClient(player, session.ClaimedGroupReward)
 	tutorialHintsUpdated:FireClient(player, session.SeenTutorialHints)
 	onboardingStateUpdated:FireClient(player, session.CompletedOnboarding)
+	discoveredItemsUpdated:FireClient(player, session.DiscoveredItemIds)
 	DailyRewardsManager.PushState(player)
 	RollManager.PushSpecialRollState(player, session)
 	AutoClaimManager.PushState(player)
 	LuckEventManager.PushState(player)
+	IndexRewardManager.PushState(player, session)
 end
 
 -- Hides Roblox's default floating username/health nametag above every

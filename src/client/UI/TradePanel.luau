@@ -200,22 +200,61 @@ function TradePanel.Create(screenGui: ScreenGui, remotes: Folder)
 	local titleLabel = Theme.Label(panel, UDim2.new(1, -20, 0, 32), "Trade", true)
 	titleLabel.Position = UDim2.new(0, 16, 0, 10)
 
-	local myColumnLabel = Theme.Label(panel, UDim2.new(0.5, -24, 0, 20), "Your Offer")
-	myColumnLabel.Position = UDim2.new(0, 16, 0, 50)
+	-- Everything below the title lives inside a scrolling column instead of
+	-- being fixed-pixel-positioned directly on `panel`. Theme.ResponsivePanel
+	-- shrinks `panel` via Scale on short/narrow phone screens WITHOUT
+	-- applying a UIScale to its children (unlike Theme.AutoScale, used below
+	-- for the detached popups) -- on a short enough screen `panel`'s real
+	-- height can end up smaller than this content needs even at its normal
+	-- (non-shrunk) size, so proportional positioning alone can't fit it. The
+	-- fix is the same one already used for this exact class of bug elsewhere
+	-- in this codebase (ProfilePanel/ShopPanel): let the content scroll
+	-- instead of trying to cram/overlap into whatever height is left.
+	local content = Instance.new("ScrollingFrame")
+	content.Size = UDim2.new(1, -32, 1, -54)
+	content.Position = UDim2.new(0, 16, 0, 48)
+	content.BackgroundTransparency = 1
+	content.BorderSizePixel = 0
+	content.CanvasSize = UDim2.new(0, 0, 0, 0)
+	content.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	content.ScrollBarThickness = 6
+	content.ScrollBarImageColor3 = Theme.Colors.Accent
+	content.Parent = panel
+
+	local contentLayout = Instance.new("UIListLayout")
+	contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	contentLayout.Padding = UDim.new(0, 10)
+	contentLayout.Parent = content
+
+	local columnLabelsRow = Instance.new("Frame")
+	columnLabelsRow.Size = UDim2.new(1, 0, 0, 20)
+	columnLabelsRow.BackgroundTransparency = 1
+	columnLabelsRow.LayoutOrder = 1
+	columnLabelsRow.Parent = content
+
+	local myColumnLabel = Theme.Label(columnLabelsRow, UDim2.new(0.5, -4, 1, 0), "Your Offer")
+	myColumnLabel.Position = UDim2.new(0, 0, 0, 0)
 	myColumnLabel.TextColor3 = Theme.Colors.Accent
 
-	local theirColumnLabel = Theme.Label(panel, UDim2.new(0.5, -24, 0, 20), "")
-	theirColumnLabel.Position = UDim2.new(0.5, 8, 0, 50)
+	local theirColumnLabel = Theme.Label(columnLabelsRow, UDim2.new(0.5, -4, 1, 0), "")
+	theirColumnLabel.Position = UDim2.new(0.5, 4, 0, 0)
 	theirColumnLabel.TextColor3 = Theme.Colors.Accent
 
 	-- Grid of square-ish cards (image on top, name below), not a list of
 	-- full-width rows -- fits more items visibly at once now that each one
 	-- needs room for a real image instead of just a line of text.
 	local CARD_SIZE = UDim2.new(0, 92, 0, 108)
+	local LIST_HEIGHT = 220
+
+	local listsRow = Instance.new("Frame")
+	listsRow.Size = UDim2.new(1, 0, 0, LIST_HEIGHT)
+	listsRow.BackgroundTransparency = 1
+	listsRow.LayoutOrder = 2
+	listsRow.Parent = content
 
 	local function createList(x: UDim2)
 		local list = Instance.new("ScrollingFrame")
-		list.Size = UDim2.new(0.5, -24, 0, 220)
+		list.Size = UDim2.new(0.5, -4, 1, 0)
 		list.Position = x
 		list.BackgroundColor3 = Theme.Colors.Surface
 		list.BackgroundTransparency = 0
@@ -224,7 +263,7 @@ function TradePanel.Create(screenGui: ScreenGui, remotes: Folder)
 		list.AutomaticCanvasSize = Enum.AutomaticSize.Y
 		list.ScrollBarThickness = 6
 		list.ScrollBarImageColor3 = Theme.Colors.Accent
-		list.Parent = panel
+		list.Parent = listsRow
 		Theme.Round(list, UDim.new(0, 8))
 
 		local padding = Instance.new("UIPadding")
@@ -242,8 +281,8 @@ function TradePanel.Create(screenGui: ScreenGui, remotes: Folder)
 		return list
 	end
 
-	local myList = createList(UDim2.new(0, 16, 0, 74))
-	local theirList = createList(UDim2.new(0.5, 8, 0, 74))
+	local myList = createList(UDim2.new(0, 0, 0, 0))
+	local theirList = createList(UDim2.new(0.5, 4, 0, 0))
 
 	-- Persistent checkmark over Your Offer -- shown the moment you press
 	-- Confirm, and stays up (not a fading animation) for as long as the
@@ -258,7 +297,7 @@ function TradePanel.Create(screenGui: ScreenGui, remotes: Folder)
 	myConfirmedBadge.BorderSizePixel = 0
 	myConfirmedBadge.Visible = false
 	myConfirmedBadge.ZIndex = 12
-	myConfirmedBadge.Parent = panel
+	myConfirmedBadge.Parent = listsRow
 	Theme.Round(myConfirmedBadge, UDim.new(0, 8))
 
 	local myConfirmedCheckmark = Instance.new("TextLabel")
@@ -284,7 +323,7 @@ function TradePanel.Create(screenGui: ScreenGui, remotes: Folder)
 	theirConfirmedBadge.BorderSizePixel = 0
 	theirConfirmedBadge.Visible = false
 	theirConfirmedBadge.ZIndex = 12
-	theirConfirmedBadge.Parent = panel
+	theirConfirmedBadge.Parent = listsRow
 	Theme.Round(theirConfirmedBadge, UDim.new(0, 8))
 
 	local theirConfirmedCheckmark = Instance.new("TextLabel")
@@ -300,13 +339,19 @@ function TradePanel.Create(screenGui: ScreenGui, remotes: Folder)
 	theirConfirmedCheckmark.ZIndex = 13
 	theirConfirmedCheckmark.Parent = theirConfirmedBadge
 
+	local cashRow = Instance.new("Frame")
+	cashRow.Size = UDim2.new(1, 0, 0, 32)
+	cashRow.BackgroundTransparency = 1
+	cashRow.LayoutOrder = 3
+	cashRow.Parent = content
+
 	-- One cash box under EACH column, matching styling (same size/shape,
 	-- Surface background, no green floating text) -- yours (left) is
 	-- editable, theirs (right) is a read-only display of the same shape,
 	-- not a differently-styled label.
 	local myCashBox = Instance.new("TextBox")
-	myCashBox.Size = UDim2.new(0.5, -24, 0, 32)
-	myCashBox.Position = UDim2.new(0, 16, 0, 300)
+	myCashBox.Size = UDim2.new(0.5, -4, 1, 0)
+	myCashBox.Position = UDim2.new(0, 0, 0, 0)
 	myCashBox.BackgroundColor3 = Theme.Colors.Surface
 	myCashBox.BorderSizePixel = 0
 	myCashBox.Text = "0"
@@ -315,15 +360,15 @@ function TradePanel.Create(screenGui: ScreenGui, remotes: Folder)
 	myCashBox.Font = Theme.Fonts.Body
 	myCashBox.TextScaled = true
 	myCashBox.ClearTextOnFocus = false
-	myCashBox.Parent = panel
+	myCashBox.Parent = cashRow
 	Theme.Round(myCashBox, UDim.new(0, 8))
 
 	local theirCashBox = Instance.new("Frame")
-	theirCashBox.Size = UDim2.new(0.5, -24, 0, 32)
-	theirCashBox.Position = UDim2.new(0.5, 8, 0, 300)
+	theirCashBox.Size = UDim2.new(0.5, -4, 1, 0)
+	theirCashBox.Position = UDim2.new(0.5, 4, 0, 0)
 	theirCashBox.BackgroundColor3 = Theme.Colors.Surface
 	theirCashBox.BorderSizePixel = 0
-	theirCashBox.Parent = panel
+	theirCashBox.Parent = cashRow
 	Theme.Round(theirCashBox, UDim.new(0, 8))
 
 	local theirCashLabel = Instance.new("TextLabel")
@@ -336,8 +381,14 @@ function TradePanel.Create(screenGui: ScreenGui, remotes: Folder)
 	theirCashLabel.TextColor3 = Theme.Colors.TextPrimary
 	theirCashLabel.Parent = theirCashBox
 
-	local confirmButton = Theme.Button(panel, UDim2.new(0.5, -20, 0, 40), UDim2.new(0, 16, 1, -50), "Confirm", true)
-	local declineButton = Theme.Button(panel, UDim2.new(0.5, -20, 0, 40), UDim2.new(0.5, 4, 1, -50), "Decline")
+	local buttonsRow = Instance.new("Frame")
+	buttonsRow.Size = UDim2.new(1, 0, 0, 40)
+	buttonsRow.BackgroundTransparency = 1
+	buttonsRow.LayoutOrder = 4
+	buttonsRow.Parent = content
+
+	local confirmButton = Theme.Button(buttonsRow, UDim2.new(0.5, -4, 1, 0), UDim2.new(0, 0, 0, 0), "Confirm", true)
+	local declineButton = Theme.Button(buttonsRow, UDim2.new(0.5, -4, 1, 0), UDim2.new(0.5, 4, 0, 0), "Decline")
 	declineButton.BackgroundColor3 = Theme.Colors.Danger
 	declineButton.Activated:Connect(function()
 		cancelTrade:FireServer()

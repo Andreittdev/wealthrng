@@ -14,6 +14,7 @@ local TitleConfig = require(ReplicatedStorage.Modules.TitleConfig)
 local IncomeConfig = require(ReplicatedStorage.Modules.IncomeConfig)
 local VIPConfig = require(ReplicatedStorage.Modules.VIPConfig)
 local PotionConfig = require(ReplicatedStorage.Modules.PotionConfig)
+local IndexRewardConfig = require(ReplicatedStorage.Modules.IndexRewardConfig)
 local AssetDatabase = require(ReplicatedStorage.Modules.AssetDatabase)
 local InvestmentDatabase = require(ReplicatedStorage.Modules.InvestmentDatabase)
 local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
@@ -125,12 +126,17 @@ function StatsManager.Recompute(player: Player)
 	-- BOTH this and SellManager's/InvestmentManager's sell bonus.
 	local friendBonusPercent = FriendBoostManager.GetBonusPercent(player)
 	local doubleCashBonusPercent = DoubleCashManager.GetBonusPercent(player)
+	-- Estates Index completion reward (IndexRewardConfig.luau) -- feeds
+	-- into BOTH this income bonusArgs and SellManager's sell bonus, same
+	-- as Double Cash above (unlike Friend Boost, which is income-only).
+	local estateIndexBonusPercent = IndexRewardConfig.GetEstateTotalBonusPercent(session.ClaimedEstateIndexTiers)
 	local bonusArgs = {
 		isVIP,
 		VIPConfig.SellBonusPercent,
 		PotionConfig.GetCashBonusPercent(session, os.time()),
 		friendBonusPercent,
 		doubleCashBonusPercent,
+		estateIndexBonusPercent,
 	}
 	local itemsIncomePerSecond = IncomeConfig.ComputeItemsRatePerSecond(session, table.unpack(bonusArgs))
 	local assetsIncomePerMinute = IncomeConfig.ComputeAssetsRatePerMinute(session, table.unpack(bonusArgs))

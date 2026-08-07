@@ -176,6 +176,25 @@ export type Session = {
 	-- ProcessReceipt), keyed by PurchaseId -- same dedup shape/reasoning as
 	-- GrantedCashPackPurchaseIds/GrantedStadiumOfferPurchaseIds.
 	GrantedCratePurchaseIds: { [string]: boolean },
+	-- Every ItemId this player has EVER obtained at least once, from a roll
+	-- OR a Crate -- true forever once set, even after selling every copy.
+	-- Backs CatalogPanel.luau's Index "unlocked" state -- deliberately NOT
+	-- derived from current Inventory/OwnedItemCounts (both of those drop
+	-- back to 0 on a full sell, which would make an already-discovered
+	-- entry look locked again, and would also wrongly re-trigger RollManager's
+	-- "New item discovered!" callout on a later re-roll of the same item).
+	DiscoveredItemIds: { [string]: boolean },
+	-- Index (CatalogPanel.luau) completion rewards -- a tier being 100%
+	-- complete only makes it CLAIMABLE (see IndexRewardManager.luau); the
+	-- Luck%/Cash Earnings% bonus itself only actually applies once the
+	-- player presses Claim, keyed by rarity/tier name here, permanent
+	-- forever once true (never re-checked against current completion
+	-- state, so it can't be lost by e.g. selling an Estate -- not that
+	-- Estates can be sold anyway). Roll and Estates are separate tables
+	-- since they're different tier schemes (RarityConfig's 6 vs Estates'
+	-- own 7) and reward different stats.
+	ClaimedRollIndexTiers: { [string]: boolean },
+	ClaimedEstateIndexTiers: { [string]: boolean },
 	LoadedOk: boolean,
 }
 
@@ -218,6 +237,9 @@ local function newDefaultSession(): Session
 		SeenTutorialHints = {},
 		CompletedOnboarding = false,
 		GrantedCratePurchaseIds = {},
+		DiscoveredItemIds = {},
+		ClaimedRollIndexTiers = {},
+		ClaimedEstateIndexTiers = {},
 		LoadedOk = true,
 	}
 end
@@ -307,6 +329,17 @@ function DataManager.Load(player: Player): Session
 				end
 			end
 
+			-- Backfill for existing saves from before this field existed --
+			-- anything CURRENTLY held is at least discovered (can't lose
+			-- discovery status a save never had the chance to record).
+			-- Doesn't retroactively mark past-sold items as discovered (no
+			-- record of those ever existed), but that's a one-time gap for
+			-- old saves only, not an ongoing issue.
+			local discoveredItemIds = data.DiscoveredItemIds or {}
+			for _, entry in inventory do
+				discoveredItemIds[entry.ItemId] = true
+			end
+
 			session = {
 				Cash = data.Cash or 0,
 				Inventory = inventory,
@@ -343,6 +376,9 @@ function DataManager.Load(player: Player): Session
 				SeenTutorialHints = data.SeenTutorialHints or {},
 				CompletedOnboarding = data.CompletedOnboarding or false,
 				GrantedCratePurchaseIds = data.GrantedCratePurchaseIds or {},
+				DiscoveredItemIds = discoveredItemIds,
+				ClaimedRollIndexTiers = data.ClaimedRollIndexTiers or {},
+				ClaimedEstateIndexTiers = data.ClaimedEstateIndexTiers or {},
 				LoadedOk = true,
 			}
 
@@ -443,6 +479,9 @@ function DataManager.Save(player: Player)
 		SeenTutorialHints = session.SeenTutorialHints,
 		CompletedOnboarding = session.CompletedOnboarding,
 		GrantedCratePurchaseIds = session.GrantedCratePurchaseIds,
+		DiscoveredItemIds = session.DiscoveredItemIds,
+		ClaimedRollIndexTiers = session.ClaimedRollIndexTiers,
+		ClaimedEstateIndexTiers = session.ClaimedEstateIndexTiers,
 	}
 
 	local ok = attempt(function()
