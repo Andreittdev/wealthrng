@@ -953,6 +953,78 @@ local function buildNextUpdateBoard(mapFolder: Folder)
 	countdownLabel.Parent = displayGui
 end
 
+-- Same standalone signboard as buildNextUpdateBoard just above (post +
+-- gold-trimmed board + 2-line SurfaceGui) -- LuckEventCountdown.luau
+-- (client) finds it by these exact names ("LuckEventBoard_Board" ->
+-- "Display" -> "CountdownLabel") and fills in/ticks the countdown to
+-- LuckEventConfig's next "X2 Luck" window, purely from the shared
+-- deterministic clock math (no remote needed, same as NextUpdateCountdown).
+local LUCK_EVENT_BOARD_POSITION = Vector2.new(0.19068337976932526, -8.80411434173584)
+
+local function buildLuckEventBoard(mapFolder: Folder)
+	local boardCF = CFrame.lookAt(Vector3.new(LUCK_EVENT_BOARD_POSITION.X, PLAZA_TOP_Y, LUCK_EVENT_BOARD_POSITION.Y), Vector3.new(0, PLAZA_TOP_Y, 0))
+		* CFrame.Angles(0, math.rad(180), 0)
+
+	local function place(name: string, size: Vector3, localOffset: Vector3, color: Color3, material: Enum.Material?): Part
+		local part = Instance.new("Part")
+		part.Name = "LuckEventBoard_" .. name
+		part.Size = size
+		part.CFrame = boardCF * CFrame.new(localOffset)
+		part.Color = color
+		part.Material = material or Enum.Material.SmoothPlastic
+		part.Anchored = true
+		part.TopSurface = Enum.SurfaceType.Smooth
+		part.BottomSurface = Enum.SurfaceType.Smooth
+		part.Parent = mapFolder
+		return part
+	end
+
+	place("Post", Vector3.new(0.6, 5, 0.6), Vector3.new(0, 2.5, 0), Color3.fromRGB(90, 60, 40), Enum.Material.Wood)
+	place("Frame", Vector3.new(6.6, 3.6, 0.5), Vector3.new(0, 6, 0.2), FOUNTAIN_GOLD, Enum.Material.Metal)
+	local board = place("Board", Vector3.new(6, 3, 0.3), Vector3.new(0, 6, 0), Color3.fromRGB(20, 20, 26), Enum.Material.SmoothPlastic)
+
+	local displayGui = Instance.new("SurfaceGui")
+	displayGui.Name = "Display"
+	displayGui.Face = Enum.NormalId.Front
+	displayGui.LightInfluence = 0
+	displayGui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	displayGui.PixelsPerStud = 100
+	displayGui.Parent = board
+
+	local displayPadding = Instance.new("UIPadding")
+	displayPadding.PaddingTop = UDim.new(0.1, 0)
+	displayPadding.PaddingBottom = UDim.new(0.1, 0)
+	displayPadding.PaddingLeft = UDim.new(0.05, 0)
+	displayPadding.PaddingRight = UDim.new(0.05, 0)
+	displayPadding.Parent = displayGui
+
+	local titleLabel = Instance.new("TextLabel")
+	titleLabel.Name = "TitleLabel"
+	titleLabel.Size = UDim2.new(1, 0, 0.4, 0)
+	titleLabel.BackgroundTransparency = 1
+	titleLabel.Font = Enum.Font.LuckiestGuy
+	titleLabel.TextScaled = true
+	titleLabel.Text = "X2 LUCK EVENT IN:"
+	titleLabel.TextColor3 = FOUNTAIN_GOLD
+	titleLabel.TextStrokeTransparency = 0
+	titleLabel.Parent = displayGui
+
+	-- Placeholder only -- LuckEventCountdown.luau overwrites this every
+	-- second with the live countdown (or "ACTIVE NOW!" while the window's
+	-- actually open).
+	local countdownLabel = Instance.new("TextLabel")
+	countdownLabel.Name = "CountdownLabel"
+	countdownLabel.Size = UDim2.new(1, 0, 0.5, 0)
+	countdownLabel.Position = UDim2.new(0, 0, 0.45, 0)
+	countdownLabel.BackgroundTransparency = 1
+	countdownLabel.Font = Enum.Font.LuckiestGuy
+	countdownLabel.TextScaled = true
+	countdownLabel.Text = "..."
+	countdownLabel.TextColor3 = Color3.new(1, 1, 1)
+	countdownLabel.TextStrokeTransparency = 0
+	countdownLabel.Parent = displayGui
+end
+
 -- Bigger than before (was 5x6) -- text on a small board has a hard physical
 -- ceiling on how large it can render no matter the font/wrap settings;
 -- growing the board itself was the actually-reliable fix after several
@@ -1872,6 +1944,7 @@ function MapBuilder.Build()
 
 	buildBattleMarker(mapFolder, BATTLE_MARKER_POSITION)
 	buildNextUpdateBoard(mapFolder)
+	buildLuckEventBoard(mapFolder)
 
 	local leaderboardClusterCF = CFrame.lookAt(Vector3.new(LEADERBOARD_CENTER.X, PLAZA_TOP_Y, LEADERBOARD_CENTER.Y), Vector3.new(0, PLAZA_TOP_Y, 0))
 	for index, labelText in LEADERBOARD_LABELS do

@@ -33,6 +33,12 @@ local statsUpdated = RemotesBootstrap:WaitForChild("StatsUpdated")
 
 local StatsManager = {}
 
+-- Fired only when a player's Title (TitleConfig threshold) actually
+-- changes, not on every Recompute -- TitleTagManager.luau listens for this
+-- to update the floating title BillboardGui above their head without
+-- polling every player on a timer.
+StatsManager.TitleChanged = Instance.new("BindableEvent")
+
 local lastStats: {
 	[Player]: {
 		Cash: number,
@@ -130,6 +136,7 @@ function StatsManager.Recompute(player: Player)
 	local assetsIncomePerMinute = IncomeConfig.ComputeAssetsRatePerMinute(session, table.unpack(bonusArgs))
 
 	local previous = lastStats[player]
+	local titleChanged = (not previous) or previous.Title ~= title
 	if
 		previous
 		and previous.Cash == session.Cash
@@ -168,6 +175,10 @@ function StatsManager.Recompute(player: Player)
 	}
 	Leaderstats.SetCash(player, session.Cash)
 	statsUpdated:FireClient(player, lastStats[player])
+
+	if titleChanged then
+		StatsManager.TitleChanged:Fire(player, title)
+	end
 end
 
 return StatsManager

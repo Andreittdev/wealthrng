@@ -206,9 +206,9 @@ local items: { [string]: Item } = {
 	DiamondStuddedJet = { Id = "DiamondStuddedJet", Name = "Diamond-Studded Jet", Rarity = "Ultra", Value = 234000, IncomePerSecond = 3510000, Image = "rbxassetid://99005604986380" },
 	PrivateSuperyacht = { Id = "PrivateSuperyacht", Name = "Private Superyacht", Rarity = "Ultra", Value = 300000, IncomePerSecond = 4500000, Image = "rbxassetid://132599504761379" },
 	GoldenSubmarine = { Id = "GoldenSubmarine", Name = "Golden Submarine", Rarity = "Ultra", Value = 318000, IncomePerSecond = 4770000, Image = "rbxassetid://99673268017035" },
-	OrbitalShuttle = { Id = "OrbitalShuttle", Name = "Orbital Shuttle", Rarity = "Ultra", Value = 390000, IncomePerSecond = 5850000, Image = "rbxassetid://103514008772036" },
-	DiamondSpaceRocket = { Id = "DiamondSpaceRocket", Name = "Diamond Space Rocket", Rarity = "Ultra", Value = 420000, IncomePerSecond = 6300000, Image = "rbxassetid://79469039857485" },
-	GoldenFighterJet = { Id = "GoldenFighterJet", Name = "Golden Fighter Jet", Rarity = "Ultra", Value = 450000, IncomePerSecond = 6750000, Image = "rbxassetid://92307710118432" },
+	OrbitalShuttle = { Id = "OrbitalShuttle", Name = "Orbital Shuttle", Rarity = "Ultra", Value = 390000, IncomePerSecond = 5000000000, Image = "rbxassetid://103514008772036" },
+	DiamondSpaceRocket = { Id = "DiamondSpaceRocket", Name = "Diamond Space Rocket", Rarity = "Ultra", Value = 420000, IncomePerSecond = 8333333333, Image = "rbxassetid://79469039857485" },
+	GoldenFighterJet = { Id = "GoldenFighterJet", Name = "Golden Fighter Jet", Rarity = "Ultra", Value = 450000, IncomePerSecond = 12500000000, Image = "rbxassetid://92307710118432" },
 
 	-- Luxury -- the true chase tier, above Ultra. Only 2 items on purpose
 	-- (see RarityConfig's header comment): a normal session shouldn't
@@ -219,8 +219,8 @@ local items: { [string]: Item } = {
 	-- these roughly on par with AssetDatabase's PrivateResort tier (~$4.68B/
 	-- min) on their own, while still leaving 2 maxed-out Assets far ahead
 	-- overall. Value itself unchanged.
-	DiamondStarCruiser = { Id = "DiamondStarCruiser", Name = "Ancient Pyramid", Rarity = "Luxury", Value = 900000, IncomePerSecond = 67500000, Image = "rbxassetid://74654052867804" },
-	CrownJewelCollection = { Id = "CrownJewelCollection", Name = "Ruby Skyscraper", Rarity = "Luxury", Value = 600000, IncomePerSecond = 45000000, Image = "rbxassetid://138288535175001" },
+	DiamondStarCruiser = { Id = "DiamondStarCruiser", Name = "Ancient Pyramid", Rarity = "Luxury", Value = 900000, IncomePerSecond = 33333333333, Image = "rbxassetid://74654052867804" },
+	CrownJewelCollection = { Id = "CrownJewelCollection", Name = "Ruby Skyscraper", Rarity = "Luxury", Value = 600000, IncomePerSecond = 25000000000, Image = "rbxassetid://138288535175001" },
 
 	-- ===== Crate-exclusive Estates (CrateConfig.luau/CrateManager.luau) =====
 	-- Exactly 4, per explicit request -- no rarity tiers/weights involved at

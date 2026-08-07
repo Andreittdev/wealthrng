@@ -112,7 +112,7 @@ function ProfilePanel.Create(screenGui: ScreenGui)
 	local itemsIncomeLabel = Theme.Label(card, UDim2.new(1, 0, 0, 22), "Items: $0/s")
 	itemsIncomeLabel.TextColor3 = Theme.Colors.TextSecondary
 
-	local assetsIncomeLabel = Theme.Label(card, UDim2.new(1, 0, 0, 22), "Assets: $0/min")
+	local assetsIncomeLabel = Theme.Label(card, UDim2.new(1, 0, 0, 22), "Estates: $0/min")
 	assetsIncomeLabel.TextColor3 = Theme.Colors.TextSecondary
 
 	local rankLabel = Theme.Label(card, UDim2.new(1, 0, 0, 22), "Rank: Bronze (0 RP)")
@@ -184,7 +184,7 @@ function ProfilePanel.Create(screenGui: ScreenGui)
 		cashLabel.Text = "Cash: " .. NumberFormat.FormatCash(stats.Cash)
 		netWorthLabel.Text = "Net Worth: " .. NumberFormat.FormatCash(stats.NetWorth)
 		itemsIncomeLabel.Text = "Items: " .. NumberFormat.FormatCash(stats.ItemsIncomePerSecond) .. "/s"
-		assetsIncomeLabel.Text = "Assets: " .. NumberFormat.FormatCash(stats.AssetsIncomePerMinute) .. "/min"
+		assetsIncomeLabel.Text = "Estates: " .. NumberFormat.FormatCash(stats.AssetsIncomePerMinute) .. "/min"
 
 		local tier = BattleRankConfig.GetTier(stats.BattleRankPoints, stats.NetWorth)
 		rankLabel.Text = string.format("Rank: %s (%d RP)", tier.Name, stats.BattleRankPoints)

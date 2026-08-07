@@ -30,7 +30,7 @@ local RemoteNames = {
 		"TradeRequestReceived", -- server -> client, payload: fromPlayer (Player)
 		"RespondTradeRequest", -- client -> server, payload: requester (Player), accepted (boolean)
 		"TradeStateUpdated", -- server -> client, payload: TradeState (see TradeManager.luau)
-		"UpdateTradeOffer", -- client -> server, payload: { AssetIds: {string}, InvestmentUids: {number}, Cash: number }
+		"UpdateTradeOffer", -- client -> server, payload: { AssetIds: {string}, ItemUids: {number}, Cash: number }
 		"ConfirmTradeOffer", -- client -> server, no payload
 		"CancelTrade", -- client -> server, no payload
 		"SetAutoSellDuplicate", -- client -> server, payload: rarity (string), enabled (boolean)
@@ -136,6 +136,11 @@ local RemoteNames = {
 		-- per Crate Developer Product purchase (CrateManager.OpenCrates, called from
 		-- CashPackManager.luau's ProcessReceipt), one entry per crate opened in that
 		-- purchase, so CrateShopPanel.luau can show a single batch reveal.
+		"LuckEventStateUpdated", -- server -> client, FireAllClients, payload: { Active: boolean,
+		-- EndsAt: number? } -- the recurring server-wide "X2 Luck" window (LuckEventConfig.luau);
+		-- same schedule for every player at once, so this is broadcast to everyone, not per-player.
+		-- Fired on every start/end transition AND once to a freshly-joined player so they don't have
+		-- to wait for the next transition to learn the current state.
 	},
 	Functions = {},
 }

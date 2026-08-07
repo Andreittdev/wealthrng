@@ -22,6 +22,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local VIPConfig = require(ReplicatedStorage.Modules.VIPConfig)
 local RollConfig = require(ReplicatedStorage.Modules.RollConfig)
 local PotionConfig = require(ReplicatedStorage.Modules.PotionConfig)
+local LuckEventConfig = require(ReplicatedStorage.Modules.LuckEventConfig)
 local UpgradeConfig = require(ReplicatedStorage.Modules.UpgradeConfig)
 local Theme = require(script.Parent.Theme)
 
@@ -96,6 +97,7 @@ function LuckSpeedHUD.Create(screenGui: ScreenGui)
 		end
 		luck *= PotionConfig.GetLuckMultiplier(potionSession, DISPLAY_RARITY, now)
 		luck *= UpgradeConfig.GetLuckMultiplier(upgrades.Luck or 0, DISPLAY_RARITY)
+		luck *= LuckEventConfig.GetLuckMultiplier(DISPLAY_RARITY, now)
 		luckValueLabel.Text = string.format("x%.2f", luck)
 
 		local cooldown = isVIP and VIPConfig.RollCooldownSeconds or RollConfig.BaseCooldownSeconds

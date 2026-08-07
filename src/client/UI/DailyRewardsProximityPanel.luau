@@ -80,7 +80,7 @@ local function describeReward(reward, day: number?): (string, string)
 		return item and item.Name or "Item", GIFT_ICON
 	elseif reward.Type == "Asset" then
 		local asset = AssetDatabase.GetAsset(reward.AssetId)
-		return asset and NumberFormat.FormatCash(asset.Price) .. " Asset" or "Asset", HOUSE_ICON
+		return asset and NumberFormat.FormatCash(asset.Price) .. " Estate" or "Estate", HOUSE_ICON
 	elseif reward.Type == "AutoRollGamepass" then
 		return "Auto Roll", BOLT_ICON
 	end

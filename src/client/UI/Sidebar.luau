@@ -13,6 +13,8 @@
 -- overlap between the two separately-anchored ones the way a single
 -- shared stack would.)
 
+local Players = game:GetService("Players")
+
 local Theme = require(script.Parent.Theme)
 
 local Sidebar = {}
@@ -23,7 +25,7 @@ local BUTTONS = {
 	{ Key = "Inventory", Text = "Inventory", Image = "rbxassetid://105522953472595" },
 	{ Key = "Trade", Text = "Trade", Image = "rbxassetid://140723733393985" },
 	{ Key = "Settings", Text = "Settings", Image = "rbxassetid://79545550325552" },
-	{ Key = "Profile", Text = "Profile", Image = "rbxassetid://139017666357301" },
+	{ Key = "Profile", Text = "Profile", Image = "" },
 }
 
 -- Caption overlaps the icon's lower portion (same treatment as
@@ -164,6 +166,50 @@ function Sidebar.Create(screenGui: ScreenGui, handles: PanelHandles, cashHudFram
 		icon.Image = buttonData.Image or ""
 		icon.ZIndex = 1
 		icon.Parent = button
+
+		-- Profile's icon is the player's own avatar headshot instead of a
+		-- static image -- fetched async (GetUserThumbnailAsync yields) so it
+		-- doesn't block building the rest of the grid, then rounded into a
+		-- circle to actually read as an avatar, not a square photo.
+		if buttonData.Key == "Profile" then
+			-- Crop instead of Fit -- Roblox's headshot thumbnail has empty
+			-- margin baked in around the face, so Fit (same as the other
+			-- icons use) left the actual face reading smaller than every
+			-- other button's icon despite the same bounding box. Crop fills
+			-- the full square/circle instead.
+			icon.ScaleType = Enum.ScaleType.Crop
+			-- Full ICON_SIZE, unchanged -- the face reads at the exact same
+			-- scale as every other button's art, not shrunk down.
+			icon.Size = UDim2.new(0, ICON_SIZE, 0, ICON_SIZE)
+			Theme.Round(icon, UDim.new(1, 0))
+
+			-- A separate clipping wrapper, shorter than the full button and
+			-- pinned to the top, is what actually hides the overflow -- the
+			-- full-size circle above still renders at full scale inside it,
+			-- only the bottom sliver (where the "PROFILE" caption sits) gets
+			-- cut away instead of the whole image being shrunk to fit.
+			local iconMask = Instance.new("Frame")
+			iconMask.Size = UDim2.new(0, ICON_SIZE, 0, ICON_SIZE - 20)
+			iconMask.Position = UDim2.new(0, 0, 0, 0)
+			iconMask.BackgroundTransparency = 1
+			iconMask.ClipsDescendants = true
+			iconMask.ZIndex = icon.ZIndex
+			iconMask.Parent = button
+			icon.Parent = iconMask
+
+			task.spawn(function()
+				local ok, content = pcall(function()
+					return Players:GetUserThumbnailAsync(
+						Players.LocalPlayer.UserId,
+						Enum.ThumbnailType.HeadShot,
+						Enum.ThumbnailSize.Size100x100
+					)
+				end)
+				if ok and content then
+					icon.Image = content
+				end
+			end)
+		end
 
 		local caption = Instance.new("TextLabel")
 		caption.Size = UDim2.new(1, 10, 0, 18)

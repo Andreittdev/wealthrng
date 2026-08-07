@@ -499,6 +499,27 @@ local function removeFromQueue(player: Player)
 	end
 end
 
+-- Server-side cooldown for BOTH battle entry points below -- neither
+-- runBattle nor runBotBattle yields on anything client-pacing-dependent
+-- (no server-side wait matching the client's ~5s spin+reveal animation),
+-- so without this a modified client could fire either remote in a tight
+-- loop for unbounded BattleRankPoints and weekly-leaderboard Points --
+-- worth real, otherwise-unobtainable Top1Estate/Top2Estate rewards. Same
+-- `os.clock()`-keyed pattern as RollManager's lastRollAt (immune to a
+-- client claiming a different cooldown than what actually elapsed).
+local lastBattleJoinAt: { [Player]: number } = {}
+local BATTLE_JOIN_COOLDOWN_SECONDS = 4
+
+local function onBattleJoinCooldown(player: Player): boolean
+	local nowClock = os.clock()
+	local last = lastBattleJoinAt[player]
+	if last and nowClock - last < BATTLE_JOIN_COOLDOWN_SECONDS then
+		return true
+	end
+	lastBattleJoinAt[player] = nowClock
+	return false
+end
+
 -- "Multiplayer" card -- a real, genuine wait for a 2nd player, no bot
 -- fallback (that's "Casual"'s job, see joinCasualBattle below). Fires
 -- battleQueueUpdated with the current queue size both times so the
@@ -508,6 +529,9 @@ joinBattleQueue.OnServerEvent:Connect(function(player: Player)
 		return
 	end
 	if not DataManager.Get(player) then
+		return
+	end
+	if onBattleJoinCooldown(player) then
 		return
 	end
 
@@ -563,12 +587,16 @@ joinCasualBattle.OnServerEvent:Connect(function(player: Player)
 	if not DataManager.Get(player) then
 		return
 	end
+	if onBattleJoinCooldown(player) then
+		return
+	end
 	runBotBattle(player)
 end)
 
 Players.PlayerRemoving:Connect(function(player)
 	removeFromQueue(player)
 	matchedPlayers[player] = nil
+	lastBattleJoinAt[player] = nil
 end)
 
 return BattleManager

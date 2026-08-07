@@ -13,11 +13,11 @@ local CashPackConfig = {}
 -- are still below it by design -- they're impulse-buy intro tiers, not
 -- meant to beat a full day's login reward.
 CashPackConfig.Packs = {
-	{ ProductId = 3612687901, RobuxPrice = 5, CashAmount = 500000 },
-	{ ProductId = 3612687969, RobuxPrice = 49, CashAmount = 3500000 },
-	{ ProductId = 3612688017, RobuxPrice = 199, CashAmount = 55000000 },
-	{ ProductId = 3612688112, RobuxPrice = 349, CashAmount = 267000000 },
-	{ ProductId = 3612688193, RobuxPrice = 999, CashAmount = 1000000000 },
+	{ ProductId = 3612687901, RobuxPrice = 5, CashAmount = 20000000000 },
+	{ ProductId = 3612687969, RobuxPrice = 49, CashAmount = 300000000000 },
+	{ ProductId = 3612688017, RobuxPrice = 199, CashAmount = 2000000000000 },
+	{ ProductId = 3612688112, RobuxPrice = 349, CashAmount = 10000000000000 },
+	{ ProductId = 3612688193, RobuxPrice = 999, CashAmount = 50000000000000 },
 }
 
 function CashPackConfig.GetPack(productId: number)

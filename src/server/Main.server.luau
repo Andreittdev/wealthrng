@@ -79,6 +79,8 @@ require(ServerScriptService.Managers.ResetUpgrades_fizzknot1)
 require(ServerScriptService.Managers.TutorialHintManager)
 require(ServerScriptService.Managers.OnboardingManager)
 require(ServerScriptService.Managers.PetManager)
+require(ServerScriptService.Managers.TitleTagManager)
+local LuckEventManager = require(ServerScriptService.Managers.LuckEventManager)
 require(ServerScriptService.Managers.StadiumOfferManager)
 
 -- Initial pushes (saved Inventory/Assets/Investments/etc.) fire TWICE, on
@@ -113,9 +115,27 @@ local function sendInitialState(player: Player)
 	DailyRewardsManager.PushState(player)
 	RollManager.PushSpecialRollState(player, session)
 	AutoClaimManager.PushState(player)
+	LuckEventManager.PushState(player)
+end
+
+-- Hides Roblox's default floating username/health nametag above every
+-- player's head -- TitleTagManager.luau replaces it with a custom tag
+-- showing the player's TitleConfig title (Millionaire/Billionaire/etc.)
+-- instead, per explicit request ("only the title, not the username").
+local function disableDefaultNameDisplay(character: Model)
+	local humanoid = character:WaitForChild("Humanoid", 10) :: Humanoid?
+	if not humanoid then
+		return
+	end
+	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
 end
 
 local function onPlayerAdded(player: Player)
+	player.CharacterAdded:Connect(disableDefaultNameDisplay)
+	if player.Character then
+		disableDefaultNameDisplay(player.Character)
+	end
+
 	DataManager.Load(player)
 	VIPManager.Load(player)
 	AutoRollManager.Load(player)

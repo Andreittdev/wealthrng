@@ -255,7 +255,7 @@ function NetWorthPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		end
 		addRow(string.format("Rolled Items: %s (%d owned)", NumberFormat.FormatCash(itemsValue), #currentInventory))
 
-		addRow("Assets", Theme.Colors.Accent, true)
+		addRow("Estates", Theme.Colors.Accent, true)
 		local anyAssetOwned = false
 		local assetsTotal = 0
 		for id, owned in ownedAssets do
@@ -275,7 +275,7 @@ function NetWorthPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		if not anyAssetOwned then
 			addRow("None yet")
 		else
-			addRow("Assets Total: " .. NumberFormat.FormatCash(assetsTotal), Color3.fromRGB(90, 160, 255))
+			addRow("Estates Total: " .. NumberFormat.FormatCash(assetsTotal), Color3.fromRGB(90, 160, 255))
 		end
 
 		addRow("Investments", Theme.Colors.Accent, true)

@@ -1,8 +1,10 @@
 -- Handles RollRequested: server-enforced cooldown, weighted rarity pick,
 -- weighted item pick within that rarity, grants the item, pushes updates.
 -- Luck/cooldown get boosted by VIP (permanent), an active Luck/Speed
--- Potion (temporary, via PotionConfig), and the Luck/Roll Speed Upgrade
--- tracks (permanent, via UpgradeConfig) -- all three stack multiplicatively.
+-- Potion (temporary, via PotionConfig), the Luck/Roll Speed Upgrade
+-- tracks (permanent, via UpgradeConfig), and the recurring server-wide
+-- "X2 Luck" event (LuckEventConfig.luau, same window for every player) --
+-- all four stack multiplicatively.
 --
 -- TryRoll/TrySpecialRoll are exposed as functions (not folded directly
 -- into the remote handlers) purely so they read as one obvious code path
@@ -20,6 +22,7 @@ local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
 local RollConfig = require(ReplicatedStorage.Modules.RollConfig)
 local VIPConfig = require(ReplicatedStorage.Modules.VIPConfig)
 local PotionConfig = require(ReplicatedStorage.Modules.PotionConfig)
+local LuckEventConfig = require(ReplicatedStorage.Modules.LuckEventConfig)
 local UpgradeConfig = require(ReplicatedStorage.Modules.UpgradeConfig)
 local LuckPassConfig = require(ReplicatedStorage.Modules.LuckPassConfig)
 local UltraLuckPassConfig = require(ReplicatedStorage.Modules.UltraLuckPassConfig)
@@ -97,6 +100,7 @@ local function pickRarity(
 			weight *= VIPConfig.LuckWeightMultiplier[rarity]
 		end
 		weight *= PotionConfig.GetLuckMultiplier(session, rarity, nowUnix)
+		weight *= LuckEventConfig.GetLuckMultiplier(rarity, nowUnix)
 		weight *= UpgradeConfig.GetLuckMultiplier(session.Upgrades.Luck or 0, rarity)
 		if ownsLuckPass then
 			weight *= LuckPassConfig.LuckWeightMultiplier[rarity]
