@@ -24,6 +24,8 @@ local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local StatsManager = require(ServerScriptService.Managers.StatsManager)
 local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManager)
+local EstateExistenceManager = require(ServerScriptService.Managers.EstateExistenceManager)
+local AssetManager = require(ServerScriptService.Managers.AssetManager)
 
 local requestStadiumOfferState = RemotesBootstrap:WaitForChild("RequestStadiumOfferState")
 local stadiumOfferStateUpdated = RemotesBootstrap:WaitForChild("StadiumOfferStateUpdated")
@@ -230,6 +232,12 @@ buyStadiumOffer.OnServerEvent:Connect(function(player: Player)
 
 	session.Cash -= price
 	session.SolStadiumOwned += 1
+	-- Also stamp OwnedAssets/a serial like every other Estate grant -- Sol
+	-- Stadium used to never set this flag at all (only the separate
+	-- SolStadiumOwned count), which silently kept it out of Inventory's
+	-- Estates list/CatalogPanel's Index entirely for every buyer.
+	session.OwnedAssets[StadiumOfferConfig.AssetId] = true
+	local serial = EstateExistenceManager.GrantSerial(player, session, StadiumOfferConfig.AssetId)
 
 	-- Charge + grant above are already final at this point -- wrapping
 	-- everything else in pcall so a rare error in any of these (a bad
@@ -238,9 +246,10 @@ buyStadiumOffer.OnServerEvent:Connect(function(player: Player)
 	-- player out of ever buying Sol Stadium with Cash again for the rest
 	-- of the session despite having already paid.
 	local notifyOk = pcall(function()
-		systemMessage:FireClient(player, string.format("Bought Sol Stadium for %s! (%d/%d Cash owned)", NumberFormat.FormatCash(price), StadiumOfferConfig.CountCashOwned(session), StadiumOfferConfig.MaxCashPurchases))
+		systemMessage:FireClient(player, serial and string.format("Bought Sol Stadium for %s! (#%d) (%d/%d Cash owned)", NumberFormat.FormatCash(price), serial, StadiumOfferConfig.CountCashOwned(session), StadiumOfferConfig.MaxCashPurchases) or string.format("Bought Sol Stadium for %s! (%d/%d Cash owned)", NumberFormat.FormatCash(price), StadiumOfferConfig.CountCashOwned(session), StadiumOfferConfig.MaxCashPurchases))
 		StatsManager.Recompute(player)
 		LeaderboardManager.MarkDirty(player)
+		AssetManager.PushUpdate(player, session)
 		-- Broadcast, not just pushStateTo(player, ...) -- the stock count is
 		-- a shared global pool, so every other player currently looking at
 		-- the popup needs to see the new remaining count too, not just the

@@ -20,6 +20,7 @@ local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
 local AssetDatabase = require(ReplicatedStorage.Modules.AssetDatabase)
 local RarityConfig = require(ReplicatedStorage.Modules.RarityConfig)
 local EstateRarityConfig = require(ReplicatedStorage.Modules.EstateRarityConfig)
+local EstateExistenceConfig = require(ReplicatedStorage.Modules.EstateExistenceConfig)
 local RollOdds = require(ReplicatedStorage.Modules.RollOdds)
 local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
 local Theme = require(script.Parent.Theme)
@@ -49,6 +50,7 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	local equipAsset = remotes:WaitForChild("EquipAsset")
 	local unequipAsset = remotes:WaitForChild("UnequipAsset")
 	local assetUpdated = remotes:WaitForChild("AssetUpdated")
+	local estateExistenceCountsUpdated = remotes:WaitForChild("EstateExistenceCountsUpdated")
 
 	local currentInventory: { { Uid: number, ItemId: string } } = {}
 	local equippedUids: { number } = {}
@@ -57,6 +59,14 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	local ownedAssetIds: { [string]: boolean } = {}
 	local equippedAssetIds: { string } = {}
 	local selectedAssetId: string? = nil
+	-- Global "X exist" counts, every Estate (EstateExistenceManager.luau) --
+	-- keyed by assetId, updated on join and again whenever any Estate is
+	-- newly granted to anyone.
+	local estateExistenceCounts: { [string]: number } = {}
+	-- THIS player's own permanent per-copy serials, keyed by assetId --
+	-- always a list, even for single-copy Estates (session.
+	-- AssetSerialNumbers, pushed alongside Owned/Equipped on AssetUpdated).
+	local mySerialNumbers: { [string]: { number } } = {}
 
 	-- "Items" or "Estates" -- which tab is currently showing in `list`/`detail`.
 	local currentTab = "Items"
@@ -241,6 +251,23 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	detailRarity.Position = UDim2.new(0, 12, 0, 228)
 	detailRarity.TextXAlignment = Enum.TextXAlignment.Center
 
+	-- THIS player's own permanent serial(s) for the selected Estate -- just
+	-- "#N" for a single copy, "#12, #47, #203" for a multi-owned one
+	-- (Top1Estate/Top2Estate/Top3Estate "Sol Stadium"). Sits ABOVE the
+	-- global "X exist" count below.
+	local detailMySerial = Theme.Label(detail, UDim2.new(1, -24, 0, 20), "")
+	detailMySerial.Position = UDim2.new(0, 12, 0, 256)
+	detailMySerial.TextXAlignment = Enum.TextXAlignment.Center
+	detailMySerial.TextColor3 = Theme.Colors.Accent
+
+	-- Estates only (renderEstateDetail) -- "X exist" global flex stat, see
+	-- EstateExistenceConfig.luau. Left empty for Roll Items (nothing
+	-- repositions around it, so leaving it blank is enough).
+	local detailExistCount = Theme.Label(detail, UDim2.new(1, -24, 0, 20), "")
+	detailExistCount.Position = UDim2.new(0, 12, 0, 278)
+	detailExistCount.TextXAlignment = Enum.TextXAlignment.Center
+	detailExistCount.TextColor3 = Theme.Colors.TextSecondary
+
 	local detailEquipButton = Theme.Button(detail, UDim2.new(1, -24, 0, 34), UDim2.new(0, 12, 1, -78), "Equip", true)
 
 	local detailSellButton = Theme.Button(detail, UDim2.new(1, -24, 0, 34), UDim2.new(0, 12, 1, -40), "Sell")
@@ -416,6 +443,8 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		detailRarity.Text = item.Rarity
 		detailRarity.TextColor3 = rarityColor
 		detailStroke.Color = isEquipped and Theme.Colors.Accent or rarityColor
+		detailExistCount.Text = ""
+		detailMySerial.Text = ""
 
 		-- Sell exists for Items, not Estates -- Equip sits higher to leave
 		-- room for it here; renderEstateDetail below moves Equip down into
@@ -447,6 +476,30 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		detailRarity.Text = asset.Rarity
 		detailRarity.TextColor3 = accentColor
 		detailStroke.Color = isEquipped and Theme.Colors.Accent or accentColor
+
+		if EstateExistenceConfig.IsTracked(asset.Id) then
+			local count = estateExistenceCounts[asset.Id] or 0
+			detailExistCount.Text = string.format("%d exist", count)
+		else
+			detailExistCount.Text = ""
+		end
+
+		-- "#N" for a single copy, "#12, #47, #203" for a multi-owned Estate
+		-- (Top1Estate/Top2Estate/Top3Estate). Pre-existing owners (from
+		-- before this system shipped) get one backfilled the moment they
+		-- next reconnect (EstateExistenceManager.BackfillOwnedAssets) --
+		-- not their true historical purchase order (no record of that ever
+		-- existed), just a permanent collector number assigned from here on.
+		local mySerials = mySerialNumbers[asset.Id]
+		if mySerials and #mySerials > 0 then
+			local parts = {}
+			for _, serial in mySerials do
+				table.insert(parts, "#" .. serial)
+			end
+			detailMySerial.Text = table.concat(parts, ", ")
+		else
+			detailMySerial.Text = ""
+		end
 
 		-- No Sell for Estates -- Equip takes over Sell's lower spot instead
 		-- of leaving an empty gap in the popup.
@@ -737,9 +790,10 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		end
 	end)
 
-	assetUpdated.OnClientEvent:Connect(function(payload: { Owned: { [string]: boolean }, Equipped: { string } })
+	assetUpdated.OnClientEvent:Connect(function(payload: { Owned: { [string]: boolean }, Equipped: { string }, SerialNumbers: { [string]: { number } }? })
 		ownedAssetIds = payload.Owned
 		equippedAssetIds = payload.Equipped
+		mySerialNumbers = payload.SerialNumbers or {}
 		if selectedAssetId and not ownedAssetIds[selectedAssetId] then
 			selectedAssetId = nil
 		end
@@ -749,6 +803,13 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 			renderDetail()
 		else
 			pendingRerender = true
+		end
+	end)
+
+	estateExistenceCountsUpdated.OnClientEvent:Connect(function(counts: { [string]: number })
+		estateExistenceCounts = counts
+		if panel.Visible and currentTab == "Estates" then
+			renderDetail()
 		end
 	end)
 

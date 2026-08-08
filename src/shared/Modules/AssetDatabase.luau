@@ -95,17 +95,35 @@ local assets: { [string]: Asset } = {
 	-- payback ratio than the tiers below (~5.5h vs ~9min) -- deliberately,
 	-- it's the prestige capstone, not an efficient buy -- just no longer
 	-- LESS absolute income than a cheaper asset, which was never intended.
-	RealEstateEmpire = { Id = "RealEstateEmpire", Name = "Real Estate Empire", Price = 100000000000000, IncomePerMinute = 1500000000000, Image = "rbxassetid://97450504269002", Rarity = "Godly" },
+	RealEstateEmpire = { Id = "RealEstateEmpire", Name = "Real Estate Empire", Price = 500000000000000, IncomePerMinute = 7000000000000, Image = "rbxassetid://97450504269002", Rarity = "Godly" },
+	-- New capstone-below-the-capstone -- Real Estate Empire's OLD stats
+	-- (Price $100T / Income $1.5T/min) before it got pushed up to $500T /
+	-- $7T/min above, kept as its own tier rather than reused so existing
+	-- owners of Real Estate Empire aren't retroactively downgraded. Image
+	-- left blank -- filled in once an asset Id comes in.
+	PrivateAirport = { Id = "PrivateAirport", Name = "Private Airport", Price = 100000000000000, IncomePerMinute = 1500000000000, Image = "rbxassetid://136313559951473", Rarity = "Godly" },
 
 	-- LARP Battles weekly Points leaderboard Top 3 reward -- never
 	-- purchasable, granted automatically (BattleLeaderboardRewardManager.
-	-- luau) at each Saturday 18:00 GMT+3 reset. Price = 1000x Income, a
+	-- luau) at each Saturday 18:10 GMT+3 reset. Price = 1000x Income, a
 	-- deliberately clean "prestige" ratio (not derived from the payback-time
 	-- pacing every purchasable tier follows) -- these exist to be flexed,
 	-- not to be efficient.
 	Top1Estate = { Id = "Top1Estate", Name = "Abra Ai Balt", Price = 150000000000000, IncomePerMinute = 150000000000, Image = "rbxassetid://79317381275203", NotPurchasable = true, Rarity = "Leaderboards" },
 	Top2Estate = { Id = "Top2Estate", Name = "Loira Chateau", Price = 90000000000000, IncomePerMinute = 90000000000, Image = "rbxassetid://121583618235564", NotPurchasable = true, Rarity = "Leaderboards" },
 	Top3Estate = { Id = "Top3Estate", Name = "Sol Stadium", Price = 10000000000000, IncomePerMinute = 500000000000, Image = "rbxassetid://97852370469373", NotPurchasable = true, Rarity = "Exclusive" },
+
+	-- LARP Battles Rank Rewards -- never purchasable, granted automatically
+	-- (RankRewardManager.luau) the moment a player's rank reaches Silver/
+	-- Gold/Platinum/Diamond (see BattleRankConfig.luau), alongside a flat
+	-- Cash reward (RankRewardConfig.luau). Same Price = 1000x Income
+	-- "prestige" ratio as Top1Estate/Top2Estate above, scaled roughly with
+	-- each rank's own MinNetWorth gate. Image left blank -- filled in as
+	-- asset IDs come in.
+	OldFarm = { Id = "OldFarm", Name = "Old Farm", Price = 500000000000, IncomePerMinute = 500000000, Image = "rbxassetid://70900608098379", NotPurchasable = true, Rarity = "Exclusive" },
+	Supermarket = { Id = "Supermarket", Name = "Supermarket", Price = 1000000000000, IncomePerMinute = 1000000000, Image = "rbxassetid://110378056920987", NotPurchasable = true, Rarity = "Exclusive" },
+	SolarPark = { Id = "SolarPark", Name = "Solar Park", Price = 10000000000000, IncomePerMinute = 10000000000, Image = "rbxassetid://92159060517720", NotPurchasable = true, Rarity = "Exclusive" },
+	ConstructionShop = { Id = "ConstructionShop", Name = "Construction Shop", Price = 500000000000000, IncomePerMinute = 500000000000, Image = "rbxassetid://136401020604131", NotPurchasable = true, Rarity = "Exclusive" },
 }
 
 function AssetDatabase.GetAsset(id: string?): Asset?

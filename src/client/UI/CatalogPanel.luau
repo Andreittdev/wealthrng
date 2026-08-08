@@ -273,6 +273,22 @@ function CatalogPanel.Create(screenGui: ScreenGui, remotes: Folder)
 						table.insert(candidates, { Id = item.Id, Image = item.Image, Unlocked = discoveredItemIds[item.Id] == true })
 					end
 				end
+				-- Any other Exclusive-tier Estate (e.g. LARP Battles Rank
+				-- Rewards' OldFarm/Supermarket/SolarPark/ConstructionShop) --
+				-- anything with this Rarity that isn't Top3Estate/a Crate item
+				-- above, sorted by Price like every other tier's own-branch below.
+				local rawExtras = {}
+				for _, asset in AssetDatabase.GetAllAssets() do
+					if asset.Rarity == tier and asset.Id ~= "Top3Estate" then
+						table.insert(rawExtras, asset)
+					end
+				end
+				table.sort(rawExtras, function(a, b)
+					return a.Price < b.Price
+				end)
+				for _, asset in rawExtras do
+					table.insert(candidates, { Id = asset.Id, Image = asset.Image, Unlocked = ownedAssetIds[asset.Id] == true })
+				end
 			else
 				local rawAssets = {}
 				for _, asset in AssetDatabase.GetAllAssets() do

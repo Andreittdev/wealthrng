@@ -22,6 +22,7 @@ local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
 local AssetDatabase = require(ReplicatedStorage.Modules.AssetDatabase)
 local RarityConfig = require(ReplicatedStorage.Modules.RarityConfig)
 local EstateRarityConfig = require(ReplicatedStorage.Modules.EstateRarityConfig)
+local RankRewardConfig = require(ReplicatedStorage.Modules.RankRewardConfig)
 
 local IndexRewardConfig = {}
 
@@ -107,6 +108,16 @@ IndexRewardConfig.EstateCompletionBonusPercent = ESTATE_COMPLETION_BONUS_PERCENT
 -- membership rule.
 local CRATE_EXCLUSIVE_ITEM_IDS = { "CrateVilla", "CrateManor", "CratePalace", "CrateCastle" }
 
+-- LARP Battles Rank Rewards' Estates (OldFarm/Supermarket/SolarPark/
+-- ConstructionShop) also fold into "Exclusive" -- read straight from
+-- RankRewardConfig.EstateReward instead of a separate hardcoded list, so a
+-- future added/removed rank reward Estate can't drift out of sync with the
+-- Index completion check below.
+local RANK_REWARD_ESTATE_IDS = {}
+for _, estateId in RankRewardConfig.EstateReward do
+	table.insert(RANK_REWARD_ESTATE_IDS, estateId)
+end
+
 -- True once the tier is CLAIMABLE (fully owned/discovered), not
 -- necessarily claimed yet. Assets are never sellable in this game --
 -- ownership (session.OwnedAssets) is already permanent, no separate
@@ -119,6 +130,11 @@ function IndexRewardConfig.IsEstateTierComplete(ownedAssetIds: { [string]: boole
 		end
 		for _, itemId in CRATE_EXCLUSIVE_ITEM_IDS do
 			if not discoveredItemIds[itemId] then
+				return false
+			end
+		end
+		for _, estateId in RANK_REWARD_ESTATE_IDS do
+			if not ownedAssetIds[estateId] then
 				return false
 			end
 		end

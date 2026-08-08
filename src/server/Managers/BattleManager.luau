@@ -33,6 +33,7 @@ local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManager)
 local StatsManager = require(ServerScriptService.Managers.StatsManager)
+local RankRewardManager = require(ServerScriptService.Managers.RankRewardManager)
 
 local joinBattleQueue = RemotesBootstrap:WaitForChild("JoinBattleQueue")
 local leaveBattleQueue = RemotesBootstrap:WaitForChild("LeaveBattleQueue")
@@ -330,6 +331,8 @@ local function runBattle(playerA: Player, playerB: Player)
 	-- winner) since a loss also costs RP.
 	sessionA.BattleRankPoints = BattleRankConfig.ApplyRPChange(sessionA.BattleRankPoints, wonA)
 	sessionB.BattleRankPoints = BattleRankConfig.ApplyRPChange(sessionB.BattleRankPoints, wonB)
+	RankRewardManager.GrantNewlyReachedRewards(playerA, sessionA)
+	RankRewardManager.GrantNewlyReachedRewards(playerB, sessionB)
 	StatsManager.Recompute(playerA)
 	StatsManager.Recompute(playerB)
 
@@ -472,6 +475,7 @@ local function runBotBattle(player: Player)
 	-- (not just on a win) since RP can change either way now, unlike the
 	-- weekly Points counter above which only ever increments on a win.
 	session.BattleRankPoints = BattleRankConfig.ApplyRPChange(session.BattleRankPoints, won)
+	RankRewardManager.GrantNewlyReachedRewards(player, session)
 	LeaderboardManager.MarkDirty(player)
 
 	-- No real bot account to read a net worth from -- fabricate one that

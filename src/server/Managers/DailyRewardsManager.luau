@@ -17,11 +17,12 @@ local InventoryManager = require(ServerScriptService.Managers.InventoryManager)
 local AutoRollManager = require(ServerScriptService.Managers.AutoRollManager)
 local StatsManager = require(ServerScriptService.Managers.StatsManager)
 local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManager)
+local EstateExistenceManager = require(ServerScriptService.Managers.EstateExistenceManager)
+local AssetManager = require(ServerScriptService.Managers.AssetManager)
 
 local claimDailyReward = RemotesBootstrap:WaitForChild("ClaimDailyReward")
 local dailyRewardStateUpdated = RemotesBootstrap:WaitForChild("DailyRewardStateUpdated")
 local inventoryUpdated = RemotesBootstrap:WaitForChild("InventoryUpdated")
-local assetUpdated = RemotesBootstrap:WaitForChild("AssetUpdated")
 local systemMessage = RemotesBootstrap:WaitForChild("SystemMessage")
 
 local DailyRewardsManager = {}
@@ -66,8 +67,17 @@ local function grantReward(player: Player, session, reward): string?
 		if not asset then
 			return nil
 		end
-		session.OwnedAssets[reward.AssetId] = true
-		assetUpdated:FireClient(player, { Owned = session.OwnedAssets, Equipped = session.EquippedAssets })
+		-- Doesn't call AssetManager.GrantAsset -- that fires its own "You
+		-- won X!" SystemMessage, which would double up with this claim's
+		-- own "Day N Reward Claimed: X!" below. Same serial-stamping
+		-- (EstateExistenceManager.luau) directly instead, plus
+		-- AssetManager.PushUpdate so InventoryPanel gets the SerialNumbers
+		-- field too, not just Owned/Equipped.
+		if not session.OwnedAssets[reward.AssetId] then
+			session.OwnedAssets[reward.AssetId] = true
+			EstateExistenceManager.GrantSerial(player, session, reward.AssetId)
+		end
+		AssetManager.PushUpdate(player, session)
 		return asset.Name
 	elseif reward.Type == "AutoRollGamepass" then
 		AutoRollManager.Grant(player)

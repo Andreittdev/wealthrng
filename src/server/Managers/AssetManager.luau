@@ -16,6 +16,7 @@ local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local StatsManager = require(ServerScriptService.Managers.StatsManager)
 local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManager)
+local EstateExistenceManager = require(ServerScriptService.Managers.EstateExistenceManager)
 
 local buyAsset = RemotesBootstrap:WaitForChild("BuyAsset")
 local equipAsset = RemotesBootstrap:WaitForChild("EquipAsset")
@@ -32,17 +33,45 @@ local AssetManager = {}
 -- listener" shape as AutoRollManager.FreeGranted).
 AssetManager.EquippedAssetsChanged = Instance.new("BindableEvent")
 
+-- Top1Estate/Top2Estate (weekly LARP Battles leaderboard reward) and
+-- Top3Estate ("Sol Stadium", the Meshy Stadium vendor) are the only Estates
+-- that can be granted to the SAME player more than once -- a repeat weekly
+-- winner, or an extra Sol Stadium purchase, gets a brand new copy (with its
+-- own serial, see EstateExistenceManager.luau) instead of the grant being a
+-- no-op. Every other Estate stays capped at 1 total, ever, per player.
+local MULTI_OWNABLE_ASSET_IDS: { [string]: boolean } = {
+	Top1Estate = true,
+	Top2Estate = true,
+	Top3Estate = true,
+}
+-- Exposed so TradeManager.luau's own ownership-validity check can allow
+-- trading one of these TO a receiver who already owns a copy, instead of
+-- treating every Estate as strictly 1-per-player like the rest.
+AssetManager.MultiOwnableAssetIds = MULTI_OWNABLE_ASSET_IDS
+
 local function pushUpdate(player: Player, session)
-	assetUpdated:FireClient(player, { Owned = session.OwnedAssets, Equipped = session.EquippedAssets })
+	assetUpdated:FireClient(player, {
+		Owned = session.OwnedAssets,
+		Equipped = session.EquippedAssets,
+		SerialNumbers = session.AssetSerialNumbers,
+	})
 end
+-- Exposed so StadiumOfferManager.luau/CashPackManager.luau (Sol Stadium's
+-- own purchase flows, which don't go through GrantAsset/buyAsset below
+-- since they have their own stock-pool/Robux-cap rules) can refresh
+-- InventoryPanel's copy of Owned/Equipped/SerialNumbers too, instead of
+-- duplicating this remote-firing shape.
+AssetManager.PushUpdate = pushUpdate
 
 -- Grants an Asset for free -- no Cash deducted, no ownership/price checks
 -- (unlike buyAsset below). Used by BattleLeaderboardRewardManager.luau to
--- hand out the LARP Battles Top 3 reward estates. Idempotent -- a no-op if
--- the player already owns it (can't happen twice for the same week, but
--- safe regardless).
+-- hand out the LARP Battles Top 3 reward estates, and RankRewardManager.luau
+-- for the Rank Rewards Estates. Idempotent for single-copy Estates (a no-op
+-- if already owned) -- MULTI_OWNABLE_ASSET_IDS above grant an additional
+-- copy instead every time.
 function AssetManager.GrantAsset(player: Player, session, assetId: string)
-	if session.OwnedAssets[assetId] then
+	local alreadyOwned = session.OwnedAssets[assetId] == true
+	if alreadyOwned and not MULTI_OWNABLE_ASSET_IDS[assetId] then
 		return
 	end
 
@@ -52,8 +81,9 @@ function AssetManager.GrantAsset(player: Player, session, assetId: string)
 	end
 
 	session.OwnedAssets[assetId] = true
+	local serial = EstateExistenceManager.GrantSerial(player, session, assetId)
 
-	systemMessage:FireClient(player, string.format("You won %s!", asset.Name))
+	systemMessage:FireClient(player, serial and string.format("You won %s! (#%d)", asset.Name, serial) or string.format("You won %s!", asset.Name))
 	pushUpdate(player, session)
 	StatsManager.Recompute(player)
 	LeaderboardManager.MarkDirty(player)
@@ -84,8 +114,9 @@ buyAsset.OnServerEvent:Connect(function(player: Player, assetId: string)
 
 	session.Cash -= asset.Price
 	session.OwnedAssets[assetId] = true
+	local serial = EstateExistenceManager.GrantSerial(player, session, assetId)
 
-	systemMessage:FireClient(player, string.format("Bought %s for %s!", asset.Name, NumberFormat.FormatCash(asset.Price)))
+	systemMessage:FireClient(player, serial and string.format("Bought %s for %s! (#%d)", asset.Name, NumberFormat.FormatCash(asset.Price), serial) or string.format("Bought %s for %s!", asset.Name, NumberFormat.FormatCash(asset.Price)))
 	pushUpdate(player, session)
 	StatsManager.Recompute(player)
 	LeaderboardManager.MarkDirty(player)

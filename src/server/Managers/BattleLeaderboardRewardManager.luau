@@ -1,7 +1,7 @@
 -- Grants LARP Battles' weekly "Most Points" leaderboard Top 3 their
 -- exclusive reward estates (AssetDatabase's Top1Estate/Top2Estate/
 -- Top3Estate) the moment a week rolls over (BattlePointsConfig.
--- GetWeekStart -- Saturday 18:00 GMT+3).
+-- GetWeekStart -- Saturday 18:10 GMT+3).
 --
 -- Cross-server safe: Roblox runs many parallel servers for the same game,
 -- so "the week just changed" needs a single shared claim (a small

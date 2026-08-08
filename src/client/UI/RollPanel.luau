@@ -742,14 +742,14 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder, onAutoRollButto
 	revealAnchor.Parent = screenGui
 	Theme.AutoScale(screenGui, revealAnchor, REVEAL_REFERENCE_WIDTH)
 
-	-- Background stays flat black for every item -- only the border
-	-- (revealStroke below) cycles to the rarity color, not the fill.
+	-- Fixed background image for every item -- only the border (revealStroke
+	-- below) cycles to the rarity color, not the fill.
 	local revealFrame = Theme.Panel(revealAnchor, REVEAL_SIZE, UDim2.new(0, 0, 0, 0))
 	revealFrame.BackgroundColor3 = Color3.new(0, 0, 0)
 	revealFrame.BackgroundTransparency = 0
 
-	-- Theme.Panel's default dark gradient would muddy the solid black
-	-- background -- drop it, keep the stroke/shadow framing.
+	-- Theme.Panel's default dark gradient would muddy the background image
+	-- underneath -- drop it, keep the stroke/shadow framing.
 	local revealGradient = revealFrame:FindFirstChildOfClass("UIGradient")
 	if revealGradient then
 		revealGradient:Destroy()
@@ -758,6 +758,15 @@ function RollPanel.Create(screenGui: ScreenGui, remotes: Folder, onAutoRollButto
 	if revealStroke then
 		revealStroke.Thickness = 6
 	end
+
+	local revealBackground = Instance.new("ImageLabel")
+	revealBackground.Size = UDim2.new(1, 0, 1, 0)
+	revealBackground.BackgroundTransparency = 1
+	revealBackground.ScaleType = Enum.ScaleType.Crop
+	revealBackground.Image = "rbxassetid://83761899284622"
+	revealBackground.ZIndex = 0
+	revealBackground.Parent = revealFrame
+	Theme.Round(revealBackground)
 
 	local revealIcon = Instance.new("ImageLabel")
 	revealIcon.Size = REVEAL_ICON_SIZE

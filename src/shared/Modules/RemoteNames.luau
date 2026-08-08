@@ -20,7 +20,10 @@ local RemoteNames = {
 		"BuyAsset", -- client -> server, payload: assetId
 		"EquipAsset", -- client -> server, payload: assetId
 		"UnequipAsset", -- client -> server, payload: assetId
-		"AssetUpdated", -- server -> client, payload: { Owned: {[assetId]: boolean}, Equipped: {assetId} }
+		"AssetUpdated", -- server -> client, payload: { Owned: {[assetId]: boolean}, Equipped: {assetId},
+		-- SerialNumbers: {[assetId]: {number}} } -- SerialNumbers is session.AssetSerialNumbers, this
+		-- player's own permanent per-copy serials (EstateExistenceManager.luau), always a list even
+		-- for single-copy Estates.
 		"BuyInvestment", -- client -> server, payload: investmentId, quantity (1/10/100 from the shop buttons)
 		"SellInvestment", -- client -> server, payload: uid, quantity (units to sell -- omit/invalid = sell all of that entry)
 		"InvestmentUpdated", -- server -> client, payload: { {Uid, Id, PurchasedAt, Quantity} }
@@ -153,6 +156,13 @@ local RemoteNames = {
 		-- Estate: {[tier]: true} } -- session.ClaimedRollIndexTiers/ClaimedEstateIndexTiers, pushed
 		-- on join and again after a successful claim. The Luck%/Cash Earnings% bonus only counts
 		-- CLAIMED tiers, not just completed ones.
+		"EstateExistenceCountsUpdated", -- server -> client, payload: {[assetId]: number} -- global
+		-- "how many exist" counts for Exclusive/Leaderboards Estates (EstateExistenceConfig.luau),
+		-- pushed on join and again whenever any tracked Estate is newly granted to anyone.
+		"GrantedRankRewardsUpdated", -- server -> client, payload: {[tierName]: true} -- session.
+		-- GrantedRankRewards, pushed on join and again after a new grant (RankRewardManager.luau).
+		-- BattlePanel.luau's Rank Rewards popup checkmark reads THIS, not a client-side recompute
+		-- of the current rank, so it only shows claimed once the server actually granted it.
 	},
 	Functions = {},
 }

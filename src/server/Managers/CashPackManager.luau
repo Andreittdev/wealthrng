@@ -32,6 +32,8 @@ local StatsManager = require(ServerScriptService.Managers.StatsManager)
 local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManager)
 local PotionManager = require(ServerScriptService.Managers.PotionManager)
 local CrateManager = require(ServerScriptService.Managers.CrateManager)
+local EstateExistenceManager = require(ServerScriptService.Managers.EstateExistenceManager)
+local AssetManager = require(ServerScriptService.Managers.AssetManager)
 
 local systemMessage = RemotesBootstrap:WaitForChild("SystemMessage")
 local stadiumOfferStateUpdated = RemotesBootstrap:WaitForChild("StadiumOfferStateUpdated")
@@ -73,10 +75,13 @@ local function processStadiumOfferPurchase(player: Player, session, purchaseId: 
 	end
 	session.GrantedStadiumOfferPurchaseIds[purchaseId] = true
 	session.SolStadiumOwned += 1
+	session.OwnedAssets[StadiumOfferConfig.AssetId] = true
+	local serial = EstateExistenceManager.GrantSerial(player, session, StadiumOfferConfig.AssetId)
 
-	systemMessage:FireClient(player, string.format("Bought Sol Stadium with Robux! (%d owned)", session.SolStadiumOwned))
+	systemMessage:FireClient(player, serial and string.format("Bought Sol Stadium with Robux! (#%d) (%d owned)", serial, session.SolStadiumOwned) or string.format("Bought Sol Stadium with Robux! (%d owned)", session.SolStadiumOwned))
 	StatsManager.Recompute(player)
 	LeaderboardManager.MarkDirty(player)
+	AssetManager.PushUpdate(player, session)
 	-- Refreshes StadiumOfferPanel.luau's own OwnedCount display if it's
 	-- open -- doesn't touch the shared stock pool/RemainingStock at all,
 	-- unlike a cash purchase (StadiumOfferManager.luau), so no broadcast

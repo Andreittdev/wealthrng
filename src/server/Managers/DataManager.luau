@@ -195,6 +195,19 @@ export type Session = {
 	-- own 7) and reward different stats.
 	ClaimedRollIndexTiers: { [string]: boolean },
 	ClaimedEstateIndexTiers: { [string]: boolean },
+	-- LARP Battles Rank Rewards (RankRewardConfig.luau) already granted to
+	-- this player, keyed by BattleRankConfig tier Name -- permanent once
+	-- true, so reaching a rank, dropping back below it on a losing streak,
+	-- and climbing back up never double-grants the Cash/Estate.
+	GrantedRankRewards: { [string]: boolean },
+	-- Permanent per-copy serial numbers (EstateExistenceManager.luau), keyed
+	-- by assetId -- always a LIST, even for Estates that can only ever be
+	-- owned once (a 1-element list), since Top1Estate/Top2Estate/Top3Estate
+	-- ("Sol Stadium") can be granted repeatedly and each grant gets its own
+	-- distinct serial appended here. Assigned once at grant time, never
+	-- recomputed -- an existing owner's serial can't change retroactively
+	-- just because the global count moved on.
+	AssetSerialNumbers: { [string]: { number } },
 	LoadedOk: boolean,
 }
 
@@ -240,6 +253,8 @@ local function newDefaultSession(): Session
 		DiscoveredItemIds = {},
 		ClaimedRollIndexTiers = {},
 		ClaimedEstateIndexTiers = {},
+		GrantedRankRewards = {},
+		AssetSerialNumbers = {},
 		LoadedOk = true,
 	}
 end
@@ -379,6 +394,8 @@ function DataManager.Load(player: Player): Session
 				DiscoveredItemIds = discoveredItemIds,
 				ClaimedRollIndexTiers = data.ClaimedRollIndexTiers or {},
 				ClaimedEstateIndexTiers = data.ClaimedEstateIndexTiers or {},
+				GrantedRankRewards = data.GrantedRankRewards or {},
+				AssetSerialNumbers = data.AssetSerialNumbers or {},
 				LoadedOk = true,
 			}
 
@@ -482,6 +499,8 @@ function DataManager.Save(player: Player)
 		DiscoveredItemIds = session.DiscoveredItemIds,
 		ClaimedRollIndexTiers = session.ClaimedRollIndexTiers,
 		ClaimedEstateIndexTiers = session.ClaimedEstateIndexTiers,
+		GrantedRankRewards = session.GrantedRankRewards,
+		AssetSerialNumbers = session.AssetSerialNumbers,
 	}
 
 	local ok = attempt(function()

@@ -26,10 +26,10 @@ BattleRankConfig.LossRP = -10
 -- explanation of why.
 local TIERS = {
 	{ Name = "Bronze", MinRP = 0, MinNetWorth = 0, Color = Color3.fromRGB(176, 110, 54) },
-	{ Name = "Silver", MinRP = 150, MinNetWorth = 500000000, Color = Color3.fromRGB(176, 176, 186) },
-	{ Name = "Gold", MinRP = 350, MinNetWorth = 5000000000, Color = Color3.fromRGB(230, 190, 60) },
-	{ Name = "Platinum", MinRP = 600, MinNetWorth = 100000000000, Color = Color3.fromRGB(100, 220, 210) },
-	{ Name = "Diamond", MinRP = 900, MinNetWorth = 1000000000000, Color = Color3.fromRGB(120, 195, 255) },
+	{ Name = "Silver", MinRP = 150, MinNetWorth = 10000000000, Color = Color3.fromRGB(176, 176, 186) },
+	{ Name = "Gold", MinRP = 350, MinNetWorth = 100000000000, Color = Color3.fromRGB(230, 190, 60) },
+	{ Name = "Platinum", MinRP = 600, MinNetWorth = 500000000000, Color = Color3.fromRGB(100, 220, 210) },
+	{ Name = "Diamond", MinRP = 900, MinNetWorth = 10000000000000, Color = Color3.fromRGB(120, 195, 255) },
 }
 BattleRankConfig.Tiers = TIERS
 

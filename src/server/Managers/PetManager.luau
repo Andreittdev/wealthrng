@@ -56,6 +56,27 @@ local BOB_SECONDS = 1.8
 
 local activePets: { [Player]: { Model } } = {}
 
+-- Imported meshes (Meshy etc.) routinely come in with Anchored = false on
+-- some/all of their parts -- MapBuilder.luau already force-anchors its own
+-- placed world props for exactly this reason ("Meshy Stadium" etc.), but
+-- pet TEMPLATES (only ever read via FindFirstChild here, never touched)
+-- never got the same treatment. Left unanchored, gravity slowly pulls the
+-- source template itself down through the map every single Play session
+-- until it crosses Workspace.FallenPartsDestroyHeight and Roblox destroys
+-- it outright -- explains a template working fine for the first N seconds
+-- then permanently vanishing (taking every future spawnPet for that
+-- assetId down with it) with no warning/error anywhere, since nothing in
+-- this codebase ever did the destroying. Anchoring is idempotent, so it's
+-- safe to just redo it on every single lookup instead of tracking "have I
+-- already fixed this one" separately.
+local function anchorTemplate(template: Model)
+	for _, descendant in template:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			descendant.Anchored = true
+		end
+	end
+end
+
 -- `source` just needs .Name/.Id -- works for both an AssetDatabase Asset and
 -- an ItemDatabase Item, so the same lookup covers equipped Assets AND an
 -- equipped Crate-exclusive Estate item.
@@ -64,20 +85,24 @@ local function findPetTemplate(source: { Name: string, Id: string }): Model?
 	if petsFolder then
 		local byName = petsFolder:FindFirstChild(source.Name)
 		if byName and byName:IsA("Model") then
+			anchorTemplate(byName)
 			return byName
 		end
 		local byId = petsFolder:FindFirstChild(source.Id)
 		if byId and byId:IsA("Model") then
+			anchorTemplate(byId)
 			return byId
 		end
 	end
 
 	local byNameWorkspace = Workspace:FindFirstChild(source.Name)
 	if byNameWorkspace and byNameWorkspace:IsA("Model") then
+		anchorTemplate(byNameWorkspace)
 		return byNameWorkspace
 	end
 	local byIdWorkspace = Workspace:FindFirstChild(source.Id)
 	if byIdWorkspace and byIdWorkspace:IsA("Model") then
+		anchorTemplate(byIdWorkspace)
 		return byIdWorkspace
 	end
 
@@ -95,10 +120,38 @@ local function clearPets(player: Player)
 	activePets[player] = nil
 end
 
-local function spawnPet(player: Player, character: Model, hrp: BasePart, source: { Name: string, Id: string }, slotIndex: number)
+-- Each spawnPet call below creates a fresh "PetSlotN" Attachment parented
+-- to the CHARACTER'S OWN HumanoidRootPart (not inside the pet model) --
+-- clearPets above only destroys the pet models themselves, so those HRP
+-- attachments were never actually cleaned up, silently piling up on every
+-- single equip/unequip toggle for as long as the character stuck around.
+-- Harmless on its own (AlignPosition/AlignOrientation reference the exact
+-- new Attachment INSTANCE, not a name lookup, so a stale duplicate can't
+-- accidentally get grabbed instead) but still a real leak -- wipe any
+-- leftover ones before rebuilding so the count never grows unbounded.
+local function clearHrpAttachments(hrp: BasePart)
+	for _, child in hrp:GetChildren() do
+		if child:IsA("Attachment") and string.match(child.Name, "^PetSlot%d+$") then
+			child:Destroy()
+		end
+	end
+end
+
+-- Warns ONCE per missing assetId (not every single equip/respawn, which
+-- would otherwise spam the Output every time refreshPets reruns) so it's
+-- easy to spot in Studio exactly which Estates/Items still need a model
+-- placed/named correctly in ReplicatedStorage.PetModels or Workspace,
+-- instead of the pet just silently never showing up with no clue why.
+local warnedMissingTemplates: { [string]: boolean } = {}
+
+local function spawnPet(player: Player, character: Model, hrp: BasePart, source: { Name: string, Id: string }, slotIndex: number): boolean
 	local template = findPetTemplate(source)
 	if not template then
-		return
+		if not warnedMissingTemplates[source.Id] then
+			warnedMissingTemplates[source.Id] = true
+			warn(string.format("[PetManager] No pet model found for '%s' (Id: %s) -- expected a Model named '%s' or '%s' in ReplicatedStorage.PetModels or Workspace.", source.Name, source.Id, source.Name, source.Id))
+		end
+		return false
 	end
 
 	local pet = template:Clone()
@@ -192,6 +245,7 @@ local function spawnPet(player: Player, character: Model, hrp: BasePart, source:
 		activePets[player] = pets
 	end
 	table.insert(pets, pet)
+	return true
 end
 
 -- If an equip/unequip races the character not being fully loaded yet
@@ -203,7 +257,19 @@ end
 local REFRESH_RETRY_SECONDS = 0.5
 local REFRESH_MAX_WAIT_SECONDS = 10
 
+-- Bumped at the START of every refreshPets call (including ones triggered
+-- by an unequip immediately followed by an equip, e.g. swapping which 2
+-- Estates are equipped) -- a retry loop spawned by an OLDER call checks
+-- this before acting on its wakeup, so a stale in-flight retry can never
+-- fire refreshPets again AFTER a newer call has already rebuilt the
+-- pets/attachments, which would otherwise risk two overlapping rebuilds
+-- stepping on each other's HRP attachments/pet list.
+local latestRefreshGeneration: { [Player]: number } = {}
+
 local function refreshPets(player: Player)
+	local myGeneration = (latestRefreshGeneration[player] or 0) + 1
+	latestRefreshGeneration[player] = myGeneration
+
 	local character = player.Character
 	local hrp = character and (character:FindFirstChild("HumanoidRootPart") :: BasePart?)
 	if not character or not hrp then
@@ -212,6 +278,9 @@ local function refreshPets(player: Player)
 			while waited < REFRESH_MAX_WAIT_SECONDS do
 				task.wait(REFRESH_RETRY_SECONDS)
 				waited += REFRESH_RETRY_SECONDS
+				if latestRefreshGeneration[player] ~= myGeneration then
+					return
+				end
 				local retryCharacter = player.Character
 				if retryCharacter and retryCharacter:FindFirstChild("HumanoidRootPart") then
 					refreshPets(player)
@@ -223,9 +292,33 @@ local function refreshPets(player: Player)
 	end
 
 	clearPets(player)
+	clearHrpAttachments(hrp)
 
+	-- Same race as the character-not-ready retry above, different cause:
+	-- PetManager's own PlayerAdded/CharacterAdded listeners are wired
+	-- independently of Main.server.luau's DataManager.Load(player) call, so
+	-- the Character can already exist (passing the check above) while this
+	-- player's session hasn't finished its own DataStore round-trip yet.
+	-- EquippedAssetsChanged/EquippedItemChanged only fire on a CHANGE, not
+	-- on initial load, so without a retry here, a player who reconnects
+	-- with Estates already equipped from last time would silently get NO
+	-- pets at all until they manually re-equip something.
 	local session = DataManager.Get(player)
 	if not session then
+		task.spawn(function()
+			local waited = 0
+			while waited < REFRESH_MAX_WAIT_SECONDS do
+				task.wait(REFRESH_RETRY_SECONDS)
+				waited += REFRESH_RETRY_SECONDS
+				if latestRefreshGeneration[player] ~= myGeneration then
+					return
+				end
+				if DataManager.Get(player) then
+					refreshPets(player)
+					return
+				end
+			end
+		end)
 		return
 	end
 
@@ -276,6 +369,7 @@ end
 
 Players.PlayerRemoving:Connect(function(player: Player)
 	activePets[player] = nil
+	latestRefreshGeneration[player] = nil
 end)
 
 return PetManager

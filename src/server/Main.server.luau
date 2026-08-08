@@ -31,7 +31,6 @@ require(ServerScriptService.MapBuilder).Build()
 
 local inventoryUpdated = remotesFolder:WaitForChild("InventoryUpdated")
 local equippedItemsUpdated = remotesFolder:WaitForChild("EquippedItemsUpdated")
-local assetUpdated = remotesFolder:WaitForChild("AssetUpdated")
 local investmentUpdated = remotesFolder:WaitForChild("InvestmentUpdated")
 local potionUpdated = remotesFolder:WaitForChild("PotionUpdated")
 local autoSellDuplicatesUpdated = remotesFolder:WaitForChild("AutoSellDuplicatesUpdated")
@@ -61,7 +60,7 @@ local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManag
 require(ServerScriptService.Managers.IncomeManager)
 local RollManager = require(ServerScriptService.Managers.RollManager)
 require(ServerScriptService.Managers.SellManager)
-require(ServerScriptService.Managers.AssetManager)
+local AssetManager = require(ServerScriptService.Managers.AssetManager)
 require(ServerScriptService.Managers.InvestmentManager)
 require(ServerScriptService.Managers.PotionManager)
 require(ServerScriptService.Managers.CrateManager)
@@ -84,6 +83,8 @@ require(ServerScriptService.Managers.TitleTagManager)
 local LuckEventManager = require(ServerScriptService.Managers.LuckEventManager)
 local IndexRewardManager = require(ServerScriptService.Managers.IndexRewardManager)
 require(ServerScriptService.Managers.StadiumOfferManager)
+local EstateExistenceManager = require(ServerScriptService.Managers.EstateExistenceManager)
+local RankRewardManager = require(ServerScriptService.Managers.RankRewardManager)
 
 -- Initial pushes (saved Inventory/Assets/Investments/etc.) fire TWICE, on
 -- purpose: once immediately after DataManager.Load (the old behavior --
@@ -105,7 +106,7 @@ local function sendInitialState(player: Player)
 
 	inventoryUpdated:FireClient(player, session.Inventory)
 	equippedItemsUpdated:FireClient(player, session.EquippedItemUids)
-	assetUpdated:FireClient(player, { Owned = session.OwnedAssets, Equipped = session.EquippedAssets })
+	AssetManager.PushUpdate(player, session)
 	investmentUpdated:FireClient(player, session.Investments)
 	potionUpdated:FireClient(player, session.ActivePotions)
 	autoSellDuplicatesUpdated:FireClient(player, session.AutoSellDuplicates)
@@ -120,6 +121,8 @@ local function sendInitialState(player: Player)
 	AutoClaimManager.PushState(player)
 	LuckEventManager.PushState(player)
 	IndexRewardManager.PushState(player, session)
+	EstateExistenceManager.PushState(player)
+	RankRewardManager.PushState(player, session)
 end
 
 -- Hides Roblox's default floating username/health nametag above every
@@ -140,7 +143,14 @@ local function onPlayerAdded(player: Player)
 		disableDefaultNameDisplay(player.Character)
 	end
 
-	DataManager.Load(player)
+	local session = DataManager.Load(player)
+	-- Backgrounded -- this can issue several yielding, retrying DataStore
+	-- calls (one per owned Estate missing a serial), which would otherwise
+	-- stall the rest of this player's own join sequence (VIPManager/
+	-- AutoRollManager/... Load, sendInitialState) behind it. Nothing in the
+	-- immediate join path depends on AssetSerialNumbers/OwnedAssets
+	-- ["Top3Estate"] being caught up right this instant.
+	task.spawn(EstateExistenceManager.BackfillOwnedAssets, player, session)
 	VIPManager.Load(player)
 	AutoRollManager.Load(player)
 	AutoClaimManager.Load(player)

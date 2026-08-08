@@ -29,6 +29,7 @@ local AssetDatabase = require(ReplicatedStorage.Modules.AssetDatabase)
 local InvestmentDatabase = require(ReplicatedStorage.Modules.InvestmentDatabase)
 local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
 local BattleRankConfig = require(ReplicatedStorage.Modules.BattleRankConfig)
+local RankRewardConfig = require(ReplicatedStorage.Modules.RankRewardConfig)
 local Theme = require(script.Parent.Theme)
 local ProximityWatcher = require(script.Parent.ProximityWatcher)
 
@@ -104,6 +105,7 @@ function BattlePanel.Init(setBattleZoneActive: ((boolean) -> ())?)
 	local joinCasualBattle = remotes:WaitForChild("JoinCasualBattle")
 	local battleResult = remotes:WaitForChild("BattleResult")
 	local statsUpdated = remotes:WaitForChild("StatsUpdated")
+	local grantedRankRewardsUpdated = remotes:WaitForChild("GrantedRankRewardsUpdated")
 
 	local screenGui = Instance.new("ScreenGui")
 	screenGui.Name = "WealthRNG_Battle"
@@ -117,6 +119,16 @@ function BattlePanel.Init(setBattleZoneActive: ((boolean) -> ())?)
 	-- standing in range -- the Heartbeat distance loop otherwise fights any
 	-- manual .Visible change every frame (see the loop near the bottom).
 	local suppressMenu = false
+	-- Real server state (session.GrantedRankRewards, RankRewardManager.luau)
+	-- -- NOT derived from the current rank client-side, since reaching a
+	-- rank (via StatsUpdated) and the server actually GRANTING that rank's
+	-- reward are two different moments (granting only runs from
+	-- BattleManager.luau's battle-resolution paths, so e.g. crossing a
+	-- NetWorth gate by buying an Estate reaches the rank immediately but
+	-- doesn't grant until the next battle). The Rank Rewards popup's
+	-- checkmark reads this so it can never show "claimed" before the
+	-- reward was actually handed out.
+	local grantedRankRewards: { [string]: boolean } = {}
 
 	-- ===== Zone menu -- Casual / Multiplayer / Rewards =====
 	-- Centered on screen (not top-anchored) -- MainUI now hides the
@@ -231,9 +243,7 @@ function BattlePanel.Init(setBattleZoneActive: ((boolean) -> ())?)
 	local casualCard = createCard(0, Color3.fromRGB(70, 170, 60), "Casual", "Find match!", "rbxassetid://107483731160801")
 	local multiplayerCard, multiplayerSubtitle =
 		createCard(172, Color3.fromRGB(150, 30, 30), "Multiplayer", "Find match!", "rbxassetid://72513267071394")
-	local rewardsCard = createCard(344, Color3.fromRGB(110, 60, 190), "Rewards", "Coming soon!", "rbxassetid://131878032004946")
-	-- Not wired to anything yet -- visual placeholder only, per request.
-	rewardsCard.AutoButtonColor = false
+	local rewardsCard = createCard(344, Color3.fromRGB(110, 60, 190), "Rewards", "", "rbxassetid://131878032004946")
 
 	statsUpdated.OnClientEvent:Connect(function(stats: { BattleRankPoints: number, NetWorth: number })
 		local tier = BattleRankConfig.GetTier(stats.BattleRankPoints, stats.NetWorth)
@@ -280,6 +290,246 @@ function BattlePanel.Init(setBattleZoneActive: ((boolean) -> ())?)
 		else
 			joinBattleQueue:FireServer()
 		end
+	end)
+
+	-- ===== Rank Rewards popup -- one row per BattleRankConfig tier, laid
+	-- out like a reference "battle pass tier list" (icon | "Reach X+ RP to
+	-- unlock:" | reward box), Cash-only reward for now. Rewards are
+	-- automatic (no Claim button, unlike Index Rewards) -- this popup is
+	-- purely informational, showing what each rank is worth and which ones
+	-- the player has already reached (green check) via the same
+	-- StatsUpdated push the rank label above already uses. =====
+	local rewardsPopup = Instance.new("Frame")
+	rewardsPopup.Size = UDim2.new(0, 460, 0, 480)
+	rewardsPopup.AnchorPoint = Vector2.new(0.5, 0.5)
+	rewardsPopup.Position = UDim2.new(0.5, 0, 0.5, 0)
+	rewardsPopup.BackgroundColor3 = Theme.Colors.Panel
+	rewardsPopup.BorderSizePixel = 0
+	rewardsPopup.Visible = false
+	rewardsPopup.ZIndex = 20
+	rewardsPopup.Parent = screenGui
+	Theme.Round(rewardsPopup)
+	local rewardsPopupStroke = Theme.Stroke(rewardsPopup, Color3.fromRGB(110, 60, 190), 1.5)
+	rewardsPopupStroke.Transparency = 0
+	Theme.AutoScale(screenGui, rewardsPopup, 460, 0.5)
+
+	local rewardsTitle = Theme.Label(rewardsPopup, UDim2.new(1, -24, 0, 26), "RANK REWARDS", true)
+	rewardsTitle.Position = UDim2.new(0, 12, 0, 10)
+	rewardsTitle.TextXAlignment = Enum.TextXAlignment.Center
+	rewardsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+	local rewardsList = Instance.new("ScrollingFrame")
+	rewardsList.Size = UDim2.new(1, -24, 1, -90)
+	rewardsList.Position = UDim2.new(0, 12, 0, 44)
+	rewardsList.BackgroundTransparency = 1
+	rewardsList.BorderSizePixel = 0
+	rewardsList.CanvasSize = UDim2.new(0, 0, 0, 0)
+	rewardsList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	rewardsList.ScrollBarThickness = 6
+	rewardsList.ScrollBarImageColor3 = Theme.Colors.Accent
+	rewardsList.Parent = rewardsPopup
+
+	local rewardsListLayout = Instance.new("UIListLayout")
+	rewardsListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	rewardsListLayout.Padding = UDim.new(0, 10)
+	rewardsListLayout.Parent = rewardsList
+
+	local rewardCheckmarks: { [string]: Frame } = {}
+
+	-- Per-tier icon image, keyed by tier Name -- falls back to the plain
+	-- colored box + tier name text (below) for any tier without one set yet.
+	local TIER_ICON_IMAGES: { [string]: string } = {
+		Bronze = "rbxassetid://102620866348164",
+		Silver = "rbxassetid://100796367184427",
+		Gold = "rbxassetid://103827496588096",
+		Platinum = "rbxassetid://108307003173270",
+		Diamond = "rbxassetid://122751868060671",
+	}
+
+	-- Per-tier ROW background image, keyed by tier Name -- replaces the
+	-- plain Surface-colored row fill for any tier with one set. Falls back
+	-- to the flat color for any tier without one yet.
+	local TIER_ROW_BACKGROUND_IMAGES: { [string]: string } = {
+		Bronze = "rbxassetid://107086044394226",
+		Silver = "rbxassetid://109537877558754",
+		Gold = "rbxassetid://102665024282196",
+		Platinum = "rbxassetid://121878572614433",
+		Diamond = "rbxassetid://121729683002144",
+	}
+
+	for i, tier in BattleRankConfig.Tiers do
+		local row = Instance.new("Frame")
+		row.Size = UDim2.new(1, 0, 0, 84)
+		row.BackgroundColor3 = Theme.Colors.Surface
+		row.BorderSizePixel = 0
+		row.ClipsDescendants = true
+		row.LayoutOrder = i
+		row.Parent = rewardsList
+		Theme.Round(row, UDim.new(0, 10))
+		local rowStroke = Theme.Stroke(row, tier.Color, 2)
+		rowStroke.Transparency = 0
+
+		local rowBackgroundImage = TIER_ROW_BACKGROUND_IMAGES[tier.Name]
+		if rowBackgroundImage then
+			local rowBackground = Instance.new("ImageLabel")
+			rowBackground.Size = UDim2.new(1, 0, 1, 0)
+			rowBackground.BackgroundTransparency = 1
+			rowBackground.ScaleType = Enum.ScaleType.Crop
+			rowBackground.Image = rowBackgroundImage
+			rowBackground.ZIndex = 0
+			rowBackground.Parent = row
+		end
+
+		local tierImage = TIER_ICON_IMAGES[tier.Name]
+
+		local icon = Instance.new("Frame")
+		icon.Size = UDim2.new(0, 70, 0, 64)
+		icon.Position = UDim2.new(0, 10, 0, 10)
+		icon.BackgroundColor3 = tier.Color
+		icon.BackgroundTransparency = tierImage and 1 or 0
+		icon.BorderSizePixel = 0
+		icon.Parent = row
+		Theme.Round(icon, UDim.new(0, 8))
+
+		if tierImage then
+			local iconImage = Instance.new("ImageLabel")
+			iconImage.Size = UDim2.new(1, -8, 1, -8)
+			iconImage.Position = UDim2.new(0, 4, 0, 4)
+			iconImage.BackgroundTransparency = 1
+			iconImage.ScaleType = Enum.ScaleType.Fit
+			iconImage.Image = tierImage
+			iconImage.Parent = icon
+		else
+			local iconLabel = Theme.Label(icon, UDim2.new(1, -6, 1, -6), tier.Name, true)
+			iconLabel.Position = UDim2.new(0, 3, 0, 3)
+			iconLabel.TextXAlignment = Enum.TextXAlignment.Center
+			iconLabel.TextColor3 = Color3.fromRGB(20, 20, 24)
+		end
+
+		-- An Estate reward (Silver+, see RankRewardConfig.EstateReward) adds
+		-- a 2nd box to the left of the Cash one -- reserve extra width in
+		-- the text column only when there's actually a 2nd box to fit.
+		local estateAssetId = RankRewardConfig.GetEstateReward(tier.Name)
+		local textColumnWidth = estateAssetId and -318 or -280
+
+		local unlockLabel = Theme.Label(row, UDim2.new(1, textColumnWidth, 0, 30), string.format("Reach %d+ RP to unlock:", tier.MinRP), true)
+		unlockLabel.Position = UDim2.new(0, 92, 0, 14)
+		unlockLabel.TextXAlignment = Enum.TextXAlignment.Left
+		unlockLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+		local rewardBox = Instance.new("Frame")
+		rewardBox.Size = UDim2.new(0, 100, 0, 64)
+		rewardBox.AnchorPoint = Vector2.new(1, 0)
+		rewardBox.Position = UDim2.new(1, -10, 0, 10)
+		rewardBox.BackgroundTransparency = 1
+		rewardBox.BorderSizePixel = 0
+		rewardBox.Parent = row
+
+		local rewardIcon = Instance.new("ImageLabel")
+		rewardIcon.Size = UDim2.new(0, 32, 0, 32)
+		rewardIcon.AnchorPoint = Vector2.new(0.5, 0)
+		rewardIcon.Position = UDim2.new(0.5, 0, 0, 6)
+		rewardIcon.BackgroundTransparency = 1
+		rewardIcon.Image = "rbxassetid://72463281853990"
+		rewardIcon.Parent = rewardBox
+
+		local rewardAmount = Theme.Label(rewardBox, UDim2.new(1, -8, 0, 20), NumberFormat.FormatCash(RankRewardConfig.GetCashReward(tier.Name)), true)
+		rewardAmount.Position = UDim2.new(0, 4, 1, -24)
+		rewardAmount.TextXAlignment = Enum.TextXAlignment.Center
+		rewardAmount.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+		if estateAssetId then
+			local estateAsset = AssetDatabase.GetAsset(estateAssetId)
+			local estateBox = Instance.new("Frame")
+			estateBox.Size = UDim2.new(0, 100, 0, 64)
+			estateBox.AnchorPoint = Vector2.new(1, 0)
+			estateBox.Position = UDim2.new(1, -116, 0, 10)
+			estateBox.BackgroundTransparency = 1
+			estateBox.BorderSizePixel = 0
+			estateBox.Parent = row
+
+			local estateIcon = Instance.new("ImageLabel")
+			estateIcon.Size = UDim2.new(0, 40, 0, 40)
+			estateIcon.AnchorPoint = Vector2.new(0.5, 0)
+			estateIcon.Position = UDim2.new(0.5, 0, 0, 0)
+			estateIcon.BackgroundTransparency = 1
+			estateIcon.ScaleType = Enum.ScaleType.Fit
+			estateIcon.Image = estateAsset and estateAsset.Image or ""
+			estateIcon.Parent = estateBox
+
+			local estateName = Theme.Label(estateBox, UDim2.new(1, -8, 0, 20), estateAsset and estateAsset.Name or "", true)
+			estateName.Position = UDim2.new(0, 4, 1, -22)
+			estateName.TextXAlignment = Enum.TextXAlignment.Center
+			estateName.TextColor3 = Color3.fromRGB(255, 255, 255)
+			local estateNameSizeConstraint = Instance.new("UITextSizeConstraint")
+			estateNameSizeConstraint.MaxTextSize = 12
+			estateNameSizeConstraint.Parent = estateName
+		end
+
+		-- Once this tier's rewards are actually granted (RankRewardManager,
+		-- automatic), the reward box(es) darken under a shadow and only a
+		-- big green checkmark shows -- no need to keep flaunting the reward
+		-- preview once you already have it, same "dim + badge on top" idiom
+		-- TradePanel.luau's confirmed badges use.
+		local claimedOverlay = Instance.new("Frame")
+		claimedOverlay.Size = UDim2.new(0, estateAssetId and 206 or 100, 0, 64)
+		claimedOverlay.AnchorPoint = Vector2.new(1, 0)
+		claimedOverlay.Position = UDim2.new(1, -10, 0, 10)
+		claimedOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
+		claimedOverlay.BackgroundTransparency = 0
+		claimedOverlay.BorderSizePixel = 0
+		claimedOverlay.Visible = false
+		claimedOverlay.ZIndex = 5
+		claimedOverlay.Parent = row
+		Theme.Round(claimedOverlay, UDim.new(0, 8))
+
+		local claimedCheckmark = Instance.new("TextLabel")
+		claimedCheckmark.Size = UDim2.new(0, 44, 0, 44)
+		claimedCheckmark.AnchorPoint = Vector2.new(0.5, 0.5)
+		claimedCheckmark.Position = UDim2.new(0.5, 0, 0.5, 0)
+		claimedCheckmark.BackgroundTransparency = 1
+		claimedCheckmark.Font = Theme.Fonts.Header
+		claimedCheckmark.Text = "\u{2714}"
+		claimedCheckmark.TextScaled = true
+		claimedCheckmark.TextColor3 = Color3.fromRGB(30, 230, 90)
+		claimedCheckmark.TextStrokeTransparency = 0
+		claimedCheckmark.ZIndex = 6
+		claimedCheckmark.Parent = claimedOverlay
+
+		rewardCheckmarks[tier.Name] = claimedOverlay
+	end
+
+	local rewardsCloseButton = Theme.Button(rewardsPopup, UDim2.new(0, 120, 0, 34), UDim2.new(0.5, -60, 1, -44), "Close")
+
+	local function refreshRewardsUnlocked()
+		for _, tier in BattleRankConfig.Tiers do
+			local overlay = rewardCheckmarks[tier.Name]
+			if overlay then
+				overlay.Visible = grantedRankRewards[tier.Name] == true
+			end
+		end
+	end
+
+	grantedRankRewardsUpdated.OnClientEvent:Connect(function(granted: { [string]: boolean })
+		grantedRankRewards = granted
+		if rewardsPopup.Visible then
+			refreshRewardsUnlocked()
+		end
+	end)
+
+	rewardsCloseButton.Activated:Connect(function()
+		rewardsPopup.Visible = false
+		suppressMenu = false
+	end)
+
+	rewardsCard.Activated:Connect(function()
+		if suppressMenu then
+			return
+		end
+		refreshRewardsUnlocked()
+		suppressMenu = true
+		menuFrame.Visible = false
+		rewardsPopup.Visible = true
 	end)
 
 	-- ===== Reveal popup =====

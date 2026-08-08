@@ -7,11 +7,15 @@
 
 local BattlePointsConfig = {}
 
--- Saturday 18:00 GMT+3 (= Saturday 15:00 UTC) of the week containing
+-- Saturday 18:10 GMT+3 (= Saturday 15:10 UTC) of the week containing
 -- `nowUtc` -- a stable, deterministic boundary every server agrees on
 -- (pure UTC math, no per-server clock/timezone drift -- GMT+3 has no DST,
--- so a flat +3 offset never drifts).
+-- so a flat +3 offset never drifts). The 10-minute offset past the top of
+-- the hour is deliberate, per explicit request -- a small buffer so every
+-- server has had time to actually roll over before anything reads "this
+-- week's" standings.
 local RESET_HOUR_UTC = 15
+local RESET_MINUTE_UTC = 10
 
 function BattlePointsConfig.GetWeekStart(nowUtc: number): number
 	local info = os.date("!*t", nowUtc)
@@ -19,9 +23,9 @@ function BattlePointsConfig.GetWeekStart(nowUtc: number): number
 	-- Saturday (0..6).
 	local daysSinceSaturday = (info.wday - 7) % 7
 	local mostRecentSaturdayMidnight = nowUtc - (info.hour * 3600 + info.min * 60 + info.sec) - daysSinceSaturday * 86400
-	local candidate = mostRecentSaturdayMidnight + RESET_HOUR_UTC * 3600
+	local candidate = mostRecentSaturdayMidnight + RESET_HOUR_UTC * 3600 + RESET_MINUTE_UTC * 60
 
-	-- If it's Saturday but still before 15:00 UTC, this week's reset
+	-- If it's Saturday but still before 15:10 UTC, this week's reset
 	-- moment hasn't happened yet -- the CURRENT period actually started at
 	-- LAST week's reset instead.
 	if candidate > nowUtc then

@@ -38,6 +38,7 @@ local DataManager = require(ServerScriptService.Managers.DataManager)
 local StatsManager = require(ServerScriptService.Managers.StatsManager)
 local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManager)
 local InventoryManager = require(ServerScriptService.Managers.InventoryManager)
+local AssetManager = require(ServerScriptService.Managers.AssetManager)
 
 local requestTrade = RemotesBootstrap:WaitForChild("RequestTrade")
 local tradeRequestReceived = RemotesBootstrap:WaitForChild("TradeRequestReceived")
@@ -46,7 +47,6 @@ local tradeStateUpdated = RemotesBootstrap:WaitForChild("TradeStateUpdated")
 local updateTradeOffer = RemotesBootstrap:WaitForChild("UpdateTradeOffer")
 local confirmTradeOffer = RemotesBootstrap:WaitForChild("ConfirmTradeOffer")
 local cancelTrade = RemotesBootstrap:WaitForChild("CancelTrade")
-local assetUpdated = RemotesBootstrap:WaitForChild("AssetUpdated")
 local inventoryUpdated = RemotesBootstrap:WaitForChild("InventoryUpdated")
 local equippedItemsUpdated = RemotesBootstrap:WaitForChild("EquippedItemsUpdated")
 local systemMessage = RemotesBootstrap:WaitForChild("SystemMessage")
@@ -180,9 +180,12 @@ local function assetsStillValid(giverSessionData, receiverSessionData, assetIds:
 		if not giverSessionData.OwnedAssets[assetId] then
 			return false
 		end
-		if receiverSessionData.OwnedAssets[assetId] then
-			-- OwnedAssets is a boolean flag, not stackable -- the receiver
-			-- can't hold a second copy of a type they already own.
+		-- OwnedAssets is a boolean flag, not stackable, for most Estates --
+		-- the receiver can't hold a second copy of a type they already own.
+		-- Top1Estate/Top2Estate/Top3Estate are the exception (see
+		-- AssetManager.MultiOwnableAssetIds) -- those CAN stack, so a
+		-- receiver already owning one is still a valid trade.
+		if receiverSessionData.OwnedAssets[assetId] and not AssetManager.MultiOwnableAssetIds[assetId] then
 			return false
 		end
 	end
@@ -205,14 +208,26 @@ local function ownsAllItems(sessionData, uids: { number }): boolean
 	return true
 end
 
-local function pullAssets(sessionData, assetIds: { string })
+-- Returns the serial number (EstateExistenceManager.luau) that traveled
+-- with each removed asset, keyed by assetId -- a traded Estate is the SAME
+-- physical copy changing hands, not a newly-minted one, so its permanent
+-- serial has to move WITH it to the receiver instead of being left behind
+-- (stale on the giver) or dropped entirely (blank on the receiver).
+local function pullAssets(sessionData, assetIds: { string }): { [string]: number? }
+	local movedSerials: { [string]: number? } = {}
 	for _, assetId in assetIds do
 		sessionData.OwnedAssets[assetId] = nil
 		local equippedIndex = table.find(sessionData.EquippedAssets, assetId)
 		if equippedIndex then
 			table.remove(sessionData.EquippedAssets, equippedIndex)
 		end
+
+		local serials = sessionData.AssetSerialNumbers[assetId]
+		if serials and #serials > 0 then
+			movedSerials[assetId] = table.remove(serials)
+		end
 	end
+	return movedSerials
 end
 
 local function executeTrade(session: TradeSession)
@@ -261,14 +276,24 @@ local function executeTrade(session: TradeSession)
 		end
 	end
 
-	pullAssets(sessionA, session.OfferA.AssetIds)
-	pullAssets(sessionB, session.OfferB.AssetIds)
+	local movedSerialsFromA = pullAssets(sessionA, session.OfferA.AssetIds)
+	local movedSerialsFromB = pullAssets(sessionB, session.OfferB.AssetIds)
 
 	for _, assetId in session.OfferA.AssetIds do
 		sessionB.OwnedAssets[assetId] = true
+		local serial = movedSerialsFromA[assetId]
+		if serial then
+			sessionB.AssetSerialNumbers[assetId] = sessionB.AssetSerialNumbers[assetId] or {}
+			table.insert(sessionB.AssetSerialNumbers[assetId], serial)
+		end
 	end
 	for _, assetId in session.OfferB.AssetIds do
 		sessionA.OwnedAssets[assetId] = true
+		local serial = movedSerialsFromB[assetId]
+		if serial then
+			sessionA.AssetSerialNumbers[assetId] = sessionA.AssetSerialNumbers[assetId] or {}
+			table.insert(sessionA.AssetSerialNumbers[assetId], serial)
+		end
 	end
 
 	for _, itemId in itemIdsFromA do
@@ -284,8 +309,8 @@ local function executeTrade(session: TradeSession)
 	activeTradeByPlayer[session.PlayerA] = nil
 	activeTradeByPlayer[session.PlayerB] = nil
 
-	assetUpdated:FireClient(session.PlayerA, { Owned = sessionA.OwnedAssets, Equipped = sessionA.EquippedAssets })
-	assetUpdated:FireClient(session.PlayerB, { Owned = sessionB.OwnedAssets, Equipped = sessionB.EquippedAssets })
+	AssetManager.PushUpdate(session.PlayerA, sessionA)
+	AssetManager.PushUpdate(session.PlayerB, sessionB)
 	inventoryUpdated:FireClient(session.PlayerA, sessionA.Inventory)
 	inventoryUpdated:FireClient(session.PlayerB, sessionB.Inventory)
 	-- A traded-away equipped item is force-unequipped by InventoryManager.
