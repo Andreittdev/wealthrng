@@ -77,6 +77,48 @@ local function anchorTemplate(template: Model)
 	end
 end
 
+-- Anchoring only on lookup (findPetTemplate below) isn't enough on its own
+-- -- a template nobody has equipped yet keeps falling completely
+-- unaddressed, and can cross Workspace.FallenPartsDestroyHeight and get
+-- destroyed BEFORE its very first lookup ever happens, taking that Estate's
+-- pet down before anyone ever sees it once. This proactively anchors every
+-- known pet template ONCE, right when the server starts, so nothing is ever
+-- left falling unattended regardless of equip order.
+local function anchorAllKnownTemplates()
+	local petsFolder = ReplicatedStorage:FindFirstChild("PetModels")
+	if petsFolder then
+		for _, child in petsFolder:GetChildren() do
+			if child:IsA("Model") then
+				anchorTemplate(child)
+			end
+		end
+	end
+
+	-- Workspace fallback -- only touches models whose name actually matches
+	-- a known Estate/Crate-exclusive Item, so this can't accidentally
+	-- anchor an unrelated loose Workspace prop that just happens to be
+	-- there for some other reason.
+	local knownNames: { [string]: boolean } = {}
+	for _, asset in AssetDatabase.GetAllAssets() do
+		knownNames[asset.Name] = true
+		knownNames[asset.Id] = true
+	end
+	for _, item in ItemDatabase.GetAllItems() do
+		if item.CrateExclusive then
+			knownNames[item.Name] = true
+			knownNames[item.Id] = true
+		end
+	end
+
+	for _, child in Workspace:GetChildren() do
+		if child:IsA("Model") and knownNames[child.Name] then
+			anchorTemplate(child)
+		end
+	end
+end
+
+anchorAllKnownTemplates()
+
 -- `source` just needs .Name/.Id -- works for both an AssetDatabase Asset and
 -- an ItemDatabase Item, so the same lookup covers equipped Assets AND an
 -- equipped Crate-exclusive Estate item.
@@ -157,6 +199,15 @@ local function spawnPet(player: Player, character: Model, hrp: BasePart, source:
 	local pet = template:Clone()
 	pet.Name = "Pet_" .. source.Id
 
+	-- Roblox's per-client content streaming can deprioritize/delay sending
+	-- a newly-created instance to weaker or slower-connected clients
+	-- (mobile especially) -- matches the reported "sometimes shows on PC,
+	-- rarely/never on phone" symptom exactly. Persistent tells the engine
+	-- this should always replicate promptly to every client regardless of
+	-- distance/priority heuristics, instead of being treated like an
+	-- ordinary streamable prop.
+	pet.ModelStreamingMode = Enum.ModelStreamingMode.Persistent
+
 	-- Anchor at the model's real bounding-box CENTER, not its native pivot
 	-- -- an imported mesh's pivot is frequently off-center (often near its
 	-- base, sometimes at the import origin), so anchoring at the pivot left
@@ -215,17 +266,23 @@ local function spawnPet(player: Player, character: Model, hrp: BasePart, source:
 	local petAttachment = Instance.new("Attachment")
 	petAttachment.Parent = anchor
 
+	-- MaxForce/MaxTorque are math.huge, not a large-but-finite number -- a
+	-- big imported mesh (many/large welded parts) can still add up to more
+	-- effective weight than a finite force can reliably out-pull, letting
+	-- gravity slowly win and sink the pet through the map over time despite
+	-- Massless being set on every part. Infinite force/torque means gravity
+	-- can never out-compete the constraint regardless of the model's size.
 	local alignPosition = Instance.new("AlignPosition")
 	alignPosition.Attachment0 = petAttachment
 	alignPosition.Attachment1 = hrpAttachment
-	alignPosition.MaxForce = 100000
+	alignPosition.MaxForce = math.huge
 	alignPosition.Responsiveness = 40
 	alignPosition.Parent = anchor
 
 	local alignOrientation = Instance.new("AlignOrientation")
 	alignOrientation.Attachment0 = petAttachment
 	alignOrientation.Attachment1 = hrpAttachment
-	alignOrientation.MaxTorque = 100000
+	alignOrientation.MaxTorque = math.huge
 	alignOrientation.Responsiveness = 20
 	alignOrientation.Parent = anchor
 
@@ -257,18 +314,30 @@ end
 local REFRESH_RETRY_SECONDS = 0.5
 local REFRESH_MAX_WAIT_SECONDS = 10
 
--- Bumped at the START of every refreshPets call (including ones triggered
--- by an unequip immediately followed by an equip, e.g. swapping which 2
--- Estates are equipped) -- a retry loop spawned by an OLDER call checks
--- this before acting on its wakeup, so a stale in-flight retry can never
--- fire refreshPets again AFTER a newer call has already rebuilt the
--- pets/attachments, which would otherwise risk two overlapping rebuilds
--- stepping on each other's HRP attachments/pet list.
+-- Rapidly spamming equip/unequip (e.g. swapping which 2 Estates are
+-- equipped, tapped several times fast) used to rebuild the pets from
+-- scratch on EVERY single toggle -- a full destroy-then-recreate burst,
+-- replicated to every client each time. On a slower/higher-latency
+-- connection (reported specifically on phone), that burst of rapid
+-- create/destroy replication can arrive out of order or get coalesced
+-- wrong client-side, leaving the pet never actually rendered even though
+-- the final server state is correct. Debouncing collapses a rapid burst
+-- of toggles into a single rebuild once the player actually stops
+-- spamming, so at most one create is ever replicated per settled state.
+local REFRESH_DEBOUNCE_SECONDS = 0.15
+
+-- Bumped at the START of every refreshPets call (including every toggle in
+-- a rapid-fire burst) -- both the debounce delay below and the character/
+-- session retry loops check this before acting on their wakeup, so a stale
+-- pending call can never fire AFTER a newer one has already taken over,
+-- which would otherwise risk overlapping rebuilds stepping on each other's
+-- HRP attachments/pet list.
 local latestRefreshGeneration: { [Player]: number } = {}
 
-local function refreshPets(player: Player)
-	local myGeneration = (latestRefreshGeneration[player] or 0) + 1
-	latestRefreshGeneration[player] = myGeneration
+local function doRefreshPets(player: Player, myGeneration: number)
+	if latestRefreshGeneration[player] ~= myGeneration then
+		return
+	end
 
 	local character = player.Character
 	local hrp = character and (character:FindFirstChild("HumanoidRootPart") :: BasePart?)
@@ -283,7 +352,7 @@ local function refreshPets(player: Player)
 				end
 				local retryCharacter = player.Character
 				if retryCharacter and retryCharacter:FindFirstChild("HumanoidRootPart") then
-					refreshPets(player)
+					doRefreshPets(player, myGeneration)
 					return
 				end
 			end
@@ -314,7 +383,7 @@ local function refreshPets(player: Player)
 					return
 				end
 				if DataManager.Get(player) then
-					refreshPets(player)
+					doRefreshPets(player, myGeneration)
 					return
 				end
 			end
@@ -340,6 +409,12 @@ local function refreshPets(player: Player)
 			spawnPet(player, character, hrp, item, 3)
 		end
 	end
+end
+
+local function refreshPets(player: Player)
+	local myGeneration = (latestRefreshGeneration[player] or 0) + 1
+	latestRefreshGeneration[player] = myGeneration
+	task.delay(REFRESH_DEBOUNCE_SECONDS, doRefreshPets, player, myGeneration)
 end
 
 AssetManager.EquippedAssetsChanged.Event:Connect(refreshPets)
