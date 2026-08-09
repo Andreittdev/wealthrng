@@ -12,6 +12,6 @@ AutoRollConfig.GamepassId = 1932550391
 -- permanently, no Robux needed. Resets if the player disconnects before it
 -- finishes (see AutoRollManager.luau) -- has to be earned in one
 -- continuous online stretch, not accumulated piecemeal across sessions.
-AutoRollConfig.FreeUnlockSeconds = 30 * 60
+AutoRollConfig.FreeUnlockSeconds = 20 * 60
 
 return AutoRollConfig

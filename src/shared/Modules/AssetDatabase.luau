@@ -72,7 +72,7 @@ AssetDatabase.MaxEquipped = 2
 -- above). RealEstateEmpire deliberately left untouched -- it's already the
 -- multi-day prestige capstone, not part of this pass.
 local assets: { [string]: Asset } = {
-	StudioApartment = { Id = "StudioApartment", Name = "Studio Apartment", Price = 30000, IncomePerMinute = 3000, Image = "rbxassetid://128312083744745", Rarity = "Common" },
+	StudioApartment = { Id = "StudioApartment", Name = "Studio Apartment", Price = 1000, IncomePerMinute = 500, Image = "rbxassetid://128312083744745", Rarity = "Common" },
 	DowntownCondo = { Id = "DowntownCondo", Name = "Downtown Condo", Price = 225000, IncomePerMinute = 180000, Image = "rbxassetid://136840210779575", Rarity = "Common" },
 	FamilyHouse = { Id = "FamilyHouse", Name = "Family House", Price = 1800000, IncomePerMinute = 1620000, Image = "rbxassetid://120133323186928", Rarity = "Rare" },
 	LuxuryTownhouse = { Id = "LuxuryTownhouse", Name = "Luxury Townhouse", Price = 15000000, IncomePerMinute = 6840000, Image = "rbxassetid://138923081012401", Rarity = "Rare" },

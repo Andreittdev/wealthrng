@@ -34,6 +34,7 @@ local DailyRewardsProximityPanel = require(script.Parent.DailyRewardsProximityPa
 local LuckyRollProximityPanel = require(script.Parent.LuckyRollProximityPanel)
 local CodesProximityPanel = require(script.Parent.CodesProximityPanel)
 local StadiumOfferPanel = require(script.Parent.StadiumOfferPanel)
+local PortalProximityPanel = require(script.Parent.PortalProximityPanel)
 local RobuxManDialogChoices = require(script.Parent.RobuxManDialogChoices)
 local NetWorthPanel = require(script.Parent.NetWorthPanel)
 local SettingsPanel = require(script.Parent.SettingsPanel)
@@ -82,6 +83,7 @@ function MainUI.Init()
 	local luckyRollProximityHandle = LuckyRollProximityPanel.Create(screenGui, remotesFolder)
 	local codesProximityHandle = CodesProximityPanel.Create(screenGui, remotesFolder)
 	local stadiumOfferHandle = StadiumOfferPanel.Create(screenGui, remotesFolder)
+	local portalProximityHandle = PortalProximityPanel.Create(screenGui)
 	RobuxManDialogChoices.Create(screenGui, remotesFolder)
 	local netWorthHandle = NetWorthPanel.Create(screenGui, remotesFolder)
 	local settingsHandle = SettingsPanel.Create(screenGui, remotesFolder)
@@ -101,9 +103,18 @@ function MainUI.Init()
 		Trade = tradeHandle,
 	}, cashHudHandle.Frame, luckSpeedHudHandle.Frame)
 
-	-- Built last -- needs the real ROLL/Inventory buttons to already exist
-	-- so it can point its Step 1/2 highlights at them.
-	OnboardingTutorial.Create(screenGui, remotesFolder, rollHandle.RollButton, sidebarHandle.InventoryButton)
+	-- Built last -- needs the real ROLL/Inventory/Upgrade buttons (and the
+	-- Upgrades panel's own internals) to already exist so it can point its
+	-- various steps' highlights at them.
+	OnboardingTutorial.Create(
+		screenGui,
+		remotesFolder,
+		rollHandle.RollButton,
+		sidebarHandle.InventoryButton,
+		rollHandle.UpgradeButton,
+		upgradesHandle,
+		inventoryHandle
+	)
 
 	local modalFrames = {
 		autoRollFreeHandle.Frame,
@@ -124,6 +135,7 @@ function MainUI.Init()
 		luckyRollProximityHandle.Frame,
 		codesProximityHandle.Frame,
 		stadiumOfferHandle.Frame,
+		portalProximityHandle.Frame,
 	}
 
 	-- inBattleZone is a 3rd independent source of "should the always-on HUD

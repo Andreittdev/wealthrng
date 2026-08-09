@@ -29,7 +29,7 @@ local ProximityWatcher = require(script.Parent.ProximityWatcher)
 
 local StadiumOfferPanel = {}
 
-local PROXIMITY_RADIUS_STUDS = 20
+local PROXIMITY_RADIUS_STUDS = 10
 local PANEL_WIDTH = 360
 local PANEL_HEIGHT = 480
 local GOLD = Color3.fromRGB(255, 205, 90)

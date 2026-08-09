@@ -252,6 +252,11 @@ function UpgradesPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		downArrowHead(rootView, centerX, BRANCH_TOP_Y, Theme.Colors.Danger)
 	end
 
+	-- Exposed on the returned handle (RollSpeed only, so far) so
+	-- OnboardingTutorial.luau can point an arrow straight at the branch
+	-- tile itself, not just the outer button that opens this whole panel.
+	local branchButtons: { [string]: TextButton } = {}
+
 	for i, trackId in UpgradeConfig.Order do
 		local info = TRACK_INFO[trackId]
 		local centerX = BRANCH_X[i]
@@ -301,6 +306,8 @@ function UpgradesPanel.Create(screenGui: ScreenGui, remotes: Folder)
 			openTrackId = trackId
 			render()
 		end)
+
+		branchButtons[trackId] = branchButton
 	end
 
 	-- ===================== TRACK VIEW: one track's level vine =====================
@@ -390,6 +397,14 @@ function UpgradesPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		effect.TextColor3 = Theme.Colors.Success
 	end
 
+	-- Fired every time buildExpandedNode below (re)creates the buy button
+	-- for a track -- OnboardingTutorial.luau uses this to keep its "buy the
+	-- first Roll Speed upgrade" arrow pointed at the CURRENT button
+	-- instance, since renderVine tears down and rebuilds the whole vine
+	-- (including this button) on every render, not just the first time the
+	-- track opens.
+	local onExpandedNodeBuilt: ((string, TextButton) -> ())? = nil
+
 	-- The ONE expanded node: the next level to buy (or the final MAXED state).
 	-- `currentLevel` is what's already owned -- the card itself always
 	-- describes the level ABOVE that (currentLevel + 1), i.e. what buying
@@ -478,6 +493,10 @@ function UpgradesPanel.Create(screenGui: ScreenGui, remotes: Folder)
 				buyUpgrade:FireServer(trackId)
 			end))
 		end
+
+		if onExpandedNodeBuilt then
+			onExpandedNodeBuilt(trackId, buyButton)
+		end
 	end
 
 	local function renderVine()
@@ -529,9 +548,17 @@ function UpgradesPanel.Create(screenGui: ScreenGui, remotes: Folder)
 
 	local handle = {}
 	handle.Frame = panel
+	handle.CloseButton = closeButton
+	handle.RollSpeedBranchButton = branchButtons.RollSpeed
 
 	function handle.Toggle()
 		panel.Visible = not panel.Visible
+	end
+
+	-- See onExpandedNodeBuilt above -- lets OnboardingTutorial.luau react
+	-- every time a track's buy button is (re)built, not just once.
+	function handle.SetExpandedNodeCallback(callback: (string, TextButton) -> ())
+		onExpandedNodeBuilt = callback
 	end
 
 	return handle

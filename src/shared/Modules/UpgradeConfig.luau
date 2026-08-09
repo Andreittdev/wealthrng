@@ -86,6 +86,12 @@ function UpgradeConfig.GetCost(trackId: string, currentLevel: number): number?
 	if not track or currentLevel >= track.MaxLevel then
 		return nil
 	end
+	-- Roll Speed's very first level is a permanent freebie, per explicit
+	-- request -- doubles as the OnboardingTutorial.luau capstone step (guide
+	-- a new player to actually buy an upgrade, with nothing stopping them).
+	if trackId == "RollSpeed" and currentLevel == 0 then
+		return 0
+	end
 	if trackId == "Luck" and currentLevel == track.MaxLevel - 1 then
 		return LUCK_MAX_LEVEL_COST
 	end

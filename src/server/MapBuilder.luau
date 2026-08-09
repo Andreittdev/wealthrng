@@ -368,6 +368,105 @@ local PLAZA_TOP_Y = PLAZA_HEIGHT / 2
 -- plaza) needs to use this instead of PLAZA_TOP_Y or it floats.
 local GROUND_TOP_Y = 0
 
+-- Purely decorative for now, per explicit request -- no teleport/warp
+-- functionality yet, just a simple standing sign so there's something to
+-- actually attach that behavior to later. X/Z are the exact spot requested
+-- (a player's own HumanoidRootPart.Position at the time), but Y is NOT used
+-- directly -- that was the player's HRP height (mid-air relative to the
+-- ground), which floated the whole sign. The sign's feet are planted on
+-- PLAZA_TOP_Y instead (the requested spot is inside the paved plaza's 50-stud
+-- radius), same as every other stand/board on the map.
+--
+-- Kept deliberately plain -- flat Base/Pillars/Frame/Board, same shape as
+-- buildLeaderboard's stands, no Neon/ForceField/PointLight/spin/particles.
+local PORTAL_POSITION = Vector3.new(-13.603830337524414, 4.1999993324279785, -43.50550079345703)
+local PORTAL_WIDTH = 6
+local PORTAL_HEIGHT = 7
+local PORTAL_DEPTH = 0.6
+local PORTAL_BASE_HEIGHT = 0.6
+local PORTAL_FRAME_MARGIN = 0.35
+local PORTAL_ACCENT = Color3.fromRGB(150, 90, 220)
+
+local function buildPortal(mapFolder: Folder)
+	-- Rotated 180 degrees per explicit request (the sign was facing the
+	-- wrong way).
+	local portalCF = CFrame.new(PORTAL_POSITION.X, PLAZA_TOP_Y, PORTAL_POSITION.Z) * CFrame.Angles(0, math.rad(180), 0)
+
+	local function place(name: string, size: Vector3, localOffset: Vector3, color: Color3, material: Enum.Material?): Part
+		local part = Instance.new("Part")
+		part.Name = "Portal_" .. name
+		part.Size = size
+		part.CFrame = portalCF * CFrame.new(localOffset)
+		part.Color = color
+		part.Material = material or Enum.Material.SmoothPlastic
+		part.Anchored = true
+		part.CanCollide = false
+		part.TopSurface = Enum.SurfaceType.Smooth
+		part.BottomSurface = Enum.SurfaceType.Smooth
+		part.Parent = mapFolder
+		return part
+	end
+
+	-- Must include PORTAL_BASE_HEIGHT (same as buildLeaderboard's
+	-- boardCenterY) -- without it, Board/Frame sit centered at local Y=0,
+	-- i.e. starting exactly at ground level and clipping down into the Base
+	-- plate and the plaza floor instead of standing on top of the base.
+	local boardCenterY = PORTAL_BASE_HEIGHT + PORTAL_HEIGHT / 2
+	local boardTopY = boardCenterY + PORTAL_HEIGHT / 2
+
+	place("Base", Vector3.new(PORTAL_WIDTH + 1, PORTAL_BASE_HEIGHT, PORTAL_DEPTH + 1), Vector3.new(0, PORTAL_BASE_HEIGHT / 2, 0), PORTAL_ACCENT, Enum.Material.Metal)
+
+	local pillarHeight = boardTopY - PORTAL_BASE_HEIGHT
+	local pillarCenterY = PORTAL_BASE_HEIGHT + pillarHeight / 2
+	local pillarX = PORTAL_WIDTH / 2 + 0.3
+	place("PillarLeft", Vector3.new(0.4, pillarHeight, 0.4), Vector3.new(-pillarX, pillarCenterY, 0), PORTAL_ACCENT, Enum.Material.Metal)
+	place("PillarRight", Vector3.new(0.4, pillarHeight, 0.4), Vector3.new(pillarX, pillarCenterY, 0), PORTAL_ACCENT, Enum.Material.Metal)
+
+	place(
+		"Frame",
+		Vector3.new(PORTAL_WIDTH + PORTAL_FRAME_MARGIN * 2, PORTAL_HEIGHT + PORTAL_FRAME_MARGIN * 2, PORTAL_DEPTH * 0.6),
+		Vector3.new(0, boardCenterY, PORTAL_DEPTH * 0.35),
+		PORTAL_ACCENT,
+		Enum.Material.Metal
+	)
+
+	local board = place("Board", Vector3.new(PORTAL_WIDTH, PORTAL_HEIGHT, PORTAL_DEPTH), Vector3.new(0, boardCenterY, 0), Color3.fromRGB(40, 25, 55), Enum.Material.SmoothPlastic)
+
+	-- Header text floats above the sign itself (not painted on the board's
+	-- face) -- a BillboardGui on a small invisible anchor part just above
+	-- the frame's top edge, always facing the camera.
+	local headerAnchor = Instance.new("Part")
+	headerAnchor.Name = "Portal_HeaderAnchor"
+	headerAnchor.Size = Vector3.new(0.1, 0.1, 0.1)
+	headerAnchor.Transparency = 1
+	headerAnchor.CFrame = portalCF * CFrame.new(0, boardTopY + PORTAL_FRAME_MARGIN + 1, 0)
+	headerAnchor.Anchored = true
+	headerAnchor.CanCollide = false
+	headerAnchor.Parent = mapFolder
+
+	local header = Instance.new("BillboardGui")
+	header.Name = "Header"
+	header.Size = UDim2.new(0, 120, 0, 24)
+	header.MaxDistance = 40
+	header.AlwaysOnTop = true
+	header.Parent = headerAnchor
+
+	local headerText = Instance.new("TextLabel")
+	headerText.Size = UDim2.new(1, 0, 1, 0)
+	headerText.BackgroundTransparency = 1
+	headerText.Font = Enum.Font.LuckiestGuy
+	headerText.Text = "ENDLESS MODE"
+	headerText.TextColor3 = Color3.fromRGB(80, 230, 235)
+	-- Cyan-on-sky-blue reads thin/washed out with no outline (unlike the
+	-- built-in ProximityPrompt text, which gets a stroke for free) -- add one
+	-- explicitly so it stays readable at distance, and AlwaysOnTop so nearby
+	-- geometry (trees, the sign frame) can't clip in front of it.
+	headerText.TextStrokeTransparency = 0
+	headerText.TextStrokeColor3 = Color3.fromRGB(10, 20, 35)
+	headerText.TextScaled = true
+	headerText.Parent = header
+end
+
 -- Built as a checkerboard grid of square tiles (not one big slab) so the
 -- grass visibly reads as squares, like the reference image, instead of a
 -- single flat plane.
@@ -2448,6 +2547,8 @@ function MapBuilder.Build()
 	stadiumOfferMarker.CanCollide = false
 	stadiumOfferMarker.Transparency = 1
 	stadiumOfferMarker.Parent = mapFolder
+
+	buildPortal(mapFolder)
 
 	print("[MapBuilder] Hub map built under Workspace.Map")
 end

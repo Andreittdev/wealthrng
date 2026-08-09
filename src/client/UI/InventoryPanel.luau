@@ -346,6 +346,7 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 
 	local handle = {}
 	handle.Frame = panel
+	handle.CloseButton = closeButton
 
 	-- Set whenever Render/equip updates arrive while the panel is closed
 	-- -- rebuilding the full item-row list (destroy + recreate one Frame
