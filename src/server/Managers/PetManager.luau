@@ -41,6 +41,7 @@ local EndlessModeConfig = require(ReplicatedStorage.Modules.EndlessModeConfig)
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local AssetManager = require(ServerScriptService.Managers.AssetManager)
 local InventoryManager = require(ServerScriptService.Managers.InventoryManager)
+local EndlessModeClaimManager = require(ServerScriptService.Managers.EndlessModeClaimManager)
 local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
 
 local placeEndlessModeEstate = RemotesBootstrap:WaitForChild("PlaceEndlessModeEstate")
@@ -72,6 +73,17 @@ local refreshPets: (Player) -> ()
 local SLOT_OFFSETS = { Vector3.new(-2, 0.5, 6), Vector3.new(2, 0.5, 6), Vector3.new(0, 0.5, 8) }
 local BOB_HEIGHT_STUDS = 1.4
 local BOB_SECONDS = 1.8
+-- Applied to a PLACED Estate -- bigger than the Hub's floating-pet scale so
+-- a planted building actually reads as a building sitting on the claimed
+-- plot, not a toy.
+local ENDLESS_MODE_PET_SCALE = 2.5
+-- Applied while HELD in hand instead -- small, not the full placed-building
+-- scale, per explicit feedback.
+local ENDLESS_MODE_HELD_SCALE = 0.8
+-- Local offset from HumanoidRootPart (local -Z is always "forward" for a
+-- character) the held model sits at -- in front of the chest, per explicit
+-- request, not tied to the actual hand bone's pose.
+local HAND_GRIP_OFFSET = CFrame.new(0, 0, -2.5)
 
 local activePets: { [Player]: { Model } } = {}
 
@@ -221,6 +233,21 @@ local function spawnPet(player: Player, character: Model, hrp: BasePart, source:
 	local pet = template:Clone()
 	pet.Name = "Pet_" .. source.Id
 
+	local inEndlessMode = EndlessModeConfig.IsCharacterInEndlessMode(character)
+	local placedCFrame = inEndlessMode and placedCFrames[player] and placedCFrames[player][source.Id]
+
+	-- Scaled up BEFORE anchor/bounding-box setup below, so the anchor ends
+	-- up centered on the FINAL (already-scaled) geometry, and the anchor's
+	-- own placeholder Size doesn't get needlessly scaled along with it.
+	-- Placed (planted on the ground) reads as a real building, so it gets
+	-- the bigger scale; held-in-hand gets a modest one instead -- 2.5x in
+	-- someone's hand looked "gigantic" per explicit feedback.
+	if placedCFrame then
+		pet:ScaleTo(ENDLESS_MODE_PET_SCALE)
+	elseif inEndlessMode then
+		pet:ScaleTo(ENDLESS_MODE_HELD_SCALE)
+	end
+
 	-- Roblox's per-client content streaming can deprioritize/delay sending
 	-- a newly-created instance to weaker or slower-connected clients
 	-- (mobile especially) -- matches the reported "sometimes shows on PC,
@@ -278,15 +305,15 @@ local function spawnPet(player: Player, character: Model, hrp: BasePart, source:
 		end
 	end
 
-	local inEndlessMode = EndlessModeConfig.IsCharacterInEndlessMode(character)
-	local placedCFrame = inEndlessMode and placedCFrames[player] and placedCFrames[player][source.Id]
-	local heldInHand = false
+	local heldInHand = inEndlessMode and not placedCFrame
 
 	if placedCFrame then
 		-- Planted somewhere in Endless Mode (PlaceEndlessModeEstate below) --
-		-- sits anchored right where it was placed, no weld/align at all
-		-- (nothing to follow), plus a ClickDetector on every real geometry
-		-- part so clicking the model anywhere picks it back up.
+		-- already scaled up (ENDLESS_MODE_PET_SCALE, applied earlier
+		-- alongside the anchor/bounding-box setup) and anchored right where
+		-- it was placed, no weld/align at all, plus a ClickDetector on
+		-- every real geometry part so clicking the model anywhere picks it
+		-- back up.
 		anchor.CFrame = placedCFrame
 		anchor.Anchored = true
 
@@ -308,32 +335,29 @@ local function spawnPet(player: Player, character: Model, hrp: BasePart, source:
 				end)
 			end
 		end
-	elseif inEndlessMode then
-		-- Held in hand instead of floating, per explicit request -- a Motor6D
-		-- from the hand part (RightHand on R15, "Right Arm" on R6) to the
-		-- anchor, the exact same joint TYPE Roblox's own Tool Grip system
-		-- uses to hold a tool's handle. A WeldConstraint was tried first and
-		-- didn't reliably follow the animated rig -- Motor6D recomputes
-		-- Part1's CFrame from Part0 (C0/C1) every step regardless of
-		-- whether Part0's own motion is animation- or physics-driven, so it
-		-- can't drift the way a WeldConstraint between an external part and
-		-- an animated rig part apparently can. Falls through to the normal
-		-- floating behavior below if the hand part can't be found.
-		local humanoid = character:FindFirstChildOfClass("Humanoid")
-		local handName = (humanoid and humanoid.RigType == Enum.HumanoidRigType.R6) and "Right Arm" or "RightHand"
-		local hand = character:FindFirstChild(handName) :: BasePart?
-		if hand then
-			local motor = Instance.new("Motor6D")
-			motor.Name = "PetHandGrip"
-			motor.Part0 = hand
-			motor.Part1 = anchor
-			motor.C0 = CFrame.new(0, -0.6, -1)
-			motor.Parent = hand
-			heldInHand = true
-		end
+	elseif heldInHand then
+		-- Held "in hand" reads here as "in front of the character", not a
+		-- literal grab of the hand bone -- per explicit request, it should
+		-- show in front even if the actual hand isn't posed out front (idle/
+		-- walk animations rarely hold a hand forward). A Motor6D from the
+		-- actual hand bone was tried first and put the model well below/
+		-- behind the character instead -- the hand part's own local axes
+		-- don't line up with world/HRP axes the way a guessed offset
+		-- assumed, and iterating blindly on that offset wasn't converging.
+		-- HumanoidRootPart's axes are the one part of a character guaranteed
+		-- to be predictable (local -Z is always "forward"), so this welds to
+		-- HRP instead -- also stable/non-wobbly for free, since HRP itself
+		-- doesn't animate the way arm bones do.
+		local motor = Instance.new("Motor6D")
+		motor.Name = "PetHandGrip"
+		motor.Part0 = hrp
+		motor.Part1 = anchor
+		motor.C0 = HAND_GRIP_OFFSET
+		motor.Parent = hrp
 	end
 
 	if not placedCFrame and not heldInHand then
+		-- Floating (hub) -- unchanged from the original behavior.
 		local baseOffset = SLOT_OFFSETS[slotIndex] or SLOT_OFFSETS[#SLOT_OFFSETS]
 
 		local hrpAttachment = Instance.new("Attachment")
@@ -551,9 +575,14 @@ Players.PlayerRemoving:Connect(function(player: Player)
 	placedCFrames[player] = nil
 end)
 
+-- Right only for now -- matches EndlessModeClaimManager/EndlessModeMobManager's
+-- own "Right only" scope.
+local PLACEABLE_SIDE = "Right"
+
 -- Client fires this after raycasting the ground under its own mouse/touch --
--- server still re-validates ownership, Endless Mode presence, and clamps
--- the position onto the actual ground footprint before trusting it.
+-- server still re-validates ownership, Endless Mode presence, and clamps the
+-- position onto the actual claimed brown patch (not just "anywhere on the
+-- ground") before trusting it, per explicit request.
 placeEndlessModeEstate.OnServerEvent:Connect(function(player: Player, assetId: string, position: Vector3)
 	if typeof(assetId) ~= "string" or typeof(position) ~= "Vector3" then
 		return
@@ -574,12 +603,23 @@ placeEndlessModeEstate.OnServerEvent:Connect(function(player: Player, assetId: s
 		return
 	end
 
+	local bounds = EndlessModeClaimManager.GetPatchBounds(PLACEABLE_SIDE)
+	if not bounds then
+		return
+	end
+
+	local clampedPosition = Vector3.new(
+		math.clamp(position.X, bounds.MinX, bounds.MaxX),
+		EndlessModeConfig.GroundOrigin.Y,
+		math.clamp(position.Z, bounds.MinZ, bounds.MaxZ)
+	)
+
 	local playerPlaced = placedCFrames[player]
 	if not playerPlaced then
 		playerPlaced = {}
 		placedCFrames[player] = playerPlaced
 	end
-	playerPlaced[assetId] = CFrame.new(EndlessModeConfig.ClampToGround(position))
+	playerPlaced[assetId] = CFrame.new(clampedPosition)
 
 	refreshPets(player)
 end)

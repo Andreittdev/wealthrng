@@ -320,6 +320,25 @@ function EndlessModeClaimManager.GetOwner(side: string): Player?
 	return claimedBy[side]
 end
 
+-- Lets PetManager.luau clamp Estate placement to the actual claimed brown
+-- patch instead of the whole ground -- nil if that side isn't claimed
+-- (no marker/patch position to derive bounds from).
+function EndlessModeClaimManager.GetPatchBounds(side: string): { MinX: number, MaxX: number, MinZ: number, MaxZ: number }?
+	local marker = findMarker(side)
+	if not marker then
+		return nil
+	end
+
+	local centerX = ROAD_HALF_WIDTH + PATCH_WIDTH / 2
+	local centerZ = marker.Position.Z
+	return {
+		MinX = centerX - PATCH_WIDTH / 2,
+		MaxX = centerX + PATCH_WIDTH / 2,
+		MinZ = centerZ - PATCH_DEPTH / 2,
+		MaxZ = centerZ + PATCH_DEPTH / 2,
+	}
+end
+
 local function tryClaim(player: Player, side: string)
 	if not table.find(SIDES, side) then
 		return
