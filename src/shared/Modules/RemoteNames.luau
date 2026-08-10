@@ -163,6 +163,32 @@ local RemoteNames = {
 		-- GrantedRankRewards, pushed on join and again after a new grant (RankRewardManager.luau).
 		-- BattlePanel.luau's Rank Rewards popup checkmark reads THIS, not a client-side recompute
 		-- of the current rank, so it only shows claimed once the server actually granted it.
+		"PortalTeleport", -- server -> client, payload: destinationLabel (string, e.g. "Endless Mode"/
+		-- "Hub") -- fired at the instant PortalManager.luau decides to teleport this player, BEFORE
+		-- it actually moves their HumanoidRootPart (see PortalManager's own comment for the timing),
+		-- so PortalLoadingScreen.luau can cover the screen first and mask the instant position jump.
+		"ClaimEndlessModeLand", -- client -> server, payload: side ("Left" | "Right") -- fired from the
+		-- Claim button on that half's floor marker in Endless Mode. Rejected server-side
+		-- (EndlessModeClaimManager.luau) if that half is already claimed by someone still connected.
+		"RequestEndlessModeClaimState", -- client -> server, no payload -- same "ask for the current
+		-- shared state on demand" idiom as RequestStadiumOfferState, fired when
+		-- EndlessModeClaimPanel.luau becomes visible.
+		"EndlessModeLandClaimed", -- server -> client, payload: { Left: {UserId, Name}?, Right:
+		-- {UserId, Name}? } -- current claim state for both halves; sent to one player on request,
+		-- FireAllClients to everyone after a successful claim/release so every open panel stays fresh.
+		"EndlessModeWaveUpdated", -- server -> client, payload: wave (number) -- current wave
+		-- (WaveConfig.GetWaveForElapsedSeconds), pushed roughly once/second by
+		-- EndlessModeWaveManager.luau while the player is physically standing in Endless Mode; not
+		-- fired at all while they're elsewhere (see WaveConfig.luau for the pacing/cap).
+		"EndlessModeHeldEstateUpdated", -- server -> client, payload: assetId (string?) -- which
+		-- equipped Estate (if any) is currently unplaced/"in hand" and should show a placement
+		-- preview (EndlessModePlacementController.luau), nil once it's been placed or unequipped.
+		-- PetManager.luau owns this -- fired whenever the held/placed state changes for this player.
+		"PlaceEndlessModeEstate", -- client -> server, payload: assetId (string), position (Vector3)
+		-- -- fired when the player clicks/taps to plant their currently-held Estate at that spot.
+		-- Rejected server-side (PetManager.luau) unless assetId is actually this player's current
+		-- held Estate and they're in Endless Mode. Picking a placed Estate back up doesn't need its
+		-- own remote -- PetManager.luau puts a plain ClickDetector on it instead.
 	},
 	Functions = {},
 }

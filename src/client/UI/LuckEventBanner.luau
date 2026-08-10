@@ -58,15 +58,27 @@ function LuckEventBanner.Create(screenGui: ScreenGui, remotes: Folder)
 	titleLabel.Parent = banner
 
 	local endsAt: number? = nil
+	local eventActive = false
+	-- Set by MainUI.luau while in Endless Mode -- suppresses the banner
+	-- regardless of whether the event is actually active, per explicit
+	-- request, without losing track of the real active/EndsAt state
+	-- underneath (so it comes back correctly the instant it's un-suppressed,
+	-- not just "on" unconditionally).
+	local suppressed = false
+
+	local function updateVisibility()
+		banner.Visible = eventActive and not suppressed
+	end
 
 	luckEventStateUpdated.OnClientEvent:Connect(function(state: { Active: boolean, EndsAt: number? })
 		if state.Active and state.EndsAt then
 			endsAt = state.EndsAt
-			banner.Visible = true
+			eventActive = true
 		else
 			endsAt = nil
-			banner.Visible = false
+			eventActive = false
 		end
+		updateVisibility()
 	end)
 
 	-- No countdown shown -- this loop only exists to hide the banner right
@@ -78,12 +90,19 @@ function LuckEventBanner.Create(screenGui: ScreenGui, remotes: Folder)
 		end
 		if endsAt - os.time() <= 0 then
 			endsAt = nil
-			banner.Visible = false
+			eventActive = false
+			updateVisibility()
 		end
 	end)
 
 	local handle = {}
 	handle.Frame = banner
+
+	function handle.SetSuppressed(value: boolean)
+		suppressed = value
+		updateVisibility()
+	end
+
 	return handle
 end
 

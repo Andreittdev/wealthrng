@@ -208,6 +208,12 @@ export type Session = {
 	-- recomputed -- an existing owner's serial can't change retroactively
 	-- just because the global count moved on.
 	AssetSerialNumbers: { [string]: { number } },
+	-- Endless Mode's wave clock (WaveConfig.luau/EndlessModeWaveManager.luau)
+	-- -- total seconds ever spent ACTUALLY standing in Endless Mode, never
+	-- decreases, capped implicitly once WaveConfig.GetWaveForElapsedSeconds
+	-- hits MaxWave. Only accumulates while physically there (paused the rest
+	-- of the time), per explicit request.
+	EndlessModeElapsedSeconds: number,
 	LoadedOk: boolean,
 }
 
@@ -255,6 +261,7 @@ local function newDefaultSession(): Session
 		ClaimedEstateIndexTiers = {},
 		GrantedRankRewards = {},
 		AssetSerialNumbers = {},
+		EndlessModeElapsedSeconds = 0,
 		LoadedOk = true,
 	}
 end
@@ -396,6 +403,7 @@ function DataManager.Load(player: Player): Session
 				ClaimedEstateIndexTiers = data.ClaimedEstateIndexTiers or {},
 				GrantedRankRewards = data.GrantedRankRewards or {},
 				AssetSerialNumbers = data.AssetSerialNumbers or {},
+				EndlessModeElapsedSeconds = data.EndlessModeElapsedSeconds or 0,
 				LoadedOk = true,
 			}
 
@@ -501,6 +509,7 @@ function DataManager.Save(player: Player)
 		ClaimedEstateIndexTiers = session.ClaimedEstateIndexTiers,
 		GrantedRankRewards = session.GrantedRankRewards,
 		AssetSerialNumbers = session.AssetSerialNumbers,
+		EndlessModeElapsedSeconds = session.EndlessModeElapsedSeconds,
 	}
 
 	local ok = attempt(function()

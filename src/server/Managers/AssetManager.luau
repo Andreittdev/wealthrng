@@ -175,4 +175,22 @@ unequipAsset.OnServerEvent:Connect(function(player: Player, assetId: string)
 	AssetManager.EquippedAssetsChanged:Fire(player)
 end)
 
+-- Unequips every currently-equipped Estate at once -- same side effects as
+-- a normal unequipAsset, just for all of them in one shot. Used by
+-- PortalManager.luau so floating Estate pets (PetManager.luau, which reacts
+-- to EquippedAssetsChanged) don't follow the player into Endless Mode.
+function AssetManager.UnequipAll(player: Player)
+	local session = DataManager.Get(player)
+	if not session or #session.EquippedAssets == 0 then
+		return
+	end
+
+	table.clear(session.EquippedAssets)
+
+	pushUpdate(player, session)
+	StatsManager.Recompute(player)
+	LeaderboardManager.MarkDirty(player)
+	AssetManager.EquippedAssetsChanged:Fire(player)
+end
+
 return AssetManager

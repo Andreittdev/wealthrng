@@ -368,35 +368,36 @@ local PLAZA_TOP_Y = PLAZA_HEIGHT / 2
 -- plaza) needs to use this instead of PLAZA_TOP_Y or it floats.
 local GROUND_TOP_Y = 0
 
--- Purely decorative for now, per explicit request -- no teleport/warp
--- functionality yet, just a simple standing sign so there's something to
--- actually attach that behavior to later. X/Z are the exact spot requested
--- (a player's own HumanoidRootPart.Position at the time), but Y is NOT used
--- directly -- that was the player's HRP height (mid-air relative to the
--- ground), which floated the whole sign. The sign's feet are planted on
--- PLAZA_TOP_Y instead (the requested spot is inside the paved plaza's 50-stud
--- radius), same as every other stand/board on the map.
+-- Two paired signs -- the hub's "Endless Mode" portal and the Endless Mode
+-- area's "HUB" return portal -- share this one builder (namePrefix keeps
+-- their parts distinct: Portal_* vs EndlessReturn_*). PortalManager.luau
+-- (server) watches each sign's own `<prefix>_TriggerZone` and teleports the
+-- player to the OTHER sign's `<prefix>_LandingSpot` -- walking into one
+-- always lands you a few studs clear of the other, never instantly
+-- re-triggering it.
+--
+-- Same-server CFrame teleport for now (not a real cross-server
+-- TeleportService hop into a solo instance) -- per explicit request, so this
+-- stays testable directly in Studio Play while the Endless Mode concept
+-- itself is still being designed. Swap to a real reserved-server hop once
+-- that's settled.
 --
 -- Kept deliberately plain -- flat Base/Pillars/Frame/Board, same shape as
 -- buildLeaderboard's stands, no Neon/ForceField/PointLight/spin/particles.
-local PORTAL_POSITION = Vector3.new(-13.603830337524414, 4.1999993324279785, -43.50550079345703)
 local PORTAL_WIDTH = 6
 local PORTAL_HEIGHT = 7
 local PORTAL_DEPTH = 0.6
 local PORTAL_BASE_HEIGHT = 0.6
 local PORTAL_FRAME_MARGIN = 0.35
 local PORTAL_ACCENT = Color3.fromRGB(150, 90, 220)
+local PORTAL_HEADER_COLOR = Color3.fromRGB(80, 230, 235)
 
-local function buildPortal(mapFolder: Folder)
-	-- Rotated 180 degrees per explicit request (the sign was facing the
-	-- wrong way).
-	local portalCF = CFrame.new(PORTAL_POSITION.X, PLAZA_TOP_Y, PORTAL_POSITION.Z) * CFrame.Angles(0, math.rad(180), 0)
-
+local function buildPortalSign(mapFolder: Folder, signCF: CFrame, namePrefix: string, headerText: string)
 	local function place(name: string, size: Vector3, localOffset: Vector3, color: Color3, material: Enum.Material?): Part
 		local part = Instance.new("Part")
-		part.Name = "Portal_" .. name
+		part.Name = namePrefix .. "_" .. name
 		part.Size = size
-		part.CFrame = portalCF * CFrame.new(localOffset)
+		part.CFrame = signCF * CFrame.new(localOffset)
 		part.Color = color
 		part.Material = material or Enum.Material.SmoothPlastic
 		part.Anchored = true
@@ -410,7 +411,7 @@ local function buildPortal(mapFolder: Folder)
 	-- Must include PORTAL_BASE_HEIGHT (same as buildLeaderboard's
 	-- boardCenterY) -- without it, Board/Frame sit centered at local Y=0,
 	-- i.e. starting exactly at ground level and clipping down into the Base
-	-- plate and the plaza floor instead of standing on top of the base.
+	-- plate and the ground instead of standing on top of the base.
 	local boardCenterY = PORTAL_BASE_HEIGHT + PORTAL_HEIGHT / 2
 	local boardTopY = boardCenterY + PORTAL_HEIGHT / 2
 
@@ -430,16 +431,28 @@ local function buildPortal(mapFolder: Folder)
 		Enum.Material.Metal
 	)
 
-	local board = place("Board", Vector3.new(PORTAL_WIDTH, PORTAL_HEIGHT, PORTAL_DEPTH), Vector3.new(0, boardCenterY, 0), Color3.fromRGB(40, 25, 55), Enum.Material.SmoothPlastic)
+	place("Board", Vector3.new(PORTAL_WIDTH, PORTAL_HEIGHT, PORTAL_DEPTH), Vector3.new(0, boardCenterY, 0), Color3.fromRGB(40, 25, 55), Enum.Material.SmoothPlastic)
+
+	-- Invisible walk-through trigger, right at the doorway (the sign's own
+	-- ground-level origin) -- PortalManager.luau watches this part's
+	-- position server-side to detect a player walking into the sign.
+	local trigger = place("TriggerZone", Vector3.new(0.5, 1, 0.5), Vector3.new(0, 1, 0), PORTAL_ACCENT)
+	trigger.Transparency = 1
+
+	-- Where a player lands when teleported here BY THE OTHER paired sign --
+	-- offset clear of this sign's own TriggerZone above so arriving doesn't
+	-- immediately bounce them back.
+	local landing = place("LandingSpot", Vector3.new(0.5, 0.5, 0.5), Vector3.new(0, 1, 6), PORTAL_ACCENT)
+	landing.Transparency = 1
 
 	-- Header text floats above the sign itself (not painted on the board's
 	-- face) -- a BillboardGui on a small invisible anchor part just above
 	-- the frame's top edge, always facing the camera.
 	local headerAnchor = Instance.new("Part")
-	headerAnchor.Name = "Portal_HeaderAnchor"
+	headerAnchor.Name = namePrefix .. "_HeaderAnchor"
 	headerAnchor.Size = Vector3.new(0.1, 0.1, 0.1)
 	headerAnchor.Transparency = 1
-	headerAnchor.CFrame = portalCF * CFrame.new(0, boardTopY + PORTAL_FRAME_MARGIN + 1, 0)
+	headerAnchor.CFrame = signCF * CFrame.new(0, boardTopY + PORTAL_FRAME_MARGIN + 1, 0)
 	headerAnchor.Anchored = true
 	headerAnchor.CanCollide = false
 	headerAnchor.Parent = mapFolder
@@ -451,20 +464,38 @@ local function buildPortal(mapFolder: Folder)
 	header.AlwaysOnTop = true
 	header.Parent = headerAnchor
 
-	local headerText = Instance.new("TextLabel")
-	headerText.Size = UDim2.new(1, 0, 1, 0)
-	headerText.BackgroundTransparency = 1
-	headerText.Font = Enum.Font.LuckiestGuy
-	headerText.Text = "ENDLESS MODE"
-	headerText.TextColor3 = Color3.fromRGB(80, 230, 235)
+	local headerLabel = Instance.new("TextLabel")
+	headerLabel.Size = UDim2.new(1, 0, 1, 0)
+	headerLabel.BackgroundTransparency = 1
+	headerLabel.Font = Enum.Font.LuckiestGuy
+	headerLabel.Text = headerText
+	headerLabel.TextColor3 = PORTAL_HEADER_COLOR
 	-- Cyan-on-sky-blue reads thin/washed out with no outline (unlike the
 	-- built-in ProximityPrompt text, which gets a stroke for free) -- add one
 	-- explicitly so it stays readable at distance, and AlwaysOnTop so nearby
 	-- geometry (trees, the sign frame) can't clip in front of it.
-	headerText.TextStrokeTransparency = 0
-	headerText.TextStrokeColor3 = Color3.fromRGB(10, 20, 35)
-	headerText.TextScaled = true
-	headerText.Parent = header
+	headerLabel.TextStrokeTransparency = 0
+	headerLabel.TextStrokeColor3 = Color3.fromRGB(10, 20, 35)
+	headerLabel.TextScaled = true
+	headerLabel.Parent = header
+end
+
+-- Purely decorative teleport-in side for now -- no gameplay of its own yet
+-- inside Endless Mode (see buildEndlessModeArea below), just the paired
+-- sign+trigger so PortalManager.luau has something to send players through.
+-- X/Z are the exact spot requested (a player's own HumanoidRootPart.Position
+-- at the time), but Y is NOT used directly -- that was the player's HRP
+-- height (mid-air relative to the ground), which floated the whole sign.
+-- The sign's feet are planted on PLAZA_TOP_Y instead (the requested spot is
+-- inside the paved plaza's 50-stud radius), same as every other stand/board
+-- on the map.
+local PORTAL_POSITION = Vector3.new(-13.603830337524414, 4.1999993324279785, -43.50550079345703)
+
+local function buildPortal(mapFolder: Folder)
+	-- Rotated 180 degrees per explicit request (the sign was facing the
+	-- wrong way).
+	local portalCF = CFrame.new(PORTAL_POSITION.X, PLAZA_TOP_Y, PORTAL_POSITION.Z) * CFrame.Angles(0, math.rad(180), 0)
+	buildPortalSign(mapFolder, portalCF, "Portal", "ENDLESS MODE")
 end
 
 -- Built as a checkerboard grid of square tiles (not one big slab) so the
@@ -878,6 +909,90 @@ local function buildFloorMarker(
 		addLabel(disk, labelText, labelStudsUp or 7, UDim2.new(0, 75, 0, 22), textColor, withBeam, labelMaxDistance)
 	end
 	return disk
+end
+
+-- A separate, far-away area (well clear of the hub's own footprint, which
+-- tops out around RIM_DIAMETER/2 = 55 studs from the origin) -- just a bare
+-- platform to visit for now, per explicit request ("doar o harta vizitabila
+-- acum"), with a "HUB" sign to walk back into, a street down the middle, and
+-- 2 claimable plots (one each side of the street -- EndlessModeClaimManager.luau
+-- handles who owns which).
+local ENDLESS_MODE_ORIGIN = Vector3.new(0, 0, 3000)
+local ENDLESS_MODE_GROUND_SIZE = 200
+local ENDLESS_MODE_TILE_SIZE = 15
+local ENDLESS_MODE_TILE_THICKNESS = 4
+-- Cuts straight through the grass along Z, same length as the ground itself.
+-- Sits a hair above the grass tiles' own top surface (not exactly flush)
+-- specifically so it doesn't z-fight with every grass tile it overlaps.
+local ENDLESS_MODE_ROAD_WIDTH = 20
+local ENDLESS_MODE_ROAD_HEIGHT = 1
+local ENDLESS_MODE_ROAD_CLEARANCE = 0.1
+local ENDLESS_MODE_ROAD_COLOR = Color3.fromRGB(60, 60, 66)
+local ENDLESS_MODE_ROAD_LINE_COLOR = Color3.fromRGB(235, 210, 60)
+-- Explicit world spot requested (a player's own HumanoidRootPart.Position
+-- while standing on the right-hand plot), same "explicit coordinate, not
+-- derived" pattern PORTAL_POSITION uses.
+local ENDLESS_MODE_CLAIM_RIGHT_POSITION = Vector2.new(24.398815155029297, 3004.383056640625)
+local ENDLESS_MODE_CLAIM_COLOR = Color3.fromRGB(90, 220, 140)
+
+local function buildEndlessModeArea(mapFolder: Folder)
+	local groundTopY = ENDLESS_MODE_ORIGIN.Y
+
+	local groundFolder = Instance.new("Folder")
+	groundFolder.Name = "EndlessMode_Ground"
+	groundFolder.Parent = mapFolder
+
+	local tileCount = math.floor(ENDLESS_MODE_GROUND_SIZE / ENDLESS_MODE_TILE_SIZE)
+	local halfSpan = (tileCount * ENDLESS_MODE_TILE_SIZE) / 2
+
+	for row = 0, tileCount - 1 do
+		for col = 0, tileCount - 1 do
+			local x = ENDLESS_MODE_ORIGIN.X - halfSpan + ENDLESS_MODE_TILE_SIZE * col + ENDLESS_MODE_TILE_SIZE / 2
+			local z = ENDLESS_MODE_ORIGIN.Z - halfSpan + ENDLESS_MODE_TILE_SIZE * row + ENDLESS_MODE_TILE_SIZE / 2
+			local isEven = (row + col) % 2 == 0
+
+			local tile = createBlock(
+				"EndlessModeTile",
+				Vector3.new(ENDLESS_MODE_TILE_SIZE, ENDLESS_MODE_TILE_THICKNESS, ENDLESS_MODE_TILE_SIZE),
+				Vector3.new(x, groundTopY - ENDLESS_MODE_TILE_THICKNESS / 2, z),
+				isEven and GRASS_TILE_COLOR_A or GRASS_TILE_COLOR_B,
+				Enum.Material.Grass
+			)
+			tile.Parent = groundFolder
+		end
+	end
+
+	local roadTopY = groundTopY + ENDLESS_MODE_ROAD_CLEARANCE
+	local road = createBlock(
+		"EndlessMode_Road",
+		Vector3.new(ENDLESS_MODE_ROAD_WIDTH, ENDLESS_MODE_ROAD_HEIGHT, ENDLESS_MODE_GROUND_SIZE),
+		Vector3.new(ENDLESS_MODE_ORIGIN.X, roadTopY - ENDLESS_MODE_ROAD_HEIGHT / 2, ENDLESS_MODE_ORIGIN.Z),
+		ENDLESS_MODE_ROAD_COLOR,
+		Enum.Material.Asphalt
+	)
+	road.Parent = mapFolder
+
+	-- Thin center line, painted on top of the road the same "sit a hair
+	-- higher to avoid z-fighting" way the road sits above the grass.
+	local roadLine = createBlock(
+		"EndlessMode_RoadLine",
+		Vector3.new(0.6, 0.05, ENDLESS_MODE_GROUND_SIZE),
+		Vector3.new(ENDLESS_MODE_ORIGIN.X, roadTopY + 0.05, ENDLESS_MODE_ORIGIN.Z),
+		ENDLESS_MODE_ROAD_LINE_COLOR,
+		Enum.Material.SmoothPlastic
+	)
+	roadLine.Parent = mapFolder
+
+	-- Claim marker -- no ProximityPrompt (same reasoning as VIP's marker),
+	-- EndlessModeClaimPanel.luau drives the popup off ProximityWatcher
+	-- instead. Named "EndlessMode_ClaimRight" -- EndlessModeClaimManager.luau
+	-- looks this up by that exact name to know where to show the winning
+	-- player's avatar badge. Right only for now, per explicit request -- no
+	-- left marker built at all.
+	buildFloorMarker(mapFolder, "EndlessMode_ClaimRight", ENDLESS_MODE_CLAIM_RIGHT_POSITION, groundTopY, ENDLESS_MODE_CLAIM_COLOR, "Claim", Color3.new(1, 1, 1), true)
+
+	local returnCF = CFrame.new(ENDLESS_MODE_ORIGIN.X, groundTopY, ENDLESS_MODE_ORIGIN.Z)
+	buildPortalSign(mapFolder, returnCF, "EndlessReturn", "HUB")
 end
 
 local BATTLE_LINE_LENGTH = 8
@@ -2549,6 +2664,7 @@ function MapBuilder.Build()
 	stadiumOfferMarker.Parent = mapFolder
 
 	buildPortal(mapFolder)
+	buildEndlessModeArea(mapFolder)
 
 	print("[MapBuilder] Hub map built under Workspace.Map")
 end

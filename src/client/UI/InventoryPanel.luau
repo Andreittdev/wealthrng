@@ -605,6 +605,7 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 
 	function renderList()
 		clearList()
+		listLayout.CellSize = UDim2.new(0.5, -4, 0, 56)
 
 		for order, entry in equippedFirstOrder(equippedUids, currentInventory) do
 			local item = ItemDatabase.GetItem(entry.ItemId)
@@ -662,6 +663,10 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	-- Roll Items' own ordering convention (see handle.Render below).
 	function renderEstatesList()
 		clearList()
+		-- One full-width card per row (not the 2-column grid Roll Items
+		-- uses) -- per explicit request, so each Estate's frame reads at
+		-- full size instead of squeezed to half-width.
+		listLayout.CellSize = UDim2.new(1, -4, 0, 56)
 
 		local allAssets = AssetDatabase.GetAllAssets()
 		local ownedIds = {}
@@ -853,6 +858,29 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 
 	highlightTabs()
 	refreshStatusLabel()
+
+	-- Original half-width Size/Position -- SetEstatesOnly below stretches
+	-- estatesTabButton to fill the whole row when it's the only tab left,
+	-- this is what puts it back once Roll Items returns.
+	local estatesTabHalfSize = estatesTabButton.Size
+	local estatesTabHalfPosition = estatesTabButton.Position
+	local estatesTabFullSize = UDim2.new(1, -32, 0, 32)
+	local estatesTabFullPosition = UDim2.new(0, 16, 0, 50)
+
+	-- Endless Mode only shows Estates (per explicit request) -- hides the
+	-- Roll Items tab entirely (nothing left to switch to), stretches the
+	-- Estates tab button across the full row instead of leaving it at its
+	-- normal half-width, and forces onto Estates if Items was still showing.
+	-- MainUI.luau drives this off the same PortalTeleport signal everything
+	-- else in Endless Mode uses.
+	function handle.SetEstatesOnly(value: boolean)
+		itemsTabButton.Visible = not value
+		estatesTabButton.Size = value and estatesTabFullSize or estatesTabHalfSize
+		estatesTabButton.Position = value and estatesTabFullPosition or estatesTabHalfPosition
+		if value then
+			switchTab("Estates")
+		end
+	end
 
 	return handle
 end

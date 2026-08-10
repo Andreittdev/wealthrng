@@ -305,6 +305,10 @@ function Sidebar.Create(screenGui: ScreenGui, handles: PanelHandles, cashHudFram
 	handle.Frame = iconContainer
 	handle.BottomFrame = bottomContainer
 	handle.InventoryButton = buttonsByKey.Inventory
+	-- Exposed so MainUI.luau can hide individual icons (e.g. everything but
+	-- Inventory/Shop while inside Endless Mode) without Sidebar needing to
+	-- know why.
+	handle.Buttons = buttonsByKey
 	return handle
 end
 

@@ -34,7 +34,8 @@ local DailyRewardsProximityPanel = require(script.Parent.DailyRewardsProximityPa
 local LuckyRollProximityPanel = require(script.Parent.LuckyRollProximityPanel)
 local CodesProximityPanel = require(script.Parent.CodesProximityPanel)
 local StadiumOfferPanel = require(script.Parent.StadiumOfferPanel)
-local PortalProximityPanel = require(script.Parent.PortalProximityPanel)
+local EndlessModeClaimPanel = require(script.Parent.EndlessModeClaimPanel)
+local EndlessModeWaveHUD = require(script.Parent.EndlessModeWaveHUD)
 local RobuxManDialogChoices = require(script.Parent.RobuxManDialogChoices)
 local NetWorthPanel = require(script.Parent.NetWorthPanel)
 local SettingsPanel = require(script.Parent.SettingsPanel)
@@ -70,7 +71,7 @@ function MainUI.Init()
 	local inventoryHandle = InventoryPanel.Create(screenGui, remotesFolder)
 	local cashHudHandle = CashHud.Create(screenGui)
 	local luckSpeedHudHandle = LuckSpeedHUD.Create(screenGui)
-	LuckEventBanner.Create(screenGui, remotesFolder)
+	local luckEventBannerHandle = LuckEventBanner.Create(screenGui, remotesFolder)
 	BoardRankLabels.Init(remotesFolder)
 	local autoRollFreeHandle = AutoRollFreePanel.Create(screenGui, remotesFolder)
 	local rollHandle = RollPanel.Create(screenGui, remotesFolder, autoRollFreeHandle.Show)
@@ -83,7 +84,8 @@ function MainUI.Init()
 	local luckyRollProximityHandle = LuckyRollProximityPanel.Create(screenGui, remotesFolder)
 	local codesProximityHandle = CodesProximityPanel.Create(screenGui, remotesFolder)
 	local stadiumOfferHandle = StadiumOfferPanel.Create(screenGui, remotesFolder)
-	local portalProximityHandle = PortalProximityPanel.Create(screenGui)
+	local endlessModeClaimHandle = EndlessModeClaimPanel.Create(screenGui, remotesFolder)
+	local endlessModeWaveHudHandle = EndlessModeWaveHUD.Create(screenGui)
 	RobuxManDialogChoices.Create(screenGui, remotesFolder)
 	local netWorthHandle = NetWorthPanel.Create(screenGui, remotesFolder)
 	local settingsHandle = SettingsPanel.Create(screenGui, remotesFolder)
@@ -102,6 +104,33 @@ function MainUI.Init()
 		Profile = profileHandle,
 		Trade = tradeHandle,
 	}, cashHudHandle.Frame, luckSpeedHudHandle.Frame)
+
+	-- Endless Mode's sidebar only shows Inventory/Store -- everything else
+	-- (Net Worth, Trade, Settings, Profile) is hidden while there, and the
+	-- top-right CashHud pill (plain Cash number + Friend Boost row/invite
+	-- button, both in the same Frame) hides entirely too, per explicit
+	-- request. PortalTeleport (PortalManager.luau) is the signal: it fires
+	-- with the destination label right as the portal fade covers the
+	-- screen, so toggling visibility here happens hidden behind that fade
+	-- instead of popping visibly.
+	local ENDLESS_MODE_HIDDEN_SIDEBAR_KEYS = { "NetWorth", "Trade", "Settings", "Profile" }
+	local portalTeleport = remotesFolder:WaitForChild("PortalTeleport")
+	portalTeleport.OnClientEvent:Connect(function(destinationLabel: string)
+		local inEndlessMode = destinationLabel == "Endless Mode"
+		for _, key in ENDLESS_MODE_HIDDEN_SIDEBAR_KEYS do
+			local button = sidebarHandle.Buttons[key]
+			if button then
+				button.Visible = not inEndlessMode
+			end
+		end
+		cashHudHandle.Frame.Visible = not inEndlessMode
+		endlessModeWaveHudHandle.Frame.Visible = inEndlessMode
+		luckEventBannerHandle.SetSuppressed(inEndlessMode)
+		inventoryHandle.SetEstatesOnly(inEndlessMode)
+	end)
+
+	local endlessModeWaveUpdated = remotesFolder:WaitForChild("EndlessModeWaveUpdated")
+	endlessModeWaveUpdated.OnClientEvent:Connect(endlessModeWaveHudHandle.SetWave)
 
 	-- Built last -- needs the real ROLL/Inventory/Upgrade buttons (and the
 	-- Upgrades panel's own internals) to already exist so it can point its
@@ -135,7 +164,7 @@ function MainUI.Init()
 		luckyRollProximityHandle.Frame,
 		codesProximityHandle.Frame,
 		stadiumOfferHandle.Frame,
-		portalProximityHandle.Frame,
+		endlessModeClaimHandle.Frame,
 	}
 
 	-- inBattleZone is a 3rd independent source of "should the always-on HUD

@@ -16,6 +16,8 @@ local ButtonClickSound = require(script.Parent.UI:WaitForChild("ButtonClickSound
 local BackgroundMusic = require(script.Parent.UI:WaitForChild("BackgroundMusic"))
 local NextUpdateCountdown = require(script.Parent.UI:WaitForChild("NextUpdateCountdown"))
 local LuckEventCountdown = require(script.Parent.UI:WaitForChild("LuckEventCountdown"))
+local PortalLoadingScreen = require(script.Parent.UI:WaitForChild("PortalLoadingScreen"))
+local EndlessModePlacementController = require(script.Parent.UI:WaitForChild("EndlessModePlacementController"))
 
 -- Before LoadingScreen/MainUI -- hooks every button game-wide via
 -- PlayerGui:GetDescendants()/DescendantAdded (see its own header comment),
@@ -37,6 +39,8 @@ local mainUIHandle = MainUI.Init()
 NotificationToast.Init()
 NextUpdateCountdown.Init()
 LuckEventCountdown.Init()
+PortalLoadingScreen.Init()
+EndlessModePlacementController.Init()
 HideOtherPlayers.Init()
 BattlePanel.Init(mainUIHandle.SetBattleZoneActive)
 

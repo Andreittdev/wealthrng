@@ -37,11 +37,30 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local AssetDatabase = require(ReplicatedStorage.Modules.AssetDatabase)
 local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
+local EndlessModeConfig = require(ReplicatedStorage.Modules.EndlessModeConfig)
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local AssetManager = require(ServerScriptService.Managers.AssetManager)
 local InventoryManager = require(ServerScriptService.Managers.InventoryManager)
+local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
+
+local placeEndlessModeEstate = RemotesBootstrap:WaitForChild("PlaceEndlessModeEstate")
+local endlessModeHeldEstateUpdated = RemotesBootstrap:WaitForChild("EndlessModeHeldEstateUpdated")
 
 local PetManager = {}
+
+-- Per-player, per-assetId placed position -- present means "planted
+-- somewhere in Endless Mode", absent means "held in hand" (if equipped +
+-- in Endless Mode) or "floating" (if equipped + in the hub). In-memory
+-- only, same as the rest of Endless Mode's state (EndlessModeClaimManager.
+-- luau etc.) -- cleared on unequip/disconnect, not persisted.
+local placedCFrames: { [Player]: { [string]: CFrame } } = {}
+
+-- Forward-declared (assigned further down, past doRefreshPets) -- spawnPet's
+-- placed-Estate ClickDetector handler needs to call this on pickup, but is
+-- defined textually earlier in the file than the real definition, so a
+-- plain `local function refreshPets` down there would capture an unrelated
+-- global instead of this upvalue.
+local refreshPets: (Player) -> ()
 
 -- Slot 1 sits left-behind, slot 2 right-behind -- offset from
 -- HumanoidRootPart in ITS local space (+Z is behind a character's default
@@ -186,14 +205,17 @@ end
 -- instead of the pet just silently never showing up with no clue why.
 local warnedMissingTemplates: { [string]: boolean } = {}
 
-local function spawnPet(player: Player, character: Model, hrp: BasePart, source: { Name: string, Id: string }, slotIndex: number): boolean
+-- Returns (success, isHeldInHand) -- the 2nd value is only meaningful when
+-- true, used by doRefreshPets below to figure out which equipped Estate (if
+-- any) should be reported as "held" for the client's placement preview.
+local function spawnPet(player: Player, character: Model, hrp: BasePart, source: { Name: string, Id: string }, slotIndex: number): (boolean, boolean)
 	local template = findPetTemplate(source)
 	if not template then
 		if not warnedMissingTemplates[source.Id] then
 			warnedMissingTemplates[source.Id] = true
 			warn(string.format("[PetManager] No pet model found for '%s' (Id: %s) -- expected a Model named '%s' or '%s' in ReplicatedStorage.PetModels or Workspace.", source.Name, source.Id, source.Name, source.Id))
 		end
-		return false
+		return false, false
 	end
 
 	local pet = template:Clone()
@@ -256,43 +278,102 @@ local function spawnPet(player: Player, character: Model, hrp: BasePart, source:
 		end
 	end
 
-	local baseOffset = SLOT_OFFSETS[slotIndex] or SLOT_OFFSETS[#SLOT_OFFSETS]
+	local inEndlessMode = EndlessModeConfig.IsCharacterInEndlessMode(character)
+	local placedCFrame = inEndlessMode and placedCFrames[player] and placedCFrames[player][source.Id]
+	local heldInHand = false
 
-	local hrpAttachment = Instance.new("Attachment")
-	hrpAttachment.Name = "PetSlot" .. slotIndex
-	hrpAttachment.Position = baseOffset
-	hrpAttachment.Parent = hrp
+	if placedCFrame then
+		-- Planted somewhere in Endless Mode (PlaceEndlessModeEstate below) --
+		-- sits anchored right where it was placed, no weld/align at all
+		-- (nothing to follow), plus a ClickDetector on every real geometry
+		-- part so clicking the model anywhere picks it back up.
+		anchor.CFrame = placedCFrame
+		anchor.Anchored = true
 
-	local petAttachment = Instance.new("Attachment")
-	petAttachment.Parent = anchor
+		for _, descendant in pet:GetDescendants() do
+			if descendant:IsA("BasePart") then
+				local clickDetector = Instance.new("ClickDetector")
+				clickDetector.MaxActivationDistance = 25
+				clickDetector.Parent = descendant
+				clickDetector.MouseClick:Connect(function(clickingPlayer: Player)
+					if clickingPlayer ~= player then
+						return
+					end
+					local playerPlaced = placedCFrames[player]
+					if not playerPlaced or not playerPlaced[source.Id] then
+						return
+					end
+					playerPlaced[source.Id] = nil
+					refreshPets(player)
+				end)
+			end
+		end
+	elseif inEndlessMode then
+		-- Held in hand instead of floating, per explicit request -- a Motor6D
+		-- from the hand part (RightHand on R15, "Right Arm" on R6) to the
+		-- anchor, the exact same joint TYPE Roblox's own Tool Grip system
+		-- uses to hold a tool's handle. A WeldConstraint was tried first and
+		-- didn't reliably follow the animated rig -- Motor6D recomputes
+		-- Part1's CFrame from Part0 (C0/C1) every step regardless of
+		-- whether Part0's own motion is animation- or physics-driven, so it
+		-- can't drift the way a WeldConstraint between an external part and
+		-- an animated rig part apparently can. Falls through to the normal
+		-- floating behavior below if the hand part can't be found.
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		local handName = (humanoid and humanoid.RigType == Enum.HumanoidRigType.R6) and "Right Arm" or "RightHand"
+		local hand = character:FindFirstChild(handName) :: BasePart?
+		if hand then
+			local motor = Instance.new("Motor6D")
+			motor.Name = "PetHandGrip"
+			motor.Part0 = hand
+			motor.Part1 = anchor
+			motor.C0 = CFrame.new(0, -0.6, -1)
+			motor.Parent = hand
+			heldInHand = true
+		end
+	end
 
-	-- MaxForce/MaxTorque are math.huge, not a large-but-finite number -- a
-	-- big imported mesh (many/large welded parts) can still add up to more
-	-- effective weight than a finite force can reliably out-pull, letting
-	-- gravity slowly win and sink the pet through the map over time despite
-	-- Massless being set on every part. Infinite force/torque means gravity
-	-- can never out-compete the constraint regardless of the model's size.
-	local alignPosition = Instance.new("AlignPosition")
-	alignPosition.Attachment0 = petAttachment
-	alignPosition.Attachment1 = hrpAttachment
-	alignPosition.MaxForce = math.huge
-	alignPosition.Responsiveness = 40
-	alignPosition.Parent = anchor
+	if not placedCFrame and not heldInHand then
+		local baseOffset = SLOT_OFFSETS[slotIndex] or SLOT_OFFSETS[#SLOT_OFFSETS]
 
-	local alignOrientation = Instance.new("AlignOrientation")
-	alignOrientation.Attachment0 = petAttachment
-	alignOrientation.Attachment1 = hrpAttachment
-	alignOrientation.MaxTorque = math.huge
-	alignOrientation.Responsiveness = 20
-	alignOrientation.Parent = anchor
+		local hrpAttachment = Instance.new("Attachment")
+		hrpAttachment.Name = "PetSlot" .. slotIndex
+		hrpAttachment.Position = baseOffset
+		hrpAttachment.Parent = hrp
 
-	-- Gentle up/down float -- tweens the HRP-side attachment's own offset
-	-- (not the pet directly), so AlignPosition just smoothly chases it.
-	TweenService:Create(
-		hrpAttachment,
-		TweenInfo.new(BOB_SECONDS, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-		{ Position = baseOffset + Vector3.new(0, BOB_HEIGHT_STUDS, 0) }
-	):Play()
+		local petAttachment = Instance.new("Attachment")
+		petAttachment.Parent = anchor
+
+		-- MaxForce/MaxTorque are math.huge, not a large-but-finite number --
+		-- a big imported mesh (many/large welded parts) can still add up to
+		-- more effective weight than a finite force can reliably out-pull,
+		-- letting gravity slowly win and sink the pet through the map over
+		-- time despite Massless being set on every part. Infinite force/
+		-- torque means gravity can never out-compete the constraint
+		-- regardless of the model's size.
+		local alignPosition = Instance.new("AlignPosition")
+		alignPosition.Attachment0 = petAttachment
+		alignPosition.Attachment1 = hrpAttachment
+		alignPosition.MaxForce = math.huge
+		alignPosition.Responsiveness = 40
+		alignPosition.Parent = anchor
+
+		local alignOrientation = Instance.new("AlignOrientation")
+		alignOrientation.Attachment0 = petAttachment
+		alignOrientation.Attachment1 = hrpAttachment
+		alignOrientation.MaxTorque = math.huge
+		alignOrientation.Responsiveness = 20
+		alignOrientation.Parent = anchor
+
+		-- Gentle up/down float -- tweens the HRP-side attachment's own
+		-- offset (not the pet directly), so AlignPosition just smoothly
+		-- chases it.
+		TweenService:Create(
+			hrpAttachment,
+			TweenInfo.new(BOB_SECONDS, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+			{ Position = baseOffset + Vector3.new(0, BOB_HEIGHT_STUDS, 0) }
+		):Play()
+	end
 
 	pet.Parent = character
 
@@ -302,7 +383,7 @@ local function spawnPet(player: Player, character: Model, hrp: BasePart, source:
 		activePets[player] = pets
 	end
 	table.insert(pets, pet)
-	return true
+	return true, heldInHand
 end
 
 -- If an equip/unequip races the character not being fully loaded yet
@@ -391,10 +472,20 @@ local function doRefreshPets(player: Player, myGeneration: number)
 		return
 	end
 
+	-- Whichever equipped Estate is currently unplaced (heldInHand) is
+	-- reported to the client as "this is what you're holding, show the
+	-- placement preview" -- if more than one is somehow unplaced at once
+	-- (MaxEquipped is 2), the LAST one wins, simplest reasonable default
+	-- since only one placement preview can sensibly show at a time.
+	local heldAssetId: string? = nil
+
 	for slotIndex, assetId in session.EquippedAssets do
 		local asset = AssetDatabase.GetAsset(assetId)
 		if asset then
-			spawnPet(player, character, hrp, asset, slotIndex)
+			local _, heldInHand = spawnPet(player, character, hrp, asset, slotIndex)
+			if heldInHand then
+				heldAssetId = assetId
+			end
 		end
 	end
 
@@ -406,16 +497,28 @@ local function doRefreshPets(player: Player, myGeneration: number)
 	if session.EquippedItemId then
 		local item = ItemDatabase.GetItem(session.EquippedItemId)
 		if item and item.CrateExclusive then
-			spawnPet(player, character, hrp, item, 3)
+			local _, heldInHand = spawnPet(player, character, hrp, item, 3)
+			if heldInHand then
+				heldAssetId = session.EquippedItemId
+			end
 		end
 	end
+
+	endlessModeHeldEstateUpdated:FireClient(player, heldAssetId)
 end
 
-local function refreshPets(player: Player)
+refreshPets = function(player: Player)
 	local myGeneration = (latestRefreshGeneration[player] or 0) + 1
 	latestRefreshGeneration[player] = myGeneration
 	task.delay(REFRESH_DEBOUNCE_SECONDS, doRefreshPets, player, myGeneration)
 end
+
+-- Exposed so PortalManager.luau can force a rebuild on the Endless Mode ->
+-- Hub trip -- nothing else changes EquippedAssets on that crossing, so
+-- without this an Estate equipped (and welded to the hand) while in Endless
+-- Mode would stay rigidly stuck there instead of switching back to floating
+-- once back in the hub.
+PetManager.Refresh = refreshPets
 
 AssetManager.EquippedAssetsChanged.Event:Connect(refreshPets)
 InventoryManager.EquippedItemChanged.Event:Connect(refreshPets)
@@ -445,6 +548,40 @@ end
 Players.PlayerRemoving:Connect(function(player: Player)
 	activePets[player] = nil
 	latestRefreshGeneration[player] = nil
+	placedCFrames[player] = nil
+end)
+
+-- Client fires this after raycasting the ground under its own mouse/touch --
+-- server still re-validates ownership, Endless Mode presence, and clamps
+-- the position onto the actual ground footprint before trusting it.
+placeEndlessModeEstate.OnServerEvent:Connect(function(player: Player, assetId: string, position: Vector3)
+	if typeof(assetId) ~= "string" or typeof(position) ~= "Vector3" then
+		return
+	end
+
+	local character = player.Character
+	if not EndlessModeConfig.IsCharacterInEndlessMode(character) then
+		return
+	end
+
+	local session = DataManager.Get(player)
+	if not session then
+		return
+	end
+
+	local isEquipped = table.find(session.EquippedAssets, assetId) ~= nil or session.EquippedItemId == assetId
+	if not isEquipped then
+		return
+	end
+
+	local playerPlaced = placedCFrames[player]
+	if not playerPlaced then
+		playerPlaced = {}
+		placedCFrames[player] = playerPlaced
+	end
+	playerPlaced[assetId] = CFrame.new(EndlessModeConfig.ClampToGround(position))
+
+	refreshPets(player)
 end)
 
 return PetManager
