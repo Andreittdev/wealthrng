@@ -25,4 +25,18 @@ function EndlessModeBuildingConfig.GetMaxHP(upgradeLevel: number): number
 	return EndlessModeBuildingConfig.BaseHP + upgradeLevel * EndlessModeBuildingConfig.HPPerUpgrade
 end
 
+-- Per explicit request: a freshly-placed Estate (level 0) starts visually
+-- SMALL and grows with every upgrade, instead of being full-size from the
+-- first click. Multiplies whatever size the building would otherwise render
+-- at (PetManager.luau's own template-scale/ENDLESS_MODE_PET_SCALE
+-- handling) -- 0.5x at level 0 up to 1.2x at MaxUpgradeLevel, linear in
+-- between. Placeholder curve, easy to retune.
+local MIN_SCALE_MULTIPLIER = 0.5
+local MAX_SCALE_MULTIPLIER = 1.2
+
+function EndlessModeBuildingConfig.GetScaleMultiplier(upgradeLevel: number): number
+	local progress = math.clamp(upgradeLevel / EndlessModeBuildingConfig.MaxUpgradeLevel, 0, 1)
+	return MIN_SCALE_MULTIPLIER + progress * (MAX_SCALE_MULTIPLIER - MIN_SCALE_MULTIPLIER)
+end
+
 return EndlessModeBuildingConfig

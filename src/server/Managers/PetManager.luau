@@ -76,6 +76,10 @@ type PlacedBuilding = {
 	HP: number,
 	Model: Model,
 	HpLabel: TextLabel,
+	-- "col,row" (EndlessModeClaimManager.SnapToPatchCell) -- which grid tile
+	-- of the checkerboard patch this building occupies, so a second
+	-- placement can't land on the same tile.
+	CellKey: string,
 }
 
 -- Per-player, per-placementId placed building -- keyed by a generated GUID,
@@ -355,6 +359,13 @@ local function createPlacedBuildingModel(player: Player, placementId: string, as
 		return nil, nil
 	end
 
+	-- Read BEFORE cloning -- `template` is the permanent, already-settled
+	-- instance living in ReplicatedStorage.PetModels, unlike the clone,
+	-- which (same class of bug as the GetBoundingBox saga elsewhere in this
+	-- file) can't be trusted to report its own properties correctly right
+	-- after being created/reparented.
+	local templateScale = template:GetScale()
+
 	local pet = template:Clone()
 	pet.Name = "PlacedEstate_" .. assetId
 	pet.ModelStreamingMode = Enum.ModelStreamingMode.Persistent
@@ -365,7 +376,17 @@ local function createPlacedBuildingModel(player: Player, placementId: string, as
 	-- full saga.
 	pet.Parent = getPlacedBuildingsFolder()
 
-	pet:ScaleTo(ENDLESS_MODE_PET_SCALE)
+	-- Relative to the TEMPLATE's own already-authored Scale, not an absolute
+	-- reset to ENDLESS_MODE_PET_SCALE -- a flat ScaleTo(1) here undid any
+	-- manual downsizing done on the source template in Studio (e.g. Sol
+	-- Stadium scaled to 0.1 there), snapping it back to full native size
+	-- every time it got placed, even though the SAME template floated at the
+	-- correct (already-scaled) size in the Hub, where nothing calls ScaleTo
+	-- at all. Also folds in GetScaleMultiplier(upgradeLevel) -- a freshly
+	-- placed (level 0) Estate starts small and grows with each upgrade, per
+	-- explicit request; upgradeEndlessModeBuilding's handler re-scales this
+	-- same Model again later as the level climbs (see rescalePlacedBuilding).
+	pet:ScaleTo(templateScale * ENDLESS_MODE_PET_SCALE * EndlessModeBuildingConfig.GetScaleMultiplier(upgradeLevel))
 
 	-- Anchor at the model's real bounding-box CENTER, not its native pivot
 	-- -- an imported mesh's pivot is frequently off-center, so anchoring at
@@ -464,6 +485,39 @@ local function createPlacedBuildingModel(player: Player, placementId: string, as
 	return pet, hpLabel
 end
 
+-- Re-scales an ALREADY-PLACED building's Model in place (not a fresh clone)
+-- after its UpgradeLevel changes -- EndlessModeBuildingConfig.
+-- GetScaleMultiplier grows with level, so a building visibly gets bigger as
+-- it's upgraded instead of only its HP number changing. Re-derives the
+-- template's own Scale the same way createPlacedBuildingModel did (no need
+-- to have stored it separately) -- re-pivots afterward too, since a bigger
+-- bounding box shifts the ground-offset (anchor sits at bounding-box
+-- CENTER, not bottom), and nudges the floating HP billboard's StudsOffset up
+-- to match the new roofline.
+local function rescalePlacedBuilding(building: PlacedBuilding)
+	local model = building.Model
+	if not model or not model.Parent then
+		return
+	end
+
+	local source = findSourceById(building.AssetId)
+	local template = source and findPetTemplate(source)
+	if not template then
+		return
+	end
+
+	local templateScale = template:GetScale()
+	model:ScaleTo(templateScale * ENDLESS_MODE_PET_SCALE * EndlessModeBuildingConfig.GetScaleMultiplier(building.UpgradeLevel))
+
+	local _, boundingSize = model:GetBoundingBox()
+	model:PivotTo(building.CFrame + Vector3.new(0, boundingSize.Y / 2, 0))
+
+	local billboard = building.HpLabel and building.HpLabel.Parent
+	if billboard and billboard:IsA("BillboardGui") then
+		billboard.StudsOffset = Vector3.new(0, boundingSize.Y / 2 + 2, 0)
+	end
+end
+
 -- Held-in-hand (Endless Mode, still room to place more) or floating (Hub)
 -- pet for an EQUIPPED asset slot. Returns (success, isHeldInHand) -- the 2nd
 -- value is only meaningful when true, used by doRefreshPets below to figure
@@ -492,13 +546,20 @@ local function spawnEquippedPet(player: Player, character: Model, hrp: BasePart,
 		return true, false
 	end
 
+	-- Read BEFORE cloning -- see createPlacedBuildingModel's identical
+	-- comment for why the clone itself can't be trusted here.
+	local templateScale = template:GetScale()
+
 	local pet = template:Clone()
 	pet.Name = "Pet_" .. source.Id
 	pet.ModelStreamingMode = Enum.ModelStreamingMode.Persistent
 	pet.Parent = character
 
 	if heldInHand then
-		pet:ScaleTo(ENDLESS_MODE_HELD_SCALE)
+		-- Relative to the template's own Scale, same fix as
+		-- createPlacedBuildingModel's -- an absolute ScaleTo would reset any
+		-- manual downsizing done on the source template in Studio.
+		pet:ScaleTo(templateScale * ENDLESS_MODE_HELD_SCALE)
 	end
 
 	local boundingCFrame = pet:GetBoundingBox()
@@ -836,9 +897,11 @@ local function startDamageLoop(player: Player, placementId: string)
 			if not building then
 				return
 			end
-			local mob = EndlessModeMobRegistry.GetNearestAliveMob(building.CFrame.Position, EndlessModeUnitRoleConfig.DamageRangeStuds)
+			local range = EndlessModeUnitRoleConfig.DamageRangeStuds * EndlessModeUnitRoleConfig.GetDamageRangeMultiplier(building.AssetId)
+			local mob = EndlessModeMobRegistry.GetNearestAliveMob(building.CFrame.Position, range)
 			if mob then
-				EndlessModeMobRegistry.Damage(mob, EndlessModeUnitRoleConfig.DamageAmount)
+				local amount = EndlessModeUnitRoleConfig.DamageAmount * EndlessModeUnitRoleConfig.GetDamageAmountMultiplier(building.AssetId)
+				EndlessModeMobRegistry.Damage(mob, amount)
 			end
 		end
 	end)
@@ -890,16 +953,26 @@ placeEndlessModeEstate.OnServerEvent:Connect(function(player: Player, assetId: s
 		return
 	end
 
-	local bounds = EndlessModeClaimManager.GetPatchBounds(PLACEABLE_SIDE)
-	if not bounds then
+	-- Snaps to the checkerboard patch's own grid (EndlessModeClaimManager.
+	-- spawnPatch's tiles) instead of free-form placement -- per explicit
+	-- request, so Estates land in tidy invisible slots instead of
+	-- overlapping/scattered wherever the player happened to click.
+	local snappedPosition, cellKey = EndlessModeClaimManager.SnapToPatchCell(PLACEABLE_SIDE, position)
+	if not snappedPosition or not cellKey then
 		return
 	end
 
-	local clampedPosition = Vector3.new(
-		math.clamp(position.X, bounds.MinX, bounds.MaxX),
-		EndlessModeConfig.GroundOrigin.Y,
-		math.clamp(position.Z, bounds.MinZ, bounds.MaxZ)
-	)
+	local playerPlaced = placedBuildings[player]
+	if playerPlaced then
+		for _, existingBuilding in playerPlaced do
+			if existingBuilding.CellKey == cellKey then
+				systemMessage:FireClient(player, "That spot is already taken!")
+				return
+			end
+		end
+	end
+
+	local clampedPosition = Vector3.new(snappedPosition.X, EndlessModeConfig.GroundOrigin.Y, snappedPosition.Z)
 	local cframe = CFrame.new(clampedPosition)
 
 	local placementId = HttpService:GenerateGUID(false)
@@ -909,7 +982,6 @@ placeEndlessModeEstate.OnServerEvent:Connect(function(player: Player, assetId: s
 		return
 	end
 
-	local playerPlaced = placedBuildings[player]
 	if not playerPlaced then
 		playerPlaced = {}
 		placedBuildings[player] = playerPlaced
@@ -921,6 +993,7 @@ placeEndlessModeEstate.OnServerEvent:Connect(function(player: Player, assetId: s
 		HP = initialMaxHP,
 		Model = model,
 		HpLabel = hpLabel,
+		CellKey = cellKey,
 	}
 
 	-- Opens the HP/upgrade panel immediately on placement, per explicit
@@ -995,6 +1068,10 @@ upgradeEndlessModeBuilding.OnServerEvent:Connect(function(player: Player, placem
 	if building.HpLabel then
 		building.HpLabel.Text = string.format("%d/%d HP", building.HP, building.HP)
 	end
+
+	-- Grows the actual Model too, per explicit request -- starts small at
+	-- level 0, gets visibly bigger with each upgrade.
+	rescalePlacedBuilding(building)
 
 	endlessModeBuildingSelected:FireClient(player, buildSelectionPayload(player, placementId))
 end)

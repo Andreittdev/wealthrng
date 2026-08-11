@@ -162,12 +162,12 @@ onMobArrived = function(mob: BasePart, owner: Player, side: string, target: Targ
 	end
 end
 
--- A mob that arrived at a Tank-role building stops there and trades hits
--- with it every tick -- the mob hits for its usual (wave-scaled) damage
--- (same amount a normal one-shot arrival would've dealt, just repeated), the Tank
--- hits back for the weaker TankDamagePerTick (it's meant to stall/soak, not
--- to be the main source of mob kills). Whichever side runs out of HP first
--- ends the loop.
+-- A mob that arrived at a Tank-role building stops there and chips away at
+-- it every tick -- per explicit request, the Tank is PURE soak, it never
+-- hits back. It just stands there absorbing hits (blocking that mob from
+-- reaching anything else) until either the Tank dies (the mob re-targets
+-- and moves on) or something ELSE kills the mob first (a Damage building/
+-- Ally can still land hits on it independently while it's stuck here).
 meleeTank = function(mob: BasePart, owner: Player, side: string, placementId: string)
 	task.spawn(function()
 		while true do
@@ -187,14 +187,62 @@ meleeTank = function(mob: BasePart, owner: Player, side: string, placementId: st
 				sendMobToTarget(mob, owner, side, mob.Position)
 				return
 			end
-
-			-- If this kills the mob, EndlessModeMobRegistry.Damage already
-			-- fired its OnDeath callback (destroys the Part) -- the
-			-- IsAlive/Parent check at the top of the next iteration catches
-			-- it and stops this loop.
-			EndlessModeMobRegistry.Damage(mob, EndlessModeUnitRoleConfig.TankDamagePerTick)
 		end
 	end)
+end
+
+local HP_BAR_SIZE = UDim2.new(0, 60, 0, 14)
+local HP_BAR_STUDS_UP = MOB_SIZE.Y / 2 + 1.4
+local HP_BAR_BACKGROUND_COLOR = Color3.fromRGB(35, 35, 35)
+local HP_BAR_FULL_COLOR = Color3.fromRGB(90, 220, 100)
+local HP_BAR_LOW_COLOR = Color3.fromRGB(220, 60, 60)
+
+-- Floating bar above a mob (a filled Frame shrinking left-to-right, not text
+-- ALONE like the buildings' "N/MAX HP" label -- per explicit request) --
+-- green at full health, sliding to red as it empties, with the actual
+-- "N/MAX" number overlaid on top so both are visible at once. Returns the
+-- fill Frame and the label so the caller can update both from
+-- EndlessModeMobRegistry's OnDamage hook.
+local function createHpBar(mob: BasePart): (Frame, TextLabel)
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "HPBar"
+	billboard.Size = HP_BAR_SIZE
+	billboard.StudsOffset = Vector3.new(0, HP_BAR_STUDS_UP, 0)
+	billboard.AlwaysOnTop = true
+	billboard.Adornee = mob
+	billboard.Parent = mob
+
+	local background = Instance.new("Frame")
+	background.Size = UDim2.new(1, 0, 1, 0)
+	background.BackgroundColor3 = HP_BAR_BACKGROUND_COLOR
+	background.BorderSizePixel = 0
+	background.Parent = billboard
+
+	local fill = Instance.new("Frame")
+	fill.Size = UDim2.new(1, 0, 1, 0)
+	fill.BackgroundColor3 = HP_BAR_FULL_COLOR
+	fill.BorderSizePixel = 0
+	fill.Parent = background
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, 0, 1, 0)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.LuckiestGuy
+	label.TextScaled = true
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.TextStrokeTransparency = 0
+	label.TextStrokeColor3 = Color3.new(0, 0, 0)
+	label.ZIndex = 2
+	label.Parent = background
+
+	return fill, label
+end
+
+local function updateHpBar(fill: Frame, label: TextLabel, hp: number, maxHp: number)
+	local fraction = maxHp > 0 and math.clamp(hp / maxHp, 0, 1) or 0
+	fill.Size = UDim2.new(fraction, 0, 1, 0)
+	fill.BackgroundColor3 = HP_BAR_LOW_COLOR:Lerp(HP_BAR_FULL_COLOR, fraction)
+	label.Text = string.format("%d/%d", math.max(hp, 0), maxHp)
 end
 
 local function spawnMob(side: string)
@@ -222,10 +270,15 @@ local function spawnMob(side: string)
 	mob.CFrame = CFrame.new(spawnPosition)
 	mob.Parent = door.Parent.Parent
 
+	local hpBarFill, hpBarLabel = createHpBar(mob)
+	hpBarLabel.Text = string.format("%d/%d", EndlessModeUnitRoleConfig.MobHP, EndlessModeUnitRoleConfig.MobHP)
+
 	EndlessModeMobRegistry.Register(mob, EndlessModeUnitRoleConfig.MobHP, function()
 		if mob.Parent then
 			mob:Destroy()
 		end
+	end, function(hp, maxHp)
+		updateHpBar(hpBarFill, hpBarLabel, hp, maxHp)
 	end)
 
 	sendMobToTarget(mob, owner, side, spawnPosition)

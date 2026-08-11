@@ -72,6 +72,12 @@ end
 -- real held/placed versions), so placing the ghost by its raw pivot alone
 -- can bury most of it below the ground instead of standing it on top.
 local function makeGhost(template: Model): (Model, number)
+	-- Read BEFORE cloning -- `template` is the permanent, already-settled
+	-- instance, unlike the clone, which can't be trusted to report its own
+	-- properties correctly right after being created/reparented (same class
+	-- of bug as the GetBoundingBox saga elsewhere in this file).
+	local templateScale = template:GetScale()
+
 	local ghost = template:Clone()
 	ghost.Name = "EndlessModePlacementGhost"
 
@@ -82,7 +88,12 @@ local function makeGhost(template: Model): (Model, number)
 	-- explains the "gigantic"/"looks damaged" ghost -- these APIs need the
 	-- model actually parented somewhere real to compute/apply correctly.
 	ghost.Parent = Workspace
-	ghost:ScaleTo(GHOST_SCALE)
+	-- Relative to the template's own already-authored Scale, not an
+	-- absolute reset -- GHOST_SCALE=1 alone would undo any manual
+	-- downsizing done on the source template in Studio (e.g. an
+	-- oversized model scaled down there), same bug PetManager.luau's
+	-- placed/held versions had.
+	ghost:ScaleTo(templateScale * GHOST_SCALE)
 
 	for _, descendant in ghost:GetDescendants() do
 		if descendant:IsA("BasePart") then

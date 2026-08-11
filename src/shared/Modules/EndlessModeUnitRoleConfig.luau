@@ -61,29 +61,33 @@ end
 -- How much extra HP a Tank gets, on top of EndlessModeBuildingConfig's own
 -- Base+per-upgrade formula (which stays the SAME for every building
 -- regardless of type) -- scales with how hard that specific Estate is to
--- obtain, per explicit request: Loira Chateau (a LARP Battles weekly Top 2
--- reward -- can't be bought at any price) is the single best tank in the
--- game, Private Airport (the 2nd-priciest purchasable capstone) right
--- behind it, then the rest ranked by Price/rarity down to Studio Apartment
--- (weakest Tank).
+-- obtain. Per explicit request, this is NOT a smooth ramp -- only the
+-- genuinely hard-to-get tier (Exclusive/Leaderboards, plus the Godly
+-- capstone) gets to be "OP"; Common/Rare/Epic stay close to the shared
+-- baseline (1x-4x) so an easy/cheap Tank is still just a basic Tank, not a
+-- wall by itself. Loira Chateau (a LARP Battles weekly Top 2 reward -- can't
+-- be bought at any price) is the single best tank in the game -- Sol
+-- Stadium (that same weekly leaderboard's Top 3 reward, so comparably rare,
+-- just one rank down) sits right behind it, ahead of Private Airport
+-- (merely priciest to BUY, not competed for) and Solar Park (a Platinum
+-- rank threshold, not a weekly Top-3-against-everyone placement).
 --
--- Scale (~20x-120x, not the original 1x-5x): a mob hits for MobDamagePerTick
--- every TankTickSeconds, and per the "10 Tanks should hold to wave 800-850
--- (~10h)" target, a single-digit multiplier of the shared 100-HP base dies
--- in seconds, not hours -- see TankDamagePerTick's comment for the other
--- half of this fix (killing mobs faster so each one costs the Tank less HP
--- before dying). Exact numbers are still a first pass -- 10 real hours can't
--- be hand-simulated, expect to retune after actual playtesting.
+-- A mob hits for MobDamagePerTick every TankTickSeconds (Tanks are pure
+-- soak now, per explicit request -- they never hit back, see TankTickSeconds'
+-- own comment), and per the "10 Tanks should hold to wave 800-850 (~10h)"
+-- target, a single-digit multiplier of the shared 100-HP base dies in
+-- seconds, not hours. Exact numbers are still a first pass -- 10 real hours
+-- can't be hand-simulated, expect to retune after actual playtesting.
 local TANK_HP_MULTIPLIER: { [string]: number } = {
-	StudioApartment = 20,
-	FamilyHouse = 26,
-	BeachfrontVilla = 32,
-	CountrysideMansion = 40,
-	PrivateResort = 50,
-	Top3Estate = 60, -- "Sol Stadium"
-	SolarPark = 70,
-	PrivateAirport = 90,
-	Top2Estate = 120, -- "Loira Chateau" -- best tank in the game
+	StudioApartment = 1, -- Common -- baseline, not OP at all
+	FamilyHouse = 2, -- Rare
+	BeachfrontVilla = 4, -- Epic
+	CountrysideMansion = 8, -- Legendary
+	PrivateResort = 15, -- Godly -- OP starts here
+	SolarPark = 55, -- Exclusive
+	PrivateAirport = 70, -- Godly capstone -- priciest purchasable Estate
+	Top3Estate = 85, -- "Sol Stadium" (Exclusive, LARP Battles weekly Top 3)
+	Top2Estate = 100, -- "Loira Chateau" (Leaderboards, weekly Top 2) -- best tank in the game
 }
 
 -- 1 for anything not a Tank (or not in the table above) -- a no-op
@@ -123,17 +127,56 @@ function EndlessModeUnitRoleConfig.GetMobDamageForWave(wave: number): number
 	return math.floor(EndlessModeUnitRoleConfig.MobDamagePerTick * multiplier)
 end
 
--- Tank -- was 8 (a mob took 8 ticks/~160 total damage to kill), which meant
--- EVERY mob that engaged a Tank cost it 160 HP before dying -- with mobs
--- spawning every 6s but taking 12s each to die, ~2 were chewing on the same
--- Tank at once indefinitely, melting even a large HP pool in minutes. Raised
--- so a mob (MobHP=60) dies in 2 ticks/3s instead of 8/12s -- costs the Tank
--- only ~40 HP per mob (2 ticks * MobDamagePerTick) rather than 160, and
--- fewer mobs overlap since each one is gone before the next spawns.
-EndlessModeUnitRoleConfig.TankDamagePerTick = 40
+-- Tank -- pure soak, per explicit request: it never hits back, just absorbs
+-- MobDamagePerTick every tick for as long as it's alive, blocking that mob
+-- from reaching anything else. It only stops taking hits once it dies
+-- (mob re-targets) or something ELSE (a Damage building/Ally) kills the mob
+-- independently while it's stuck here.
 EndlessModeUnitRoleConfig.TankTickSeconds = 1.5
 
--- Damage
+-- Damage -- same "only the hard-to-get tier gets to be OP" shape as
+-- TANK_HP_MULTIPLIER above, just over DamageAmount instead of HP. No
+-- Leaderboards-tier Damage Estate exists (Top1Estate is a Spawner), so the
+-- ceiling here is ConstructionShop -- the Diamond rank reward, the single
+-- HIGHEST rank tier grants, and tied for the highest listed Price in the
+-- game ($500T, same as RealEstateEmpire) despite not being purchasable at
+-- any price -- comparable prestige to a Tank-tier Leaderboards reward even
+-- without one existing in this role.
+local DAMAGE_AMOUNT_MULTIPLIER: { [string]: number } = {
+	DowntownCondo = 1, -- Common -- baseline, not OP at all
+	LuxuryTownhouse = 2, -- Rare
+	PrivateEstate = 4, -- Epic
+	SkyscraperPenthouse = 8, -- Legendary
+	LuxuryHotelChain = 15, -- Godly -- OP starts here
+	OldFarm = 40, -- Exclusive (Silver rank reward)
+	ConstructionShop = 90, -- Exclusive (Diamond rank reward) -- hardest-hitting Damage Estate
+}
+
+-- 1 for anything not a Damage building (or not in the table above) -- a
+-- no-op multiplier, same idiom as GetTankHPMultiplier.
+function EndlessModeUnitRoleConfig.GetDamageAmountMultiplier(assetId: string): number
+	return DAMAGE_AMOUNT_MULTIPLIER[assetId] or 1
+end
+
+-- Range gets the same tiered treatment, milder than DamageAmount's since the
+-- claimed patch itself is only ~90x65 studs (EndlessModeClaimManager's
+-- PATCH_WIDTH/PATCH_DEPTH) -- ConstructionShop's 120 already covers the
+-- whole thing (and then some), so a bigger multiplier here would just be
+-- wasted range, not more power.
+local DAMAGE_RANGE_MULTIPLIER: { [string]: number } = {
+	DowntownCondo = 1, -- Common
+	LuxuryTownhouse = 1.3, -- Rare
+	PrivateEstate = 1.6, -- Epic
+	SkyscraperPenthouse = 2, -- Legendary
+	LuxuryHotelChain = 2.5, -- Godly -- OP starts here
+	OldFarm = 3.5, -- Exclusive (Silver rank reward)
+	ConstructionShop = 5, -- Exclusive (Diamond rank reward) -- covers the whole claimed patch
+}
+
+function EndlessModeUnitRoleConfig.GetDamageRangeMultiplier(assetId: string): number
+	return DAMAGE_RANGE_MULTIPLIER[assetId] or 1
+end
+
 EndlessModeUnitRoleConfig.DamageAmount = 18
 EndlessModeUnitRoleConfig.DamageTickSeconds = 1
 EndlessModeUnitRoleConfig.DamageRangeStuds = 24

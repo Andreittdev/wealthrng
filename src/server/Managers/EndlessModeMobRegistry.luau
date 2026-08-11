@@ -15,6 +15,7 @@ type MobEntry = {
 	HP: number,
 	MaxHP: number,
 	OnDeath: (() -> ())?,
+	OnDamage: ((number, number) -> ())?,
 }
 
 local mobs: { [BasePart]: MobEntry } = {}
@@ -23,8 +24,11 @@ local mobs: { [BasePart]: MobEntry } = {}
 -- from ANY source (a Tank/Ally melee tick or a Damage building) -- lets
 -- EndlessModeMobManager clean up whatever walk/melee state that mob was in
 -- without needing to poll a "did someone else already kill this" flag.
-function EndlessModeMobRegistry.Register(mob: BasePart, hp: number, onDeath: (() -> ())?)
-	mobs[mob] = { HP = hp, MaxHP = hp, OnDeath = onDeath }
+-- `onDamage(currentHP, maxHP)` fires on every hit that DOESN'T kill it --
+-- lets a caller (EndlessModeMobManager.luau's floating HP bar) redraw
+-- without polling either.
+function EndlessModeMobRegistry.Register(mob: BasePart, hp: number, onDeath: (() -> ())?, onDamage: ((number, number) -> ())?)
+	mobs[mob] = { HP = hp, MaxHP = hp, OnDeath = onDeath, OnDamage = onDamage }
 end
 
 function EndlessModeMobRegistry.Unregister(mob: BasePart)
@@ -46,6 +50,9 @@ function EndlessModeMobRegistry.Damage(mob: BasePart, amount: number): boolean
 
 	entry.HP -= amount
 	if entry.HP > 0 then
+		if entry.OnDamage then
+			entry.OnDamage(entry.HP, entry.MaxHP)
+		end
 		return false
 	end
 

@@ -49,7 +49,11 @@ local PATCH_HEIGHT = 1
 local PATCH_CLEARANCE = 0.15
 -- Same "Bloxy" checkerboard-of-square-tiles trick as MapBuilder's grass/
 -- plaza/Endless Mode ground, per explicit request, instead of one flat slab.
-local PATCH_TILE_SIZE = 15
+-- Derived from PATCH_WIDTH (not a flat 15) so there are EXACTLY 5 tiles per
+-- row, per explicit request -- also doubles as the placement grid
+-- (SnapToPatchCell below), so this same tile size determines both what you
+-- see and where an Estate is allowed to land.
+local PATCH_TILE_SIZE = PATCH_WIDTH / 5
 local PATCH_COLOR_A = Color3.fromRGB(125, 85, 50)
 local PATCH_COLOR_B = Color3.fromRGB(100, 68, 40)
 -- Base HP display + a plain 3D door prototype marking the entrance (right at
@@ -337,6 +341,38 @@ function EndlessModeClaimManager.GetPatchBounds(side: string): { MinX: number, M
 		MinZ = centerZ - PATCH_DEPTH / 2,
 		MaxZ = centerZ + PATCH_DEPTH / 2,
 	}
+end
+
+-- Lets PetManager.luau snap a raw click position to the CENTER of the
+-- nearest checkerboard tile (spawnPatch's own grid, PATCH_TILE_SIZE studs
+-- each) instead of placing anywhere free-form -- per explicit request, so
+-- Estates land in a tidy grid instead of overlapping/scattered. Returns the
+-- snapped world position (X/Z only -- Y is left as whatever was passed in,
+-- PetManager.luau forces its own ground height anyway) and a stable
+-- "col,row" key PetManager.luau can use to detect an already-occupied cell.
+-- Nil if that side isn't claimed (no marker/patch to derive the grid from).
+-- Math mirrors spawnPatch's own tile-center formula exactly, so a snapped
+-- position always lands on the visible tile grid, not just "some" grid.
+function EndlessModeClaimManager.SnapToPatchCell(side: string, position: Vector3): (Vector3?, string?)
+	local marker = findMarker(side)
+	if not marker then
+		return nil, nil
+	end
+
+	local patchCenterX = ROAD_HALF_WIDTH + PATCH_WIDTH / 2
+	local patchCenterZ = marker.Position.Z
+	local tileCountX = math.max(1, math.floor(PATCH_WIDTH / PATCH_TILE_SIZE))
+	local tileCountZ = math.max(1, math.floor(PATCH_DEPTH / PATCH_TILE_SIZE))
+	local halfSpanX = (tileCountX * PATCH_TILE_SIZE) / 2
+	local halfSpanZ = (tileCountZ * PATCH_TILE_SIZE) / 2
+
+	local col = math.clamp(math.floor((position.X - (patchCenterX - halfSpanX)) / PATCH_TILE_SIZE), 0, tileCountX - 1)
+	local row = math.clamp(math.floor((position.Z - (patchCenterZ - halfSpanZ)) / PATCH_TILE_SIZE), 0, tileCountZ - 1)
+
+	local x = patchCenterX - halfSpanX + PATCH_TILE_SIZE * col + PATCH_TILE_SIZE / 2
+	local z = patchCenterZ - halfSpanZ + PATCH_TILE_SIZE * row + PATCH_TILE_SIZE / 2
+
+	return Vector3.new(x, position.Y, z), string.format("%d,%d", col, row)
 end
 
 local function tryClaim(player: Player, side: string)
