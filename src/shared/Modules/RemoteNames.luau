@@ -187,8 +187,28 @@ local RemoteNames = {
 		"PlaceEndlessModeEstate", -- client -> server, payload: assetId (string), position (Vector3)
 		-- -- fired when the player clicks/taps to plant their currently-held Estate at that spot.
 		-- Rejected server-side (PetManager.luau) unless assetId is actually this player's current
-		-- held Estate and they're in Endless Mode. Picking a placed Estate back up doesn't need its
-		-- own remote -- PetManager.luau puts a plain ClickDetector on it instead.
+		-- held Estate, they're in Endless Mode, and they haven't hit the per-type (5, or 3 for
+		-- Exclusive/Leaderboards Estates) or overall (20) placement cap. Multiple copies of the SAME
+		-- assetId can be placed -- each gets its own generated placementId (see
+		-- EndlessModeBuildingSelected below), so a placed Estate is never addressed by assetId alone.
+		-- Clicking a PLACED Estate's own ClickDetector doesn't need its own remote -- it toggles
+		-- selection directly server-side.
+		"EndlessModeBuildingSelected", -- server -> client, payload: { PlacementId: string, AssetId:
+		-- string, Name: string, HP: number, MaxHP: number, UpgradeLevel: number, UpgradeCost: number?
+		-- }? -- fired when the player selects (clicks) or deselects (clicks again/closes) one of
+		-- their own placed Estates -- PlacementId identifies this SPECIFIC instance (there can be
+		-- several with the same AssetId). EndlessModeBuildingPanel.luau's right-side HP/upgrade bar
+		-- shows only while this is non-nil. UpgradeCost is nil once UpgradeLevel is already at
+		-- EndlessModeBuildingConfig.MaxUpgradeLevel -- nothing left to buy.
+		"UpgradeEndlessModeBuilding", -- client -> server, payload: placementId (string) -- buys the
+		-- next upgrade level (more max HP, also fully heals) for that SPECIFIC placed instance.
+		-- Rejected server-side (PetManager.luau) unless it's currently selected by this player, not
+		-- already maxed, and they can afford EndlessModeBuildingConfig.GetUpgradeCost.
+		"PickUpEndlessModeBuilding", -- client -> server, payload: placementId (string) -- the
+		-- EndlessModeBuildingPanel.luau "Pick Up" button; destroys that specific placed instance and
+		-- frees up its placement-cap slot (no longer triggered by a bare click). With multiple copies
+		-- allowed now, "held in hand" just means "this equipped Estate type still has room for one
+		-- more" -- picking one up doesn't restore a dedicated held state of its own.
 	},
 	Functions = {},
 }

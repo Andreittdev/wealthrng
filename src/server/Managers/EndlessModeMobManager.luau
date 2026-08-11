@@ -1,10 +1,14 @@
 -- Endless Mode's wave enemies -- simple prototype mobs (plain blocks, no
 -- Humanoid/pathfinding yet, just a straight-line TweenService walk since the
 -- claimed plot is flat open ground with nothing to path around) that spawn
--- near the STREET (the front of the plot) and march the full depth of the
--- base to reach the door, which now sits at the back
--- (EndlessModeClaimManager.spawnBase's "Door" part), dealing damage on
--- arrival.
+-- near the STREET (the front of the plot).
+--
+-- Target priority, per explicit request: any of the owner's placed Estates
+-- still alive (PetManager.GetAlivePlacedBuildings) are attacked FIRST --
+-- each mob picks the nearest one to its own spawn point. Only once none are
+-- left alive does a mob fall back to marching the full depth of the base to
+-- reach the door (EndlessModeClaimManager.spawnBase's "Door" part), same as
+-- before.
 --
 -- Only spawns while the Right plot is actually claimed (EndlessModeClaimManager.
 -- GetOwner) -- no owner means nothing to attack, so nothing spawns.
@@ -17,6 +21,7 @@ local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local EndlessModeClaimManager = require(ServerScriptService.Managers.EndlessModeClaimManager)
+local PetManager = require(ServerScriptService.Managers.PetManager)
 
 local EndlessModeMobManager = {}
 
@@ -50,7 +55,8 @@ local function findDoor(side: string): BasePart?
 end
 
 local function spawnMob(side: string)
-	if not EndlessModeClaimManager.GetOwner(side) then
+	local owner = EndlessModeClaimManager.GetOwner(side)
+	if not owner then
 		return
 	end
 
@@ -63,6 +69,23 @@ local function spawnMob(side: string)
 	local spawnZ = door.Position.Z + (math.random() * 2 - 1) * SPAWN_Z_JITTER
 	local spawnPosition = Vector3.new(spawnX, door.Position.Y, spawnZ)
 
+	-- Nearest ALIVE placed Estate wins -- nil (and the door's own position)
+	-- if the owner has none standing, meaning this mob marches on the base
+	-- instead. Picked once at spawn (no dynamic re-targeting), same
+	-- "simple prototype, no pathfinding" scope as the straight-line walk.
+	local targetPlacementId: string? = nil
+	local targetPosition = door.Position
+	local nearestDistance = math.huge
+	for _, building in PetManager.GetAlivePlacedBuildings(owner) do
+		local buildingWalkPosition = Vector3.new(building.Position.X, spawnPosition.Y, building.Position.Z)
+		local distance = (buildingWalkPosition - spawnPosition).Magnitude
+		if distance < nearestDistance then
+			nearestDistance = distance
+			targetPlacementId = building.PlacementId
+			targetPosition = buildingWalkPosition
+		end
+	end
+
 	local mob = Instance.new("Part")
 	mob.Name = "EndlessMode_Mob"
 	mob.Size = MOB_SIZE
@@ -73,13 +96,20 @@ local function spawnMob(side: string)
 	mob.CFrame = CFrame.new(spawnPosition)
 	mob.Parent = door.Parent.Parent
 
-	local distance = (spawnPosition - door.Position).Magnitude
+	local distance = (spawnPosition - targetPosition).Magnitude
 	local duration = distance / MOB_SPEED_STUDS_PER_SECOND
 
-	local tween = TweenService:Create(mob, TweenInfo.new(duration, Enum.EasingStyle.Linear), { Position = door.Position })
+	local tween = TweenService:Create(mob, TweenInfo.new(duration, Enum.EasingStyle.Linear), { Position = targetPosition })
 	tween.Completed:Connect(function(playbackState: Enum.PlaybackState)
-		if playbackState == Enum.PlaybackState.Completed and EndlessModeClaimManager.GetOwner(side) then
-			EndlessModeClaimManager.DamageBase(side, MOB_DAMAGE)
+		-- Re-checked against the OWNER captured at spawn, not just "still
+		-- claimed by someone" -- guards against the plot changing hands
+		-- entirely while this mob was mid-walk.
+		if playbackState == Enum.PlaybackState.Completed and EndlessModeClaimManager.GetOwner(side) == owner then
+			if targetPlacementId then
+				PetManager.DamageBuilding(owner, targetPlacementId, MOB_DAMAGE)
+			else
+				EndlessModeClaimManager.DamageBase(side, MOB_DAMAGE)
+			end
 		end
 		if mob.Parent then
 			mob:Destroy()

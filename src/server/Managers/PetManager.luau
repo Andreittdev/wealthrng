@@ -28,36 +28,70 @@
 -- look right, making some come out too big/small at equip time. Scale each
 -- source model directly in Workspace/PetModels to the size it should
 -- appear as a pet.
+--
+-- Endless Mode placed buildings (see createPlacedBuildingModel below) are a
+-- SEPARATE, independent system from the above -- once planted, a building is
+-- a standalone Workspace object with its own lifecycle (destroyed only on
+-- pickup or mob-kill), not tied to the character-follow pet's
+-- destroy-and-rebuild-on-every-equip-change cycle. Multiple copies of the
+-- SAME Estate can be placed simultaneously (up to per-type/total caps, see
+-- MAX_TOTAL_PLACED etc.), so placements are keyed by a generated placementId,
+-- not by AssetId.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local AssetDatabase = require(ReplicatedStorage.Modules.AssetDatabase)
 local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
 local EndlessModeConfig = require(ReplicatedStorage.Modules.EndlessModeConfig)
+local EndlessModeBuildingConfig = require(ReplicatedStorage.Modules.EndlessModeBuildingConfig)
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local AssetManager = require(ServerScriptService.Managers.AssetManager)
 local InventoryManager = require(ServerScriptService.Managers.InventoryManager)
 local EndlessModeClaimManager = require(ServerScriptService.Managers.EndlessModeClaimManager)
+local StatsManager = require(ServerScriptService.Managers.StatsManager)
+local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManager)
 local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
 
 local placeEndlessModeEstate = RemotesBootstrap:WaitForChild("PlaceEndlessModeEstate")
 local endlessModeHeldEstateUpdated = RemotesBootstrap:WaitForChild("EndlessModeHeldEstateUpdated")
+local endlessModeBuildingSelected = RemotesBootstrap:WaitForChild("EndlessModeBuildingSelected")
+local upgradeEndlessModeBuilding = RemotesBootstrap:WaitForChild("UpgradeEndlessModeBuilding")
+local pickUpEndlessModeBuilding = RemotesBootstrap:WaitForChild("PickUpEndlessModeBuilding")
+local systemMessage = RemotesBootstrap:WaitForChild("SystemMessage")
 
 local PetManager = {}
 
--- Per-player, per-assetId placed position -- present means "planted
--- somewhere in Endless Mode", absent means "held in hand" (if equipped +
--- in Endless Mode) or "floating" (if equipped + in the hub). In-memory
--- only, same as the rest of Endless Mode's state (EndlessModeClaimManager.
--- luau etc.) -- cleared on unequip/disconnect, not persisted.
-local placedCFrames: { [Player]: { [string]: CFrame } } = {}
+type PlacedBuilding = {
+	AssetId: string,
+	CFrame: CFrame,
+	UpgradeLevel: number,
+	HP: number,
+	Model: Model,
+	HpLabel: TextLabel,
+}
 
--- Forward-declared (assigned further down, past doRefreshPets) -- spawnPet's
--- placed-Estate ClickDetector handler needs to call this on pickup, but is
+-- Per-player, per-placementId placed building -- keyed by a generated GUID,
+-- NOT by AssetId, since several copies of the SAME Estate can now be placed
+-- at once (see MAX_TOTAL_PLACED/MAX_COPIES_PER_ASSET_TYPE below). In-memory
+-- only, same as the rest of Endless Mode's state (EndlessModeClaimManager.
+-- luau etc.) -- cleared (and every Model destroyed) on disconnect, not
+-- persisted.
+local placedBuildings: { [Player]: { [string]: PlacedBuilding } } = {}
+
+-- Which of a player's OWN placed buildings currently has the right-side HP/
+-- upgrade panel open client-side (EndlessModeBuildingPanel.luau) -- at most
+-- one at a time, per explicit "only while that specific Estate is just-
+-- placed/selected" request. Nil means no panel is open. Keyed by placementId
+-- (a specific instance), not AssetId, for the same reason as above.
+local selectedPlacementId: { [Player]: string? } = {}
+
+-- Forward-declared (assigned further down, past doRefreshPets) -- the
+-- placement/upgrade/pickup remote handlers need to call this, but are
 -- defined textually earlier in the file than the real definition, so a
 -- plain `local function refreshPets` down there would capture an unrelated
 -- global instead of this upvalue.
@@ -73,10 +107,10 @@ local refreshPets: (Player) -> ()
 local SLOT_OFFSETS = { Vector3.new(-2, 0.5, 6), Vector3.new(2, 0.5, 6), Vector3.new(0, 0.5, 8) }
 local BOB_HEIGHT_STUDS = 1.4
 local BOB_SECONDS = 1.8
--- Applied to a PLACED Estate -- bigger than the Hub's floating-pet scale so
--- a planted building actually reads as a building sitting on the claimed
--- plot, not a toy.
-local ENDLESS_MODE_PET_SCALE = 2.5
+-- Applied to a PLACED Estate -- was 2.5 (bigger than the Hub's floating-pet
+-- scale), dropped to natural/unscaled per explicit "very big and looks
+-- damaged" feedback on the matching client-side ghost preview.
+local ENDLESS_MODE_PET_SCALE = 1
 -- Applied while HELD in hand instead -- small, not the full placed-building
 -- scale, per explicit feedback.
 local ENDLESS_MODE_HELD_SCALE = 0.8
@@ -84,6 +118,16 @@ local ENDLESS_MODE_HELD_SCALE = 0.8
 -- character) the held model sits at -- in front of the chest, per explicit
 -- request, not tied to the actual hand bone's pose.
 local HAND_GRIP_OFFSET = CFrame.new(0, 0, -2.5)
+
+-- Placement caps, per explicit request -- 20 across everything a player has
+-- planted, 5 copies max of any one ordinary Estate type, but only 3 for the
+-- rarer Exclusive/Leaderboards tier (Top1Estate/Top2Estate/Top3Estate,
+-- OldFarm, Supermarket, SolarPark, ConstructionShop -- see AssetDatabase's
+-- Rarity field). Ordinary purchasable Estates (Common..Godly) and
+-- Crate-exclusive ItemDatabase Estates both get the normal 5-copy cap.
+local MAX_TOTAL_PLACED = 20
+local MAX_COPIES_PER_ASSET_TYPE = 5
+local MAX_COPIES_PER_RARE_ASSET_TYPE = 3
 
 local activePets: { [Player]: { Model } } = {}
 
@@ -182,105 +226,142 @@ local function findPetTemplate(source: { Name: string, Id: string }): Model?
 	return nil
 end
 
-local function clearPets(player: Player)
-	local pets = activePets[player]
-	if not pets then
-		return
+-- `assetId` alone is all a placed building's own data carries for identity
+-- -- looks it back up against both databases the same way doRefreshPets'
+-- equipped-slots loop does, so templates/names can be resolved from either.
+local function findSourceById(assetId: string): { Name: string, Id: string }?
+	local asset = AssetDatabase.GetAsset(assetId)
+	if asset then
+		return asset
 	end
-	for _, pet in pets do
-		pet:Destroy()
+	local item = ItemDatabase.GetItem(assetId)
+	if item and item.CrateExclusive then
+		return item
 	end
-	activePets[player] = nil
+	return nil
 end
 
--- Each spawnPet call below creates a fresh "PetSlotN" Attachment parented
--- to the CHARACTER'S OWN HumanoidRootPart (not inside the pet model) --
--- clearPets above only destroys the pet models themselves, so those HRP
--- attachments were never actually cleaned up, silently piling up on every
--- single equip/unequip toggle for as long as the character stuck around.
--- Harmless on its own (AlignPosition/AlignOrientation reference the exact
--- new Attachment INSTANCE, not a name lookup, so a stale duplicate can't
--- accidentally get grabbed instead) but still a real leak -- wipe any
--- leftover ones before rebuilding so the count never grows unbounded.
-local function clearHrpAttachments(hrp: BasePart)
-	for _, child in hrp:GetChildren() do
-		if child:IsA("Attachment") and string.match(child.Name, "^PetSlot%d+$") then
-			child:Destroy()
+-- Exclusive/Leaderboards-tier Estates (see AssetDatabase's Rarity field
+-- comment) get the tighter 3-copy cap -- Crate-exclusive ItemDatabase
+-- "Estates" don't carry an equivalent field (different database), so they
+-- fall through to the ordinary 5-copy cap.
+local function maxCopiesForAsset(assetId: string): number
+	local asset = AssetDatabase.GetAsset(assetId)
+	if asset and (asset.Rarity == "Exclusive" or asset.Rarity == "Leaderboards") then
+		return MAX_COPIES_PER_RARE_ASSET_TYPE
+	end
+	return MAX_COPIES_PER_ASSET_TYPE
+end
+
+local function countPlaced(player: Player, assetId: string): (number, number)
+	local playerPlaced = placedBuildings[player]
+	if not playerPlaced then
+		return 0, 0
+	end
+	local total = 0
+	local ofType = 0
+	for _, building in playerPlaced do
+		total += 1
+		if building.AssetId == assetId then
+			ofType += 1
 		end
 	end
+	return total, ofType
 end
 
--- Warns ONCE per missing assetId (not every single equip/respawn, which
--- would otherwise spam the Output every time refreshPets reruns) so it's
--- easy to spot in Studio exactly which Estates/Items still need a model
--- placed/named correctly in ReplicatedStorage.PetModels or Workspace,
--- instead of the pet just silently never showing up with no clue why.
+-- Whether ANOTHER copy of this Estate can still be placed -- both the
+-- overall 20-total cap and the per-type cap (5, or 3 for Exclusive/
+-- Leaderboards) have to allow it.
+local function canPlaceMore(player: Player, assetId: string): boolean
+	local total, ofType = countPlaced(player, assetId)
+	if total >= MAX_TOTAL_PLACED then
+		return false
+	end
+	return ofType < maxCopiesForAsset(assetId)
+end
+
+-- Nil if that placementId isn't actually placed for this player anymore
+-- (picked up, unequipped, destroyed by mobs, etc.) -- callers treat that as
+-- "close the panel".
+local function buildSelectionPayload(player: Player, placementId: string)
+	local playerPlaced = placedBuildings[player]
+	local building = playerPlaced and playerPlaced[placementId]
+	if not building then
+		return nil
+	end
+
+	local source = findSourceById(building.AssetId)
+
+	return {
+		PlacementId = placementId,
+		AssetId = building.AssetId,
+		Name = (source and source.Name) or building.AssetId,
+		HP = building.HP,
+		MaxHP = EndlessModeBuildingConfig.GetMaxHP(building.UpgradeLevel),
+		UpgradeLevel = building.UpgradeLevel,
+		UpgradeCost = EndlessModeBuildingConfig.GetUpgradeCost(building.UpgradeLevel),
+	}
+end
+
+-- Dedicated Workspace folder for placed buildings -- separate from the
+-- character-bound pets in activePets, since these are standalone, fixed-
+-- position objects with their own lifecycle (destroyed only on pickup or
+-- mob-kill), not rebuilt every time doRefreshPets runs for unrelated
+-- equip-change reasons.
+local function getPlacedBuildingsFolder(): Folder
+	local mapFolder = Workspace:FindFirstChild("Map")
+	local parent: Instance = mapFolder or Workspace
+	local folder = parent:FindFirstChild("EndlessModePlacedBuildings")
+	if not folder then
+		folder = Instance.new("Folder")
+		folder.Name = "EndlessModePlacedBuildings"
+		folder.Parent = parent
+	end
+	return folder :: Folder
+end
+
 local warnedMissingTemplates: { [string]: boolean } = {}
 
--- Returns (success, isHeldInHand) -- the 2nd value is only meaningful when
--- true, used by doRefreshPets below to figure out which equipped Estate (if
--- any) should be reported as "held" for the client's placement preview.
-local function spawnPet(player: Player, character: Model, hrp: BasePart, source: { Name: string, Id: string }, slotIndex: number): (boolean, boolean)
+-- Builds the actual standalone Workspace model for ONE placed building
+-- instance. Returns (model, hpLabel), or nil if there's no matching pet
+-- template (same "silently skip if missing" convention as everything else
+-- in this file).
+local function createPlacedBuildingModel(player: Player, placementId: string, assetId: string, cframe: CFrame, upgradeLevel: number, hp: number): (Model?, TextLabel?)
+	local source = findSourceById(assetId)
+	if not source then
+		return nil, nil
+	end
+
 	local template = findPetTemplate(source)
 	if not template then
-		if not warnedMissingTemplates[source.Id] then
-			warnedMissingTemplates[source.Id] = true
+		if not warnedMissingTemplates[assetId] then
+			warnedMissingTemplates[assetId] = true
 			warn(string.format("[PetManager] No pet model found for '%s' (Id: %s) -- expected a Model named '%s' or '%s' in ReplicatedStorage.PetModels or Workspace.", source.Name, source.Id, source.Name, source.Id))
 		end
-		return false, false
+		return nil, nil
 	end
 
 	local pet = template:Clone()
-	pet.Name = "Pet_" .. source.Id
-
-	local inEndlessMode = EndlessModeConfig.IsCharacterInEndlessMode(character)
-	local placedCFrame = inEndlessMode and placedCFrames[player] and placedCFrames[player][source.Id]
-
-	-- Scaled up BEFORE anchor/bounding-box setup below, so the anchor ends
-	-- up centered on the FINAL (already-scaled) geometry, and the anchor's
-	-- own placeholder Size doesn't get needlessly scaled along with it.
-	-- Placed (planted on the ground) reads as a real building, so it gets
-	-- the bigger scale; held-in-hand gets a modest one instead -- 2.5x in
-	-- someone's hand looked "gigantic" per explicit feedback.
-	if placedCFrame then
-		pet:ScaleTo(ENDLESS_MODE_PET_SCALE)
-	elseif inEndlessMode then
-		pet:ScaleTo(ENDLESS_MODE_HELD_SCALE)
-	end
-
-	-- Roblox's per-client content streaming can deprioritize/delay sending
-	-- a newly-created instance to weaker or slower-connected clients
-	-- (mobile especially) -- matches the reported "sometimes shows on PC,
-	-- rarely/never on phone" symptom exactly. Persistent tells the engine
-	-- this should always replicate promptly to every client regardless of
-	-- distance/priority heuristics, instead of being treated like an
-	-- ordinary streamable prop.
+	pet.Name = "PlacedEstate_" .. assetId
 	pet.ModelStreamingMode = Enum.ModelStreamingMode.Persistent
 
-	-- Anchor at the model's real bounding-box CENTER, not its native pivot
-	-- -- an imported mesh's pivot is frequently off-center (often near its
-	-- base, sometimes at the import origin), so anchoring at the pivot left
-	-- most of the model hanging below the anchor point, reading as "sunk
-	-- into the ground" once it's floating at a fixed height behind the
-	-- player. Bounding box center floats every model symmetrically around
-	-- the anchor regardless of where its source pivot happened to be.
-	--
-	-- Anchor rotation is IDENTITY, not the pivot's rotation -- baking the
-	-- pivot's rotation in here got welded into the geometry's captured
-	-- offset, so any model whose pivot didn't already face the same way as
-	-- its own visible geometry (Beachfront Villa did this) ended up
-	-- spinning to face backwards once AlignOrientation took over. Identity
-	-- keeps each model in its own natural/as-placed orientation, so
-	-- AlignOrientation rotating the anchor to match the player's facing
-	-- rotates the model exactly as much and no more.
-	--
-	-- Must run BEFORE PrimaryPart is set below -- GetBoundingBox orients
-	-- itself off PrimaryPart if one is already assigned.
-	local boundingCFrame = pet:GetBoundingBox()
+	-- Parented BEFORE ScaleTo/GetBoundingBox below, not after -- calling
+	-- either on a clone that isn't in the DataModel yet produced wildly
+	-- inconsistent results, see the header comment / git history for the
+	-- full saga.
+	pet.Parent = getPlacedBuildingsFolder()
 
-	-- One dedicated invisible anchor part -- every real geometry part gets
-	-- rigidly WeldConstraint'd to it, and it alone is what the
-	-- AlignPosition/AlignOrientation constraints below actually drive.
+	pet:ScaleTo(ENDLESS_MODE_PET_SCALE)
+
+	-- Anchor at the model's real bounding-box CENTER, not its native pivot
+	-- -- an imported mesh's pivot is frequently off-center, so anchoring at
+	-- the pivot instead left the model reading as sunk/floating wrong.
+	-- Bounding box center is symmetric regardless of where the source
+	-- pivot happened to be. Must run BEFORE PrimaryPart is set below --
+	-- GetBoundingBox orients itself off PrimaryPart if one is already
+	-- assigned.
+	local boundingCFrame, boundingSize = pet:GetBoundingBox()
+
 	local anchor = Instance.new("Part")
 	anchor.Name = "PetAnchor"
 	anchor.Size = Vector3.new(1, 1, 1)
@@ -305,58 +386,147 @@ local function spawnPet(player: Player, character: Model, hrp: BasePart, source:
 		end
 	end
 
-	local heldInHand = inEndlessMode and not placedCFrame
+	-- Model:PivotTo (not a direct anchor.CFrame set) -- setting only the
+	-- anchor part's CFrame and relying on its WeldConstraints to drag the
+	-- rest of the (still-unanchored) descendants along proved unreliable in
+	-- testing (the anchor would snap back to the template's native authored
+	-- position moments after being set correctly). PivotTo moves every
+	-- descendant by the same rigid delta in one synchronous script-level
+	-- operation -- nothing left to race.
+	pet:PivotTo(cframe + Vector3.new(0, boundingSize.Y / 2, 0))
+	anchor.Anchored = true
 
-	if placedCFrame then
-		-- Planted somewhere in Endless Mode (PlaceEndlessModeEstate below) --
-		-- already scaled up (ENDLESS_MODE_PET_SCALE, applied earlier
-		-- alongside the anchor/bounding-box setup) and anchored right where
-		-- it was placed, no weld/align at all, plus a ClickDetector on
-		-- every real geometry part so clicking the model anywhere picks it
-		-- back up.
-		anchor.CFrame = placedCFrame
-		anchor.Anchored = true
+	-- Floating "N/MAX HP" label -- same idiom as EndlessModeClaimManager's
+	-- base HP display, StudsOffset instead of a dedicated anchor part since
+	-- `anchor` already sits at the right X/Z, just needs lifting above the
+	-- roofline.
+	local hpBillboard = Instance.new("BillboardGui")
+	hpBillboard.Name = "HPDisplay"
+	hpBillboard.Size = UDim2.new(0, 120, 0, 28)
+	hpBillboard.StudsOffset = Vector3.new(0, boundingSize.Y / 2 + 2, 0)
+	hpBillboard.AlwaysOnTop = true
+	hpBillboard.Adornee = anchor
+	hpBillboard.Parent = anchor
 
-		for _, descendant in pet:GetDescendants() do
-			if descendant:IsA("BasePart") then
-				local clickDetector = Instance.new("ClickDetector")
-				clickDetector.MaxActivationDistance = 25
-				clickDetector.Parent = descendant
-				clickDetector.MouseClick:Connect(function(clickingPlayer: Player)
-					if clickingPlayer ~= player then
-						return
-					end
-					local playerPlaced = placedCFrames[player]
-					if not playerPlaced or not playerPlaced[source.Id] then
-						return
-					end
-					playerPlaced[source.Id] = nil
-					refreshPets(player)
-				end)
-			end
+	local hpLabel = Instance.new("TextLabel")
+	hpLabel.Size = UDim2.new(1, 0, 1, 0)
+	hpLabel.BackgroundTransparency = 1
+	hpLabel.Font = Enum.Font.LuckiestGuy
+	hpLabel.Text = string.format("%d/%d HP", hp, EndlessModeBuildingConfig.GetMaxHP(upgradeLevel))
+	hpLabel.TextColor3 = Color3.fromRGB(255, 90, 90)
+	hpLabel.TextStrokeTransparency = 0
+	hpLabel.TextStrokeColor3 = Color3.fromRGB(10, 10, 10)
+	hpLabel.TextScaled = true
+	hpLabel.Parent = hpBillboard
+
+	-- Clicking a placed building toggles the right-side HP/upgrade panel
+	-- (EndlessModeBuildingPanel.luau) instead of picking it up directly --
+	-- the panel has its own "Pick Up" button now that a bare click can't do
+	-- both select AND pick up unambiguously.
+	for _, descendant in pet:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			local clickDetector = Instance.new("ClickDetector")
+			clickDetector.MaxActivationDistance = 25
+			clickDetector.Parent = descendant
+			clickDetector.MouseClick:Connect(function(clickingPlayer: Player)
+				if clickingPlayer ~= player then
+					return
+				end
+				local playerPlaced = placedBuildings[player]
+				if not playerPlaced or not playerPlaced[placementId] then
+					return
+				end
+				if selectedPlacementId[player] == placementId then
+					selectedPlacementId[player] = nil
+					endlessModeBuildingSelected:FireClient(player, nil)
+				else
+					selectedPlacementId[player] = placementId
+					endlessModeBuildingSelected:FireClient(player, buildSelectionPayload(player, placementId))
+				end
+			end)
 		end
-	elseif heldInHand then
+	end
+
+	return pet, hpLabel
+end
+
+-- Held-in-hand (Endless Mode, still room to place more) or floating (Hub)
+-- pet for an EQUIPPED asset slot. Returns (success, isHeldInHand) -- the 2nd
+-- value is only meaningful when true, used by doRefreshPets below to figure
+-- out which equipped Estate (if any) should be reported as "held" for the
+-- client's placement preview. Placed copies are entirely separate objects
+-- now (see createPlacedBuildingModel above) -- this function never renders
+-- one.
+local function spawnEquippedPet(player: Player, character: Model, hrp: BasePart, source: { Name: string, Id: string }, slotIndex: number): (boolean, boolean)
+	local template = findPetTemplate(source)
+	if not template then
+		if not warnedMissingTemplates[source.Id] then
+			warnedMissingTemplates[source.Id] = true
+			warn(string.format("[PetManager] No pet model found for '%s' (Id: %s) -- expected a Model named '%s' or '%s' in ReplicatedStorage.PetModels or Workspace.", source.Name, source.Id, source.Name, source.Id))
+		end
+		return false, false
+	end
+
+	local inEndlessMode = EndlessModeConfig.IsCharacterInEndlessMode(character)
+	local heldInHand = inEndlessMode and canPlaceMore(player, source.Id)
+
+	if inEndlessMode and not heldInHand then
+		-- Equipped and in Endless Mode, but already at this type's (or the
+		-- overall) placement cap -- nothing left to hold/place, so no pet
+		-- renders for this slot at all. The Estate's other effects (income
+		-- etc.) still apply from simply being equipped.
+		return true, false
+	end
+
+	local pet = template:Clone()
+	pet.Name = "Pet_" .. source.Id
+	pet.ModelStreamingMode = Enum.ModelStreamingMode.Persistent
+	pet.Parent = character
+
+	if heldInHand then
+		pet:ScaleTo(ENDLESS_MODE_HELD_SCALE)
+	end
+
+	local boundingCFrame = pet:GetBoundingBox()
+
+	local anchor = Instance.new("Part")
+	anchor.Name = "PetAnchor"
+	anchor.Size = Vector3.new(1, 1, 1)
+	anchor.Transparency = 1
+	anchor.CanCollide = false
+	anchor.CanTouch = false
+	anchor.Massless = true
+	anchor.CFrame = CFrame.new(boundingCFrame.Position)
+	anchor.Parent = pet
+	pet.PrimaryPart = anchor
+
+	for _, descendant in pet:GetDescendants() do
+		if descendant:IsA("BasePart") and descendant ~= anchor then
+			descendant.Anchored = false
+			descendant.CanCollide = false
+			descendant.CanTouch = false
+			descendant.Massless = true
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = anchor
+			weld.Part1 = descendant
+			weld.Parent = descendant
+		end
+	end
+
+	if heldInHand then
 		-- Held "in hand" reads here as "in front of the character", not a
 		-- literal grab of the hand bone -- per explicit request, it should
-		-- show in front even if the actual hand isn't posed out front (idle/
-		-- walk animations rarely hold a hand forward). A Motor6D from the
-		-- actual hand bone was tried first and put the model well below/
-		-- behind the character instead -- the hand part's own local axes
-		-- don't line up with world/HRP axes the way a guessed offset
-		-- assumed, and iterating blindly on that offset wasn't converging.
-		-- HumanoidRootPart's axes are the one part of a character guaranteed
-		-- to be predictable (local -Z is always "forward"), so this welds to
-		-- HRP instead -- also stable/non-wobbly for free, since HRP itself
-		-- doesn't animate the way arm bones do.
+		-- show in front even if the actual hand isn't posed out front.
+		-- HumanoidRootPart's axes are predictable (local -Z is always
+		-- "forward"), unlike a hand bone's, so this welds to HRP instead --
+		-- also stable/non-wobbly for free.
 		local motor = Instance.new("Motor6D")
 		motor.Name = "PetHandGrip"
 		motor.Part0 = hrp
 		motor.Part1 = anchor
 		motor.C0 = HAND_GRIP_OFFSET
 		motor.Parent = hrp
-	end
-
-	if not placedCFrame and not heldInHand then
+	else
 		-- Floating (hub) -- unchanged from the original behavior.
 		local baseOffset = SLOT_OFFSETS[slotIndex] or SLOT_OFFSETS[#SLOT_OFFSETS]
 
@@ -372,9 +542,7 @@ local function spawnPet(player: Player, character: Model, hrp: BasePart, source:
 		-- a big imported mesh (many/large welded parts) can still add up to
 		-- more effective weight than a finite force can reliably out-pull,
 		-- letting gravity slowly win and sink the pet through the map over
-		-- time despite Massless being set on every part. Infinite force/
-		-- torque means gravity can never out-compete the constraint
-		-- regardless of the model's size.
+		-- time despite Massless being set on every part.
 		local alignPosition = Instance.new("AlignPosition")
 		alignPosition.Attachment0 = petAttachment
 		alignPosition.Attachment1 = hrpAttachment
@@ -399,8 +567,6 @@ local function spawnPet(player: Player, character: Model, hrp: BasePart, source:
 		):Play()
 	end
 
-	pet.Parent = character
-
 	local pets = activePets[player]
 	if not pets then
 		pets = {}
@@ -408,6 +574,34 @@ local function spawnPet(player: Player, character: Model, hrp: BasePart, source:
 	end
 	table.insert(pets, pet)
 	return true, heldInHand
+end
+
+local function clearPets(player: Player)
+	local pets = activePets[player]
+	if not pets then
+		return
+	end
+	for _, pet in pets do
+		pet:Destroy()
+	end
+	activePets[player] = nil
+end
+
+-- Each spawnEquippedPet call above creates a fresh "PetSlotN" Attachment
+-- parented to the CHARACTER'S OWN HumanoidRootPart (not inside the pet
+-- model) -- clearPets above only destroys the pet models themselves, so
+-- those HRP attachments were never actually cleaned up, silently piling up
+-- on every single equip/unequip toggle for as long as the character stuck
+-- around. Harmless on its own (AlignPosition/AlignOrientation reference the
+-- exact new Attachment INSTANCE, not a name lookup) but still a real leak --
+-- wipe any leftover ones before rebuilding so the count never grows
+-- unbounded.
+local function clearHrpAttachments(hrp: BasePart)
+	for _, child in hrp:GetChildren() do
+		if child:IsA("Attachment") and string.match(child.Name, "^PetSlot%d+$") then
+			child:Destroy()
+		end
+	end
 end
 
 -- If an equip/unequip races the character not being fully loaded yet
@@ -439,6 +633,9 @@ local REFRESH_DEBOUNCE_SECONDS = 0.15
 -- HRP attachments/pet list.
 local latestRefreshGeneration: { [Player]: number } = {}
 
+-- NOTE: only rebuilds the held-in-hand/floating pets (spawnEquippedPet) --
+-- placed buildings are standalone objects (createPlacedBuildingModel) with
+-- their own independent lifecycle and are never touched here.
 local function doRefreshPets(player: Player, myGeneration: number)
 	if latestRefreshGeneration[player] ~= myGeneration then
 		return
@@ -473,10 +670,6 @@ local function doRefreshPets(player: Player, myGeneration: number)
 	-- independently of Main.server.luau's DataManager.Load(player) call, so
 	-- the Character can already exist (passing the check above) while this
 	-- player's session hasn't finished its own DataStore round-trip yet.
-	-- EquippedAssetsChanged/EquippedItemChanged only fire on a CHANGE, not
-	-- on initial load, so without a retry here, a player who reconnects
-	-- with Estates already equipped from last time would silently get NO
-	-- pets at all until they manually re-equip something.
 	local session = DataManager.Get(player)
 	if not session then
 		task.spawn(function()
@@ -496,9 +689,9 @@ local function doRefreshPets(player: Player, myGeneration: number)
 		return
 	end
 
-	-- Whichever equipped Estate is currently unplaced (heldInHand) is
+	-- Whichever equipped Estate can still be planted (under its cap) is
 	-- reported to the client as "this is what you're holding, show the
-	-- placement preview" -- if more than one is somehow unplaced at once
+	-- placement preview" -- if more than one is somehow holdable at once
 	-- (MaxEquipped is 2), the LAST one wins, simplest reasonable default
 	-- since only one placement preview can sensibly show at a time.
 	local heldAssetId: string? = nil
@@ -506,7 +699,7 @@ local function doRefreshPets(player: Player, myGeneration: number)
 	for slotIndex, assetId in session.EquippedAssets do
 		local asset = AssetDatabase.GetAsset(assetId)
 		if asset then
-			local _, heldInHand = spawnPet(player, character, hrp, asset, slotIndex)
+			local _, heldInHand = spawnEquippedPet(player, character, hrp, asset, slotIndex)
 			if heldInHand then
 				heldAssetId = assetId
 			end
@@ -521,10 +714,24 @@ local function doRefreshPets(player: Player, myGeneration: number)
 	if session.EquippedItemId then
 		local item = ItemDatabase.GetItem(session.EquippedItemId)
 		if item and item.CrateExclusive then
-			local _, heldInHand = spawnPet(player, character, hrp, item, 3)
+			local _, heldInHand = spawnEquippedPet(player, character, hrp, item, 3)
 			if heldInHand then
 				heldAssetId = session.EquippedItemId
 			end
+		end
+	end
+
+	-- If the currently-selected (panel-open) building stopped being both
+	-- placed and (physically) in Endless Mode, close the stale panel --
+	-- placed buildings persist regardless of equip state now, so only those
+	-- two things matter (unequipping the type no longer affects it).
+	local selectedId = selectedPlacementId[player]
+	if selectedId then
+		local stillInEndlessMode = EndlessModeConfig.IsCharacterInEndlessMode(character)
+		local stillPlaced = placedBuildings[player] and placedBuildings[player][selectedId]
+		if not stillInEndlessMode or not stillPlaced then
+			selectedPlacementId[player] = nil
+			endlessModeBuildingSelected:FireClient(player, nil)
 		end
 	end
 
@@ -572,7 +779,17 @@ end
 Players.PlayerRemoving:Connect(function(player: Player)
 	activePets[player] = nil
 	latestRefreshGeneration[player] = nil
-	placedCFrames[player] = nil
+
+	local playerPlaced = placedBuildings[player]
+	if playerPlaced then
+		for _, building in playerPlaced do
+			if building.Model then
+				building.Model:Destroy()
+			end
+		end
+	end
+	placedBuildings[player] = nil
+	selectedPlacementId[player] = nil
 end)
 
 -- Right only for now -- matches EndlessModeClaimManager/EndlessModeMobManager's
@@ -580,9 +797,9 @@ end)
 local PLACEABLE_SIDE = "Right"
 
 -- Client fires this after raycasting the ground under its own mouse/touch --
--- server still re-validates ownership, Endless Mode presence, and clamps the
--- position onto the actual claimed brown patch (not just "anywhere on the
--- ground") before trusting it, per explicit request.
+-- server still re-validates ownership, Endless Mode presence, the placement
+-- caps, and clamps the position onto the actual claimed brown patch (not
+-- just "anywhere on the ground") before trusting it.
 placeEndlessModeEstate.OnServerEvent:Connect(function(player: Player, assetId: string, position: Vector3)
 	if typeof(assetId) ~= "string" or typeof(position) ~= "Vector3" then
 		return
@@ -603,6 +820,11 @@ placeEndlessModeEstate.OnServerEvent:Connect(function(player: Player, assetId: s
 		return
 	end
 
+	if not canPlaceMore(player, assetId) then
+		systemMessage:FireClient(player, "You've reached the placement limit for this Estate!")
+		return
+	end
+
 	local bounds = EndlessModeClaimManager.GetPatchBounds(PLACEABLE_SIDE)
 	if not bounds then
 		return
@@ -613,15 +835,177 @@ placeEndlessModeEstate.OnServerEvent:Connect(function(player: Player, assetId: s
 		EndlessModeConfig.GroundOrigin.Y,
 		math.clamp(position.Z, bounds.MinZ, bounds.MaxZ)
 	)
+	local cframe = CFrame.new(clampedPosition)
 
-	local playerPlaced = placedCFrames[player]
+	local placementId = HttpService:GenerateGUID(false)
+	local model, hpLabel = createPlacedBuildingModel(player, placementId, assetId, cframe, 0, EndlessModeBuildingConfig.GetMaxHP(0))
+	if not model or not hpLabel then
+		return
+	end
+
+	local playerPlaced = placedBuildings[player]
 	if not playerPlaced then
 		playerPlaced = {}
-		placedCFrames[player] = playerPlaced
+		placedBuildings[player] = playerPlaced
 	end
-	playerPlaced[assetId] = CFrame.new(clampedPosition)
+	playerPlaced[placementId] = {
+		AssetId = assetId,
+		CFrame = cframe,
+		UpgradeLevel = 0,
+		HP = EndlessModeBuildingConfig.GetMaxHP(0),
+		Model = model,
+		HpLabel = hpLabel,
+	}
+
+	-- Opens the HP/upgrade panel immediately on placement, per explicit
+	-- "only while that specific Estate is just-placed/selected" request.
+	selectedPlacementId[player] = placementId
+	endlessModeBuildingSelected:FireClient(player, buildSelectionPayload(player, placementId))
+
+	-- Re-evaluates the held-in-hand preview -- this placement may have just
+	-- hit the per-type/total cap, in which case the held pet/ghost needs to
+	-- disappear now that no more can be planted.
+	refreshPets(player)
+end)
+
+-- Buys the next upgrade level (more max HP) for whichever placed building is
+-- currently selected -- selection is re-validated server-side (not just
+-- trusted from the client's last-known panel state) so a stale/foreign
+-- placementId can't be upgraded by replaying an old FireServer call.
+upgradeEndlessModeBuilding.OnServerEvent:Connect(function(player: Player, placementId: string)
+	if typeof(placementId) ~= "string" then
+		return
+	end
+	if not EndlessModeConfig.IsCharacterInEndlessMode(player.Character) then
+		return
+	end
+	if selectedPlacementId[player] ~= placementId then
+		return
+	end
+
+	local playerPlaced = placedBuildings[player]
+	local building = playerPlaced and playerPlaced[placementId]
+	if not building then
+		return
+	end
+
+	local cost = EndlessModeBuildingConfig.GetUpgradeCost(building.UpgradeLevel)
+	if not cost then
+		return
+	end
+
+	local session = DataManager.Get(player)
+	if not session then
+		return
+	end
+	if session.Cash < cost then
+		systemMessage:FireClient(player, "You don't have enough money!")
+		return
+	end
+
+	session.Cash -= cost
+	building.UpgradeLevel += 1
+	-- Also fully heals -- paying to upgrade a building that's currently
+	-- half-dead from mob damage and getting LESS max HP than before it
+	-- healed would feel bad, so an upgrade always tops it back up to its
+	-- new (higher) max.
+	building.HP = EndlessModeBuildingConfig.GetMaxHP(building.UpgradeLevel)
+
+	if building.HpLabel then
+		building.HpLabel.Text = string.format("%d/%d HP", building.HP, EndlessModeBuildingConfig.GetMaxHP(building.UpgradeLevel))
+	end
+
+	endlessModeBuildingSelected:FireClient(player, buildSelectionPayload(player, placementId))
+	StatsManager.Recompute(player)
+	LeaderboardManager.MarkDirty(player)
+end)
+
+-- The panel's "Pick Up" button -- destroys this specific placed instance and
+-- frees up a placement-cap slot. Doesn't put it back in a special "held"
+-- state of its own -- with multiple copies allowed now, "held" just means
+-- "this equipped type has room for one more", so the existing held preview
+-- (or a freshly-reappearing one, via refreshPets below) covers replanting.
+pickUpEndlessModeBuilding.OnServerEvent:Connect(function(player: Player, placementId: string)
+	if typeof(placementId) ~= "string" then
+		return
+	end
+	if not EndlessModeConfig.IsCharacterInEndlessMode(player.Character) then
+		return
+	end
+	if selectedPlacementId[player] ~= placementId then
+		return
+	end
+
+	local playerPlaced = placedBuildings[player]
+	local building = playerPlaced and playerPlaced[placementId]
+	if not building then
+		return
+	end
+
+	if building.Model then
+		building.Model:Destroy()
+	end
+	playerPlaced[placementId] = nil
+	selectedPlacementId[player] = nil
+	endlessModeBuildingSelected:FireClient(player, nil)
 
 	refreshPets(player)
 end)
+
+-- Lets EndlessModeMobManager.luau find live targets for a claimed side's
+-- owner -- mobs attack placed Estates before the main base, per explicit
+-- request, only falling back to the base once none are left standing.
+function PetManager.GetAlivePlacedBuildings(player: Player): { { PlacementId: string, Position: Vector3 } }
+	local result = {}
+	local playerPlaced = placedBuildings[player]
+	if not playerPlaced then
+		return result
+	end
+	for placementId, building in playerPlaced do
+		if building.HP > 0 then
+			table.insert(result, { PlacementId = placementId, Position = building.CFrame.Position })
+		end
+	end
+	return result
+end
+
+-- Called by EndlessModeMobManager.luau when a mob reaches a placed Estate
+-- instead of the base. Clamped at 0; hitting 0 destroys that specific
+-- building outright (model destroyed, removed from placedBuildings, panel
+-- closed if it was the selected one, and its cap slot freed up) -- unlike
+-- EndlessModeClaimManager.DamageBase's shared base HP (which just sits at 0,
+-- nothing to "lose"), an individual building can actually be lost here.
+function PetManager.DamageBuilding(player: Player, placementId: string, amount: number)
+	local playerPlaced = placedBuildings[player]
+	local building = playerPlaced and playerPlaced[placementId]
+	if not building then
+		return
+	end
+
+	building.HP = math.max(0, building.HP - amount)
+
+	if building.HP <= 0 then
+		if building.Model then
+			building.Model:Destroy()
+		end
+		playerPlaced[placementId] = nil
+		if selectedPlacementId[player] == placementId then
+			selectedPlacementId[player] = nil
+			endlessModeBuildingSelected:FireClient(player, nil)
+		end
+		-- Freed up a placement-cap slot -- re-evaluate whether the held
+		-- preview for this Estate type should reappear.
+		refreshPets(player)
+		return
+	end
+
+	if building.HpLabel then
+		building.HpLabel.Text = string.format("%d/%d HP", building.HP, EndlessModeBuildingConfig.GetMaxHP(building.UpgradeLevel))
+	end
+
+	if selectedPlacementId[player] == placementId then
+		endlessModeBuildingSelected:FireClient(player, buildSelectionPayload(player, placementId))
+	end
+end
 
 return PetManager
