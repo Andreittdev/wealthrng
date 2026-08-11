@@ -37,6 +37,7 @@ local StadiumOfferPanel = require(script.Parent.StadiumOfferPanel)
 local EndlessModeClaimPanel = require(script.Parent.EndlessModeClaimPanel)
 local EndlessModeWaveHUD = require(script.Parent.EndlessModeWaveHUD)
 local EndlessModeBuildingPanel = require(script.Parent.EndlessModeBuildingPanel)
+local EndlessModeCashHud = require(script.Parent.EndlessModeCashHud)
 local RobuxManDialogChoices = require(script.Parent.RobuxManDialogChoices)
 local NetWorthPanel = require(script.Parent.NetWorthPanel)
 local SettingsPanel = require(script.Parent.SettingsPanel)
@@ -88,6 +89,7 @@ function MainUI.Init()
 	local endlessModeClaimHandle = EndlessModeClaimPanel.Create(screenGui, remotesFolder)
 	local endlessModeWaveHudHandle = EndlessModeWaveHUD.Create(screenGui)
 	local endlessModeBuildingHandle = EndlessModeBuildingPanel.Create(screenGui, remotesFolder)
+	local endlessModeCashHudHandle = EndlessModeCashHud.Create(screenGui)
 	RobuxManDialogChoices.Create(screenGui, remotesFolder)
 	local netWorthHandle = NetWorthPanel.Create(screenGui, remotesFolder)
 	local settingsHandle = SettingsPanel.Create(screenGui, remotesFolder)
@@ -105,7 +107,7 @@ function MainUI.Init()
 		Settings = settingsHandle,
 		Profile = profileHandle,
 		Trade = tradeHandle,
-	}, cashHudHandle.Frame, luckSpeedHudHandle.Frame)
+	}, cashHudHandle.Frame, luckSpeedHudHandle.Frame, endlessModeCashHudHandle.Frame)
 
 	-- Endless Mode's sidebar only shows Inventory/Store -- everything else
 	-- (Net Worth, Trade, Settings, Profile) is hidden while there, and the
@@ -127,12 +129,16 @@ function MainUI.Init()
 		end
 		cashHudHandle.Frame.Visible = not inEndlessMode
 		endlessModeWaveHudHandle.Frame.Visible = inEndlessMode
+		endlessModeCashHudHandle.Frame.Visible = inEndlessMode
 		luckEventBannerHandle.SetSuppressed(inEndlessMode)
 		inventoryHandle.SetEstatesOnly(inEndlessMode)
 	end)
 
 	local endlessModeWaveUpdated = remotesFolder:WaitForChild("EndlessModeWaveUpdated")
 	endlessModeWaveUpdated.OnClientEvent:Connect(endlessModeWaveHudHandle.SetWave)
+
+	local endlessModeCashUpdated = remotesFolder:WaitForChild("EndlessModeCashUpdated")
+	endlessModeCashUpdated.OnClientEvent:Connect(endlessModeCashHudHandle.Update)
 
 	-- Built last -- needs the real ROLL/Inventory/Upgrade buttons (and the
 	-- Upgrades panel's own internals) to already exist so it can point its

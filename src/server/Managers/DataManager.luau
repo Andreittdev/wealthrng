@@ -214,6 +214,11 @@ export type Session = {
 	-- hits MaxWave. Only accumulates while physically there (paused the rest
 	-- of the time), per explicit request.
 	EndlessModeElapsedSeconds: number,
+	-- Separate currency from the Hub's own Cash -- earned/spent entirely
+	-- within Endless Mode (EndlessModeCashHud.luau shows it top-right while
+	-- there, same icon as the regular Cash pill). No earning source wired up
+	-- yet -- just the stored/displayed number for now, per explicit request.
+	EndlessModeCash: number,
 	LoadedOk: boolean,
 }
 
@@ -262,6 +267,7 @@ local function newDefaultSession(): Session
 		GrantedRankRewards = {},
 		AssetSerialNumbers = {},
 		EndlessModeElapsedSeconds = 0,
+		EndlessModeCash = 0,
 		LoadedOk = true,
 	}
 end
@@ -404,6 +410,7 @@ function DataManager.Load(player: Player): Session
 				GrantedRankRewards = data.GrantedRankRewards or {},
 				AssetSerialNumbers = data.AssetSerialNumbers or {},
 				EndlessModeElapsedSeconds = data.EndlessModeElapsedSeconds or 0,
+				EndlessModeCash = data.EndlessModeCash or 0,
 				LoadedOk = true,
 			}
 
@@ -510,6 +517,7 @@ function DataManager.Save(player: Player)
 		GrantedRankRewards = session.GrantedRankRewards,
 		AssetSerialNumbers = session.AssetSerialNumbers,
 		EndlessModeElapsedSeconds = session.EndlessModeElapsedSeconds,
+		EndlessModeCash = session.EndlessModeCash,
 	}
 
 	local ok = attempt(function()

@@ -94,7 +94,7 @@ export type PanelHandles = {
 	Profile: { Toggle: () -> () },
 }
 
-function Sidebar.Create(screenGui: ScreenGui, handles: PanelHandles, cashHudFrame: Frame, luckSpeedHudFrame: Frame)
+function Sidebar.Create(screenGui: ScreenGui, handles: PanelHandles, cashHudFrame: Frame, luckSpeedHudFrame: Frame, endlessModeCashHudFrame: Frame?)
 	local rows = math.ceil(#BUTTONS / COLUMNS)
 	local gridWidth = COLUMNS * ICON_SIZE + (COLUMNS - 1) * GAP_X
 	local gridHeight = rows * ICON_SIZE + (rows - 1) * GAP_Y
@@ -245,6 +245,23 @@ function Sidebar.Create(screenGui: ScreenGui, handles: PanelHandles, cashHudFram
 	local cashUIScale = Instance.new("UIScale")
 	cashUIScale.Parent = cashHudFrame
 
+	-- EndlessModeCashHud shares this EXACT stacked slot (same LayoutOrder) --
+	-- per explicit "under Inventory" request, it swaps in right where CashHud
+	-- normally sits, below the icon grid, instead of getting its own
+	-- independent position. UIListLayout skips Invisible children
+	-- automatically, and MainUI.luau already keeps the two mutually
+	-- exclusive (CashHud hides the instant Endless Mode's HUD shows), so
+	-- there's never a moment both actually occupy the slot at once.
+	local endlessCashUIScale: UIScale? = nil
+	if endlessModeCashHudFrame then
+		endlessModeCashHudFrame.LayoutOrder = 2
+		endlessModeCashHudFrame.AnchorPoint = Vector2.new(0, 0)
+		endlessModeCashHudFrame.Position = UDim2.new(0, 0, 0, 0)
+		endlessModeCashHudFrame.Parent = iconContainer
+		endlessCashUIScale = Instance.new("UIScale")
+		endlessCashUIScale.Parent = endlessModeCashHudFrame
+	end
+
 	-- LuckSpeedHUD stays its own independent bottom-left cluster.
 	local bottomContainer = Instance.new("Frame")
 	bottomContainer.Size = luckSpeedHudFrame.Size
@@ -288,6 +305,9 @@ function Sidebar.Create(screenGui: ScreenGui, handles: PanelHandles, cashHudFram
 		local topScale = math.clamp(math.min(widthScale, heightScale, fitScale), TOP_MIN_SCALE, 1)
 		iconUIScale.Scale = topScale
 		cashUIScale.Scale = topScale < 1 and CASH_MOBILE_SCALE or 1
+		if endlessCashUIScale then
+			endlessCashUIScale.Scale = cashUIScale.Scale
+		end
 
 		local bottomClusterTop = size.Y - BOTTOM_MARGIN - bottomHeight * bottomScale
 		local maxStartY = bottomClusterTop - topHeight * topScale - STACK_GAP - SAFETY_GAP

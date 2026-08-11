@@ -49,12 +49,14 @@ local AssetDatabase = require(ReplicatedStorage.Modules.AssetDatabase)
 local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
 local EndlessModeConfig = require(ReplicatedStorage.Modules.EndlessModeConfig)
 local EndlessModeBuildingConfig = require(ReplicatedStorage.Modules.EndlessModeBuildingConfig)
+local EndlessModeUnitRoleConfig = require(ReplicatedStorage.Modules.EndlessModeUnitRoleConfig)
+local WaveConfig = require(ReplicatedStorage.Modules.WaveConfig)
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local AssetManager = require(ServerScriptService.Managers.AssetManager)
 local InventoryManager = require(ServerScriptService.Managers.InventoryManager)
 local EndlessModeClaimManager = require(ServerScriptService.Managers.EndlessModeClaimManager)
-local StatsManager = require(ServerScriptService.Managers.StatsManager)
-local LeaderboardManager = require(ServerScriptService.Managers.LeaderboardManager)
+local EndlessModeMobRegistry = require(ServerScriptService.Managers.EndlessModeMobRegistry)
+local EndlessModeAllyManager = require(ServerScriptService.Managers.EndlessModeAllyManager)
 local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
 
 local placeEndlessModeEstate = RemotesBootstrap:WaitForChild("PlaceEndlessModeEstate")
@@ -62,6 +64,7 @@ local endlessModeHeldEstateUpdated = RemotesBootstrap:WaitForChild("EndlessModeH
 local endlessModeBuildingSelected = RemotesBootstrap:WaitForChild("EndlessModeBuildingSelected")
 local upgradeEndlessModeBuilding = RemotesBootstrap:WaitForChild("UpgradeEndlessModeBuilding")
 local pickUpEndlessModeBuilding = RemotesBootstrap:WaitForChild("PickUpEndlessModeBuilding")
+local endlessModeCashUpdated = RemotesBootstrap:WaitForChild("EndlessModeCashUpdated")
 local systemMessage = RemotesBootstrap:WaitForChild("SystemMessage")
 
 local PetManager = {}
@@ -280,6 +283,17 @@ local function canPlaceMore(player: Player, assetId: string): boolean
 	return ofType < maxCopiesForAsset(assetId)
 end
 
+-- EndlessModeBuildingConfig's Base+per-upgrade formula is the SAME for every
+-- building regardless of type -- Tank-role Estates get an extra multiplier
+-- on top (EndlessModeUnitRoleConfig.GetTankHPMultiplier, 1 for anything
+-- that isn't a Tank), scaled by how hard that specific Estate is to obtain.
+-- math.floor keeps HP a clean integer even where the multiplier doesn't
+-- divide evenly.
+local function getEffectiveMaxHP(assetId: string, upgradeLevel: number): number
+	local baseMaxHP = EndlessModeBuildingConfig.GetMaxHP(upgradeLevel)
+	return math.floor(baseMaxHP * EndlessModeUnitRoleConfig.GetTankHPMultiplier(assetId))
+end
+
 -- Nil if that placementId isn't actually placed for this player anymore
 -- (picked up, unequipped, destroyed by mobs, etc.) -- callers treat that as
 -- "close the panel".
@@ -297,7 +311,7 @@ local function buildSelectionPayload(player: Player, placementId: string)
 		AssetId = building.AssetId,
 		Name = (source and source.Name) or building.AssetId,
 		HP = building.HP,
-		MaxHP = EndlessModeBuildingConfig.GetMaxHP(building.UpgradeLevel),
+		MaxHP = getEffectiveMaxHP(building.AssetId, building.UpgradeLevel),
 		UpgradeLevel = building.UpgradeLevel,
 		UpgradeCost = EndlessModeBuildingConfig.GetUpgradeCost(building.UpgradeLevel),
 	}
@@ -412,7 +426,7 @@ local function createPlacedBuildingModel(player: Player, placementId: string, as
 	hpLabel.Size = UDim2.new(1, 0, 1, 0)
 	hpLabel.BackgroundTransparency = 1
 	hpLabel.Font = Enum.Font.LuckiestGuy
-	hpLabel.Text = string.format("%d/%d HP", hp, EndlessModeBuildingConfig.GetMaxHP(upgradeLevel))
+	hpLabel.Text = string.format("%d/%d HP", hp, getEffectiveMaxHP(assetId, upgradeLevel))
 	hpLabel.TextColor3 = Color3.fromRGB(255, 90, 90)
 	hpLabel.TextStrokeTransparency = 0
 	hpLabel.TextStrokeColor3 = Color3.fromRGB(10, 10, 10)
@@ -796,6 +810,57 @@ end)
 -- own "Right only" scope.
 local PLACEABLE_SIDE = "Right"
 
+-- Current mob damage for `player` -- scales with their own wave progress
+-- (WaveConfig.GetWaveForElapsedSeconds off session.EndlessModeElapsedSeconds),
+-- same idiom EndlessModeMobManager.luau's own getMobDamage uses. Needed here
+-- just to hand off to a Spawner's Ally (EndlessModeAllyManager.SpawnAlly) so
+-- it knows how hard the mob it ends up fighting will hit back.
+local function getMobDamage(player: Player): number
+	local session = DataManager.Get(player)
+	local wave = session and WaveConfig.GetWaveForElapsedSeconds(session.EndlessModeElapsedSeconds) or 1
+	return EndlessModeUnitRoleConfig.GetMobDamageForWave(wave)
+end
+
+-- Started once, right after a Damage-role building is placed -- ticks for as
+-- long as `placementId` stays in placedBuildings (checked fresh every tick,
+-- no separate "still alive" flag needed), attacking whichever mob is nearest
+-- within range. Stops itself the instant the building is picked up,
+-- destroyed by mobs, or the player disconnects (all three just remove the
+-- placedBuildings entry).
+local function startDamageLoop(player: Player, placementId: string)
+	task.spawn(function()
+		while true do
+			task.wait(EndlessModeUnitRoleConfig.DamageTickSeconds)
+			local playerPlaced = placedBuildings[player]
+			local building = playerPlaced and playerPlaced[placementId]
+			if not building then
+				return
+			end
+			local mob = EndlessModeMobRegistry.GetNearestAliveMob(building.CFrame.Position, EndlessModeUnitRoleConfig.DamageRangeStuds)
+			if mob then
+				EndlessModeMobRegistry.Damage(mob, EndlessModeUnitRoleConfig.DamageAmount)
+			end
+		end
+	end)
+end
+
+-- Same lifetime idiom as startDamageLoop above, but for Spawner-role
+-- buildings -- periodically hands off to EndlessModeAllyManager to actually
+-- create and run the ally.
+local function startSpawnerLoop(player: Player, placementId: string)
+	task.spawn(function()
+		while true do
+			task.wait(EndlessModeUnitRoleConfig.SpawnerIntervalSeconds)
+			local playerPlaced = placedBuildings[player]
+			local building = playerPlaced and playerPlaced[placementId]
+			if not building then
+				return
+			end
+			EndlessModeAllyManager.SpawnAlly(building.CFrame.Position, getMobDamage(player))
+		end
+	end)
+end
+
 -- Client fires this after raycasting the ground under its own mouse/touch --
 -- server still re-validates ownership, Endless Mode presence, the placement
 -- caps, and clamps the position onto the actual claimed brown patch (not
@@ -838,7 +903,8 @@ placeEndlessModeEstate.OnServerEvent:Connect(function(player: Player, assetId: s
 	local cframe = CFrame.new(clampedPosition)
 
 	local placementId = HttpService:GenerateGUID(false)
-	local model, hpLabel = createPlacedBuildingModel(player, placementId, assetId, cframe, 0, EndlessModeBuildingConfig.GetMaxHP(0))
+	local initialMaxHP = getEffectiveMaxHP(assetId, 0)
+	local model, hpLabel = createPlacedBuildingModel(player, placementId, assetId, cframe, 0, initialMaxHP)
 	if not model or not hpLabel then
 		return
 	end
@@ -852,7 +918,7 @@ placeEndlessModeEstate.OnServerEvent:Connect(function(player: Player, assetId: s
 		AssetId = assetId,
 		CFrame = cframe,
 		UpgradeLevel = 0,
-		HP = EndlessModeBuildingConfig.GetMaxHP(0),
+		HP = initialMaxHP,
 		Model = model,
 		HpLabel = hpLabel,
 	}
@@ -861,6 +927,17 @@ placeEndlessModeEstate.OnServerEvent:Connect(function(player: Player, assetId: s
 	-- "only while that specific Estate is just-placed/selected" request.
 	selectedPlacementId[player] = placementId
 	endlessModeBuildingSelected:FireClient(player, buildSelectionPayload(player, placementId))
+
+	-- Combat role (EndlessModeUnitRoleConfig) -- Tank doesn't need anything
+	-- started here, it's purely reactive (EndlessModeMobManager.luau checks
+	-- the role when a mob ARRIVES). Damage/Spawner are active instead, so
+	-- they get their own ticking loop for as long as this placement exists.
+	local role = EndlessModeUnitRoleConfig.GetRole(assetId)
+	if role == "Damage" then
+		startDamageLoop(player, placementId)
+	elseif role == "Spawner" then
+		startSpawnerLoop(player, placementId)
+	end
 
 	-- Re-evaluates the held-in-hand preview -- this placement may have just
 	-- hit the per-type/total cap, in which case the held pet/ghost needs to
@@ -898,26 +975,28 @@ upgradeEndlessModeBuilding.OnServerEvent:Connect(function(player: Player, placem
 	if not session then
 		return
 	end
-	if session.Cash < cost then
-		systemMessage:FireClient(player, "You don't have enough money!")
+	-- Paid from EndlessModeCash (earned in Endless Mode), not the Hub's own
+	-- Cash -- per explicit request, upgrades are entirely funded by the
+	-- separate Endless Mode economy.
+	if session.EndlessModeCash < cost then
+		systemMessage:FireClient(player, "You don't have enough Endless Cash!")
 		return
 	end
 
-	session.Cash -= cost
+	session.EndlessModeCash -= cost
+	endlessModeCashUpdated:FireClient(player, session.EndlessModeCash)
 	building.UpgradeLevel += 1
 	-- Also fully heals -- paying to upgrade a building that's currently
 	-- half-dead from mob damage and getting LESS max HP than before it
 	-- healed would feel bad, so an upgrade always tops it back up to its
 	-- new (higher) max.
-	building.HP = EndlessModeBuildingConfig.GetMaxHP(building.UpgradeLevel)
+	building.HP = getEffectiveMaxHP(building.AssetId, building.UpgradeLevel)
 
 	if building.HpLabel then
-		building.HpLabel.Text = string.format("%d/%d HP", building.HP, EndlessModeBuildingConfig.GetMaxHP(building.UpgradeLevel))
+		building.HpLabel.Text = string.format("%d/%d HP", building.HP, building.HP)
 	end
 
 	endlessModeBuildingSelected:FireClient(player, buildSelectionPayload(player, placementId))
-	StatsManager.Recompute(player)
-	LeaderboardManager.MarkDirty(player)
 end)
 
 -- The panel's "Pick Up" button -- destroys this specific placed instance and
@@ -955,7 +1034,10 @@ end)
 -- Lets EndlessModeMobManager.luau find live targets for a claimed side's
 -- owner -- mobs attack placed Estates before the main base, per explicit
 -- request, only falling back to the base once none are left standing.
-function PetManager.GetAlivePlacedBuildings(player: Player): { { PlacementId: string, Position: Vector3 } }
+-- AssetId is included so the mob manager can look up EndlessModeUnitRoleConfig
+-- .GetRole(AssetId) and decide whether arriving there means "Tank -- block
+-- and melee" or "deal one hit and despawn" like before.
+function PetManager.GetAlivePlacedBuildings(player: Player): { { PlacementId: string, AssetId: string, Position: Vector3 } }
 	local result = {}
 	local playerPlaced = placedBuildings[player]
 	if not playerPlaced then
@@ -963,10 +1045,19 @@ function PetManager.GetAlivePlacedBuildings(player: Player): { { PlacementId: st
 	end
 	for placementId, building in playerPlaced do
 		if building.HP > 0 then
-			table.insert(result, { PlacementId = placementId, Position = building.CFrame.Position })
+			table.insert(result, { PlacementId = placementId, AssetId = building.AssetId, Position = building.CFrame.Position })
 		end
 	end
 	return result
+end
+
+-- Lets EndlessModeMobManager.luau re-check a specific Tank mid-melee
+-- (it might have died to this mob's own counter-hits, or been picked up)
+-- without needing a whole GetAlivePlacedBuildings scan.
+function PetManager.IsBuildingAlive(player: Player, placementId: string): boolean
+	local playerPlaced = placedBuildings[player]
+	local building = playerPlaced and playerPlaced[placementId]
+	return building ~= nil and building.HP > 0
 end
 
 -- Called by EndlessModeMobManager.luau when a mob reaches a placed Estate
@@ -1000,7 +1091,7 @@ function PetManager.DamageBuilding(player: Player, placementId: string, amount: 
 	end
 
 	if building.HpLabel then
-		building.HpLabel.Text = string.format("%d/%d HP", building.HP, EndlessModeBuildingConfig.GetMaxHP(building.UpgradeLevel))
+		building.HpLabel.Text = string.format("%d/%d HP", building.HP, getEffectiveMaxHP(building.AssetId, building.UpgradeLevel))
 	end
 
 	if selectedPlacementId[player] == placementId then

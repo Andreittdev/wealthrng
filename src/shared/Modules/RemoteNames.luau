@@ -201,14 +201,20 @@ local RemoteNames = {
 		-- shows only while this is non-nil. UpgradeCost is nil once UpgradeLevel is already at
 		-- EndlessModeBuildingConfig.MaxUpgradeLevel -- nothing left to buy.
 		"UpgradeEndlessModeBuilding", -- client -> server, payload: placementId (string) -- buys the
-		-- next upgrade level (more max HP, also fully heals) for that SPECIFIC placed instance.
-		-- Rejected server-side (PetManager.luau) unless it's currently selected by this player, not
-		-- already maxed, and they can afford EndlessModeBuildingConfig.GetUpgradeCost.
+		-- next upgrade level (more max HP, also fully heals) for that SPECIFIC placed instance, paid
+		-- from EndlessModeCash (NOT the Hub's own Cash). Rejected server-side (PetManager.luau) unless
+		-- it's currently selected by this player, not already maxed, and they can afford
+		-- EndlessModeBuildingConfig.GetUpgradeCost in EndlessModeCash.
 		"PickUpEndlessModeBuilding", -- client -> server, payload: placementId (string) -- the
 		-- EndlessModeBuildingPanel.luau "Pick Up" button; destroys that specific placed instance and
 		-- frees up its placement-cap slot (no longer triggered by a bare click). With multiple copies
 		-- allowed now, "held in hand" just means "this equipped Estate type still has room for one
 		-- more" -- picking one up doesn't restore a dedicated held state of its own.
+		"EndlessModeCashUpdated", -- server -> client, payload: amount (number) -- session.
+		-- EndlessModeCash, a currency separate from the Hub's own Cash. Pushed on join (Main.
+		-- server.luau's sendInitialState) and whenever it changes. EndlessModeCashHud.luau shows it
+		-- top-right, same icon as the regular Cash pill, visible only while in Endless Mode. No
+		-- earning source wired up yet -- just the stored/displayed number for now.
 	},
 	Functions = {},
 }
