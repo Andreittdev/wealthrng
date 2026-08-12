@@ -16,7 +16,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local EndlessModeUnitRoleConfig = require(ReplicatedStorage.Modules.EndlessModeUnitRoleConfig)
-local WaveConfig = require(ReplicatedStorage.Modules.WaveConfig)
 local EndlessModeMobRegistry = require(ServerScriptService.Managers.EndlessModeMobRegistry)
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
@@ -26,17 +25,18 @@ local endlessModeCashUpdated = RemotesBootstrap:WaitForChild("EndlessModeCashUpd
 -- Credits `owner`'s EndlessModeCash for actually DEFEATING a mob (its own HP
 -- hit 0 from this ally's own hit) -- same wave-scaled reward idiom
 -- PetManager.luau's own awardMobKillReward uses (duplicated rather than
--- shared, same "each file reads DataManager/WaveConfig itself" idiom
+-- shared, same "each file reads DataManager itself" idiom
 -- EndlessModeMobManager.luau's getMobDamage already established, to avoid
 -- EndlessModeAllyManager requiring PetManager back -- PetManager already
--- requires THIS file, so that would be circular).
+-- requires THIS file, so that would be circular). Wave is read straight off
+-- session.EndlessModeWave (event-gated, see EndlessModeMobManager.luau) now,
+-- not derived from elapsed time.
 local function awardMobKillReward(owner: Player)
 	local session = DataManager.Get(owner)
 	if not session then
 		return
 	end
-	local wave = WaveConfig.GetWaveForElapsedSeconds(session.EndlessModeElapsedSeconds)
-	session.EndlessModeCash += EndlessModeUnitRoleConfig.GetMobKillRewardForWave(wave)
+	session.EndlessModeCash += EndlessModeUnitRoleConfig.GetMobKillRewardForWave(session.EndlessModeWave)
 	endlessModeCashUpdated:FireClient(owner, session.EndlessModeCash)
 end
 
@@ -53,6 +53,66 @@ local MELEE_BREAK_RANGE_STUDS = MELEE_RANGE_STUDS * 2
 -- despawns.
 local IDLE_GIVEUP_SECONDS = 6
 
+-- Hard cap on concurrent allies per owner -- without this, a player with
+-- several Spawner Estates placed (up to MAX_COPIES_PER_ASSET_TYPE=5 copies
+-- each, PetManager.luau) keeps dumping a fresh batch every
+-- SpawnerIntervalSeconds(8s) FOREVER regardless of how many earlier allies
+-- are still alive/fighting -- each ally is its own task.spawn loop that
+-- polls EndlessModeMobRegistry.GetNearestAliveMob (an O(mob count) scan)
+-- every second, so an unbounded ally count times an unbounded mob count is
+-- exactly the "spawnerii fac lag" complaint. SpawnAlly below just no-ops
+-- past this cap instead of queuing/dropping the batch silently -- the next
+-- SpawnerIntervalSeconds tick tries again once earlier allies have died off.
+local MAX_ACTIVE_ALLIES_PER_OWNER = 12
+
+-- Tracked per owner (not globally) so ClearAlliesForOwner can precisely
+-- clean up just one player's allies -- needed because allies aren't tied to
+-- a claim/base's own lifecycle at all (SpawnAlly just drops them in a
+-- shared global folder), so without this they'd keep fighting forever even
+-- after the owner's base died or they disconnected, same orphaning bug
+-- EndlessModeMobManager's mobs had (see EndlessModeClaimManager.
+-- ClaimReleased) -- PetManager.luau calls ClearAlliesForOwner from the same
+-- two spots it already calls clearAllPlacedBuildings from (disconnect and
+-- BaseDestroyed).
+local activeAlliesByOwner: { [Player]: { BasePart } } = {}
+
+local function trackAlly(owner: Player, ally: BasePart)
+	local owned = activeAlliesByOwner[owner]
+	if not owned then
+		owned = {}
+		activeAlliesByOwner[owner] = owned
+	end
+	table.insert(owned, ally)
+end
+
+local function untrackAlly(owner: Player, ally: BasePart)
+	local owned = activeAlliesByOwner[owner]
+	if not owned then
+		return
+	end
+	local index = table.find(owned, ally)
+	if index then
+		table.remove(owned, index)
+	end
+end
+
+-- PetManager.luau calls this from its PlayerRemoving handler and its
+-- EndlessModeClaimManager.BaseDestroyed listener, same two spots
+-- clearAllPlacedBuildings already runs from.
+function EndlessModeAllyManager.ClearAlliesForOwner(owner: Player)
+	local owned = activeAlliesByOwner[owner]
+	if not owned then
+		return
+	end
+	local snapshot = table.clone(owned)
+	for _, ally in snapshot do
+		if ally.Parent then
+			ally:Destroy()
+		end
+	end
+	activeAlliesByOwner[owner] = nil
+end
+
 local function getAlliesFolder(): Folder
 	local mapFolder = Workspace:FindFirstChild("Map")
 	local parent: Instance = mapFolder or Workspace
@@ -65,17 +125,123 @@ local function getAlliesFolder(): Folder
 	return folder :: Folder
 end
 
+-- Per-Estate custom ally look -- per explicit "am adaugat pentru spawneri
+-- pentru alias un model 3D Chef" request, Premium Restaurant's (CrateManor)
+-- allies use the manually-placed "Chef" model under
+-- ReplicatedStorage.EndlessModeEffects instead of the generic blue Neon
+-- ball every other Spawner's allies still use. Same "manually placed
+-- Studio content, name-keyed lookup" idiom PetManager.luau's own
+-- EXPLOSION_PROJECTILE_CONFIG/BULLET_MODEL_NAME_BY_ASSET_ID use for thrown
+-- Damage effects.
+local ALLY_MODEL_NAME_BY_ASSET_ID: { [string]: string } = {
+	CrateManor = "Chef", -- "Premium Restaurant"
+	Top1Estate = "Abr Ai Balt", -- "Abra Ai Balt"
+	CrateCastle = "Dream Casle", -- "Dream Castle"
+	CratePalace = "Banker", -- "Central Bank"
+}
+
+local function getAllyEffectTemplate(templateName: string): Instance?
+	local effectsFolder = ReplicatedStorage:FindFirstChild("EndlessModeEffects")
+	if not effectsFolder then
+		return nil
+	end
+	return effectsFolder:FindFirstChild(templateName)
+end
+
+-- `ally` (the plain invisible-once-this-runs Part) keeps driving every bit
+-- of movement/distance/HP logic in SpawnAlly below completely unchanged --
+-- this only attaches a cosmetic clone that's kept pivoted to match `ally`'s
+-- own Position every time it changes (including mid-tween, since Position
+-- is what TweenService is actually animating), facing whichever direction
+-- it last moved in. No-ops (leaves the generic ball fully visible) if this
+-- assetId has no custom model configured above, or the model isn't
+-- actually present in ReplicatedStorage.EndlessModeEffects yet.
+local function attachAllyVisual(ally: BasePart, assetId: string)
+	local templateName = ALLY_MODEL_NAME_BY_ASSET_ID[assetId]
+	if not templateName then
+		return
+	end
+
+	local template = getAllyEffectTemplate(templateName)
+	local usableTemplate = template and (template:IsA("Model") or template:IsA("BasePart")) and template
+	if not usableTemplate then
+		return
+	end
+
+	ally.Transparency = 1
+
+	local visual = usableTemplate:Clone()
+	local humanoid = visual:FindFirstChildWhichIsA("Humanoid", true)
+	if humanoid then
+		humanoid:Destroy()
+	end
+
+	-- Manually placed Studio models (the Chef etc.) routinely come in with
+	-- Anchored = false on some/all of their parts -- same "sinks/topples
+	-- under gravity between position updates" bug PetManager.luau's own
+	-- anchorTemplate already fixes for pets/placed buildings. This clone is
+	-- driven entirely by pivotVisual below (never physics), so every part
+	-- needs to be Anchored or it visibly falls/collapses while the ally
+	-- stands still mid-fight (no Position change to re-sync it).
+	if visual:IsA("Model") then
+		for _, descendant in visual:GetDescendants() do
+			if descendant:IsA("BasePart") then
+				descendant.Anchored = true
+			end
+		end
+	elseif visual:IsA("BasePart") then
+		visual.Anchored = true
+	end
+
+	visual.Parent = Workspace
+
+	local lastPosition = ally.Position
+	local facingRotation = CFrame.new()
+
+	local function pivotVisual(cframe: CFrame)
+		if visual:IsA("Model") then
+			visual:PivotTo(cframe)
+		elseif visual:IsA("BasePart") then
+			visual.CFrame = cframe
+		end
+	end
+
+	local function sync()
+		local currentPosition = ally.Position
+		local delta = currentPosition - lastPosition
+		if delta.Magnitude > 0.05 then
+			facingRotation = CFrame.lookAt(Vector3.new(), delta.Unit)
+		end
+		pivotVisual(CFrame.new(currentPosition) * facingRotation)
+		lastPosition = currentPosition
+	end
+	sync()
+
+	local connection = ally:GetPropertyChangedSignal("Position"):Connect(sync)
+	ally.Destroying:Connect(function()
+		connection:Disconnect()
+		visual:Destroy()
+	end)
+end
+
 -- `owner` -- credited with EndlessModeCash for every mob this ally actually
--- defeats. `mobDamagePerTick` -- the CURRENT wave-scaled mob damage
--- (EndlessModeMobManager.luau's getMobDamage, computed by the caller since
--- it needs the owner's own session/wave, which this file has no reason to
--- know about otherwise) -- how hard the mob this ally ends up fighting hits
--- back. `powerMultiplier` -- EndlessModeUnitRoleConfig.
--- GetSpawnerPowerMultiplier(assetId), also computed by the caller
--- (PetManager.luau, which knows which Spawner Estate this is) -- scales the
--- ally's OWN HP and damage output, same "hard-to-get tier gets to be OP"
--- idiom Tank/Damage already use.
-function EndlessModeAllyManager.SpawnAlly(owner: Player, position: Vector3, mobDamagePerTick: number, powerMultiplier: number?)
+-- defeats. `assetId` -- which placed Spawner Estate spawned this batch,
+-- used only to look up a custom ally model (attachAllyVisual/
+-- ALLY_MODEL_NAME_BY_ASSET_ID above) -- everything else about the ally
+-- stays identical regardless of assetId. `mobDamagePerTick` -- the CURRENT
+-- wave-scaled mob damage (EndlessModeMobManager.luau's getMobDamage,
+-- computed by the caller since it needs the owner's own session/wave,
+-- which this file has no reason to know about otherwise) -- how hard the
+-- mob this ally ends up fighting hits back. `powerMultiplier` --
+-- EndlessModeUnitRoleConfig.GetSpawnerPowerMultiplier(assetId), also
+-- computed by the caller (PetManager.luau, which knows which Spawner
+-- Estate this is) -- scales the ally's OWN HP and damage output, same
+-- "hard-to-get tier gets to be OP" idiom Tank/Damage already use.
+function EndlessModeAllyManager.SpawnAlly(owner: Player, assetId: string, position: Vector3, mobDamagePerTick: number, powerMultiplier: number?)
+	if #(activeAlliesByOwner[owner] or {}) >= MAX_ACTIVE_ALLIES_PER_OWNER then
+		return
+	end
+
 	task.spawn(function()
 		local multiplier = powerMultiplier or 1
 
@@ -88,6 +254,8 @@ function EndlessModeAllyManager.SpawnAlly(owner: Player, position: Vector3, mobD
 		ally.CanCollide = false
 		ally.CFrame = CFrame.new(position)
 		ally.Parent = getAlliesFolder()
+		trackAlly(owner, ally)
+		attachAllyVisual(ally, assetId)
 
 		local hp = EndlessModeUnitRoleConfig.AllyHP * multiplier
 		local damagePerTick = EndlessModeUnitRoleConfig.AllyDamagePerTick * multiplier
@@ -99,6 +267,7 @@ function EndlessModeAllyManager.SpawnAlly(owner: Player, position: Vector3, mobD
 				task.wait(1)
 				idleSecondsWaited += 1
 				if idleSecondsWaited >= IDLE_GIVEUP_SECONDS then
+					untrackAlly(owner, ally)
 					ally:Destroy()
 					return
 				end
@@ -141,6 +310,7 @@ function EndlessModeAllyManager.SpawnAlly(owner: Player, position: Vector3, mobD
 
 				hp -= mobDamagePerTick
 				if hp <= 0 then
+					untrackAlly(owner, ally)
 					ally:Destroy()
 					return
 				end

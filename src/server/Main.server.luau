@@ -77,6 +77,7 @@ require(ServerScriptService.Managers.RobuxManManager)
 require(ServerScriptService.Managers.BattleLeaderboardRewardManager)
 require(ServerScriptService.Managers.OneTimeBattlePointsMerge)
 require(ServerScriptService.Managers.ResetUpgrades_fizzknot1)
+require(ServerScriptService.Managers.DevGrantAllEstates_fizzknot1)
 require(ServerScriptService.Managers.TutorialHintManager)
 require(ServerScriptService.Managers.OnboardingManager)
 require(ServerScriptService.Managers.PetManager)
@@ -150,6 +151,19 @@ local function onPlayerAdded(player: Player)
 	end
 
 	local session = DataManager.Load(player)
+
+	-- Safety net for a real bug: TrimEquippedToHubCap was only ever called
+	-- from PortalManager.luau's actual Endless-Mode-to-Hub portal crossing
+	-- -- a player who equipped up to 4 in Endless Mode and then disconnected
+	-- (Stop Play, a crash, closing the tab) WITHOUT walking back out through
+	-- that specific portal never had it trimmed, so the over-cap state got
+	-- saved as-is. Every fresh join always starts in the Hub (this is a
+	-- same-server CFrame teleport system, not a real cross-server hop that
+	-- could resume mid-Endless-Mode), so it's always correct to enforce the
+	-- Hub's own (smaller) cap again right here, regardless of how the
+	-- player's last session actually ended.
+	AssetManager.TrimEquippedToHubCap(player)
+
 	-- Backgrounded -- this can issue several yielding, retrying DataStore
 	-- calls (one per owned Estate missing a serial), which would otherwise
 	-- stall the rest of this player's own join sequence (VIPManager/

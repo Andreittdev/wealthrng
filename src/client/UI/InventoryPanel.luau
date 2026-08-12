@@ -10,9 +10,13 @@
 -- MaxEquipped (currently 1) can be equipped at once, so tapping Equip on
 -- the selected item just swaps out whichever one was equipped before
 -- (server-side swap in InventoryManager.Equip, this panel doesn't need to
--- know). Estates (AssetDatabase.MaxEquipped, currently 4) work the same
--- way. Equip/Unequip for Estates lives ONLY here now -- AssetShopPanel.luau
--- (the physical Shop kiosk) is buy-only once something's owned.
+-- know). Estates work the same way, but the cap itself is CONTEXT-dependent
+-- now (AssetDatabase.MaxEquipped in the Hub, MaxEquippedEndlessMode while in
+-- Endless Mode, per explicit "in lobby sa poti da equip numai la 2 Estates"
+-- request) -- see refreshStatusLabel below for the display side;
+-- AssetManager.luau enforces the actual cap server-side. Equip/Unequip for
+-- Estates lives ONLY here now -- AssetShopPanel.luau (the physical Shop
+-- kiosk) is buy-only once something's owned.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -59,6 +63,12 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	local ownedAssetIds: { [string]: boolean } = {}
 	local equippedAssetIds: { string } = {}
 	local selectedAssetId: string? = nil
+	-- Set by SetEstatesOnly (below), off MainUI.luau's own PortalTeleport-
+	-- derived boolean -- NOT re-derived from EndlessModeConfig.
+	-- IsCharacterInEndlessMode's own position check, which lags behind by
+	-- PortalManager.luau's teleport delay and used to show a wrong/stale
+	-- equip cap for a moment right on entry.
+	local isInEndlessModeContext = false
 	-- Global "X exist" counts, every Estate (EstateExistenceManager.luau) --
 	-- keyed by assetId, updated on join and again whenever any Estate is
 	-- newly granted to anyone.
@@ -841,7 +851,13 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		if currentTab == "Items" then
 			statusLabel.Text = string.format("%d/%d equipped", #equippedUids, ItemDatabase.MaxEquipped)
 		else
-			statusLabel.Text = string.format("%d/%d equipped", #equippedAssetIds, AssetDatabase.MaxEquipped)
+			-- Endless Mode's own (bigger) cap while actually standing there --
+			-- matches whichever one AssetManager.luau's equipAsset handler is
+			-- actually enforcing server-side, so this never shows a stale/
+			-- wrong max (e.g. "3/2 equipped" after legitimately equipping a
+			-- 3rd in Endless Mode).
+			local maxEquipped = isInEndlessModeContext and AssetDatabase.MaxEquippedEndlessMode or AssetDatabase.MaxEquipped
+			statusLabel.Text = string.format("%d/%d equipped", #equippedAssetIds, maxEquipped)
 		end
 	end
 
@@ -890,14 +906,27 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	-- Estates tab button across the full row instead of leaving it at its
 	-- normal half-width, and forces onto Estates if Items was still showing.
 	-- MainUI.luau drives this off the same PortalTeleport signal everything
-	-- else in Endless Mode uses.
+	-- else in Endless Mode uses -- fired BEFORE the character's own position
+	-- actually crosses into Endless Mode's Z range (PortalManager.luau's
+	-- 0.3s teleport delay), which is exactly why `value` here (not
+	-- EndlessModeConfig.IsCharacterInEndlessMode's own laggier position
+	-- check) is what refreshStatusLabel now keys the equip cap off of --
+	-- otherwise the panel briefly showed "0/2" (the Hub cap) right on entry,
+	-- only flipping to "0/4" once the player's position visibly caught up,
+	-- which read as confusing/wrong to the player.
 	function handle.SetEstatesOnly(value: boolean)
+		isInEndlessModeContext = value
 		itemsTabButton.Visible = not value
 		estatesTabButton.Size = value and estatesTabFullSize or estatesTabHalfSize
 		estatesTabButton.Position = value and estatesTabFullPosition or estatesTabHalfPosition
 		if value then
 			switchTab("Estates")
 		end
+		-- switchTab above is a no-op (including skipping its own
+		-- refreshStatusLabel call) if Estates was ALREADY the active tab
+		-- from a previous Endless Mode visit -- called unconditionally here
+		-- too so the cap always reflects the just-changed context either way.
+		refreshStatusLabel()
 	end
 
 	return handle

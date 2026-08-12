@@ -12,6 +12,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local AssetDatabase = require(ReplicatedStorage.Modules.AssetDatabase)
 local NumberFormat = require(ReplicatedStorage.Modules.NumberFormat)
+local EndlessModeConfig = require(ReplicatedStorage.Modules.EndlessModeConfig)
 local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local StatsManager = require(ServerScriptService.Managers.StatsManager)
@@ -43,6 +44,13 @@ local MULTI_OWNABLE_ASSET_IDS: { [string]: boolean } = {
 	Top1Estate = true,
 	Top2Estate = true,
 	Top3Estate = true,
+	-- The 4 Crate-exclusive Estates -- a repeat "Exclusives Crate" pull of
+	-- one already owned still grants a fresh serial instead of silently
+	-- wasting the Robux just spent on that roll (CrateManager.OpenCrates).
+	CrateVilla = true,
+	CrateManor = true,
+	CratePalace = true,
+	CrateCastle = true,
 }
 -- Exposed so TradeManager.luau's own ownership-validity check can allow
 -- trading one of these TO a receiver who already owns a copy, instead of
@@ -140,7 +148,11 @@ equipAsset.OnServerEvent:Connect(function(player: Player, assetId: string)
 		return
 	end
 
-	if #session.EquippedAssets >= AssetDatabase.MaxEquipped then
+	-- Endless Mode gets the bigger loadout cap -- everywhere else (the Hub)
+	-- stays at the original, smaller MaxEquipped, per explicit request.
+	local maxEquipped = EndlessModeConfig.IsCharacterInEndlessMode(player.Character) and AssetDatabase.MaxEquippedEndlessMode
+		or AssetDatabase.MaxEquipped
+	if #session.EquippedAssets >= maxEquipped then
 		return
 	end
 
@@ -186,6 +198,30 @@ function AssetManager.UnequipAll(player: Player)
 	end
 
 	table.clear(session.EquippedAssets)
+
+	pushUpdate(player, session)
+	StatsManager.Recompute(player)
+	LeaderboardManager.MarkDirty(player)
+	AssetManager.EquippedAssetsChanged:Fire(player)
+end
+
+-- Trims session.EquippedAssets down to the Hub's own (smaller) MaxEquipped
+-- -- called by PortalManager.luau on the way OUT of Endless Mode, since up
+-- to AssetDatabase.MaxEquippedEndlessMode could be equipped there. Keeps
+-- the FIRST ones (equip order), drops the overflow -- a no-op if already at
+-- or under the Hub cap (the normal case, nothing to do on every single
+-- trip). Without this, a player who'd equipped 4 in Endless Mode would
+-- arrive back in the Hub still showing 4 floating pets, over the Hub's own
+-- 2-cap.
+function AssetManager.TrimEquippedToHubCap(player: Player)
+	local session = DataManager.Get(player)
+	if not session or #session.EquippedAssets <= AssetDatabase.MaxEquipped then
+		return
+	end
+
+	while #session.EquippedAssets > AssetDatabase.MaxEquipped do
+		table.remove(session.EquippedAssets)
+	end
 
 	pushUpdate(player, session)
 	StatsManager.Recompute(player)

@@ -1,8 +1,11 @@
 -- Endless Mode's wave clock -- ticks session.EndlessModeElapsedSeconds up by
 -- roughly 1 per second, ONLY while a player is physically standing in
 -- Endless Mode (paused the instant they're back in the hub or offline), per
--- explicit request. Current wave (WaveConfig.GetWaveForElapsedSeconds) is
--- pushed to that player every tick so their HUD stays live.
+-- explicit request. EndlessModeElapsedSeconds itself is just a "how long
+-- have they actually spent there" stat now -- the current WAVE is event-
+-- gated (session.EndlessModeWave, owned/incremented by EndlessModeMobManager.
+-- luau once a wave's mobs are fully cleared), not derived from it anymore.
+-- Still pushed to that player every tick so their HUD stays live.
 --
 -- "In Endless Mode" is EndlessModeConfig's plain world-position check, not
 -- tied to PortalManager.luau's teleport event -- self-contained and correct
@@ -17,7 +20,6 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
-local WaveConfig = require(ReplicatedStorage.Modules.WaveConfig)
 local EndlessModeConfig = require(ReplicatedStorage.Modules.EndlessModeConfig)
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
@@ -51,7 +53,7 @@ task.spawn(function()
 			-- ungraceful disconnect -- DataManager's own autosave picks
 			-- this field up like any other session field from here.
 			session.EndlessModeElapsedSeconds += TICK_SECONDS
-			endlessModeWaveUpdated:FireClient(player, WaveConfig.GetWaveForElapsedSeconds(session.EndlessModeElapsedSeconds))
+			endlessModeWaveUpdated:FireClient(player, session.EndlessModeWave)
 		end
 	end
 end)

@@ -22,6 +22,29 @@ local endlessModeLandClaimed = RemotesBootstrap:WaitForChild("EndlessModeLandCla
 
 local EndlessModeClaimManager = {}
 
+-- Fired (side, owner) the instant a base's HP hits 0 (DamageBase below) --
+-- PetManager.luau listens (it already requires this module, so listening
+-- to a Bindable here doesn't add a new require/circularity risk the way
+-- PetManager.luau requiring THIS module back for the reverse direction
+-- would) to actually wipe that player's Endless Mode progress, clear their
+-- placed buildings/equipped Estates, and fire the "You Died!" client event
+-- -- this module only owns the claim/base lifecycle itself (releasing the
+-- claim, resetting the base for the next owner), not session/building
+-- state that belongs to other managers.
+EndlessModeClaimManager.BaseDestroyed = Instance.new("BindableEvent")
+
+-- Fired (side) from inside releaseClaim below, for EITHER release path
+-- (base actually dying OR a plain disconnect) -- EndlessModeMobManager.luau
+-- listens for this to force-clean any mobs still alive/mid-walk on that
+-- side, since spawnBase parents baseFolder to the Map folder (marker.Parent)
+-- and spawnMob parents mobs to that SAME folder (door.Parent.Parent) --
+-- siblings, not parent/child, so clearBase's base:Destroy() never touches
+-- live mobs on its own. Kept separate from BaseDestroyed: this needs to
+-- fire on the disconnect path too (which has no "you died" UI semantics),
+-- and firing it unconditionally from releaseClaim covers both callers for
+-- free.
+EndlessModeClaimManager.ClaimReleased = Instance.new("BindableEvent")
+
 -- Right only for now, per explicit request -- the left plot's marker still
 -- exists on the map (MapBuilder.buildEndlessModeArea), just not claimable
 -- yet. tryClaim's `table.find(SIDES, side)` guard rejects a "Left" attempt
@@ -230,6 +253,20 @@ local function clearBase(side: string)
 	baseHP[side] = nil
 end
 
+-- Shared release steps -- used both by a normal disconnect (PlayerRemoving
+-- below) and by a base actually dying (DamageBase below), so the two paths
+-- can never drift apart. Does NOT touch `changed`/FireAllClients -- callers
+-- decide when to broadcast (PlayerRemoving batches all of a leaving
+-- player's sides into one broadcast; DamageBase only ever has the one).
+local function releaseClaim(side: string)
+	claimedBy[side] = nil
+	clearBadge(side)
+	clearPatch(side)
+	clearBase(side)
+	setMarkerClaimed(side, false)
+	EndlessModeClaimManager.ClaimReleased:Fire(side)
+end
+
 -- Door sits at the BACK of the plot (far edge, away from the road), not the
 -- front -- per explicit request, mobs (EndlessModeMobManager.luau) now spawn
 -- near the street and march the full depth of the base to reach it, instead
@@ -306,9 +343,13 @@ local function spawnBase(side: string, marker: BasePart)
 end
 
 -- Called by EndlessModeMobManager.luau when a mob reaches the door. Clamped
--- at 0 (not negative) -- what actually happens once it HITS 0 (base lost,
--- respawns, etc.) isn't decided yet, so for now it just sits at 0/MAX,
--- displayed in place, no mobs stop spawning.
+-- at 0 (not negative). Per explicit request, hitting 0 for the first time
+-- (not every subsequent hit while already at 0 -- `hp > 0` below guards
+-- that) ends the run right then: the owner is captured BEFORE releasing
+-- (releaseClaim clears claimedBy[side]), BaseDestroyed fires for
+-- PetManager.luau to actually wipe their progress/buildings/equips and show
+-- the "You Died!" screen, then the claim itself releases (same steps a
+-- normal disconnect uses) so the plot is immediately free to reclaim.
 function EndlessModeClaimManager.DamageBase(side: string, amount: number)
 	local hp = baseHP[side]
 	local label = hpLabels[side]
@@ -316,9 +357,19 @@ function EndlessModeClaimManager.DamageBase(side: string, amount: number)
 		return
 	end
 
+	local wasAlive = hp > 0
 	hp = math.max(0, hp - amount)
 	baseHP[side] = hp
 	label.Text = string.format("%d/%d HP", hp, BASE_MAX_HP)
+
+	if wasAlive and hp <= 0 then
+		local owner = claimedBy[side]
+		if owner then
+			EndlessModeClaimManager.BaseDestroyed:Fire(side, owner)
+		end
+		releaseClaim(side)
+		endlessModeLandClaimed:FireAllClients(buildState())
+	end
 end
 
 -- Lets other managers (EndlessModeMobManager.luau) check whether a side is
@@ -417,11 +468,7 @@ Players.PlayerRemoving:Connect(function(player: Player)
 	local changed = false
 	for _, side in SIDES do
 		if claimedBy[side] == player then
-			claimedBy[side] = nil
-			clearBadge(side)
-			clearPatch(side)
-			clearBase(side)
-			setMarkerClaimed(side, false)
+			releaseClaim(side)
 			changed = true
 		end
 	end

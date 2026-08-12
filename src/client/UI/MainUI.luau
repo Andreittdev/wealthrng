@@ -40,6 +40,8 @@ local EndlessModeBuildingPanel = require(script.Parent.EndlessModeBuildingPanel)
 local EndlessModeCashHud = require(script.Parent.EndlessModeCashHud)
 local EndlessModeRangeIndicator = require(script.Parent.EndlessModeRangeIndicator)
 local EndlessModeLoadoutHotbar = require(script.Parent.EndlessModeLoadoutHotbar)
+local EndlessModeLoadoutCountdown = require(script.Parent.EndlessModeLoadoutCountdown)
+local EndlessModeGameOverPanel = require(script.Parent.EndlessModeGameOverPanel)
 local RobuxManDialogChoices = require(script.Parent.RobuxManDialogChoices)
 local NetWorthPanel = require(script.Parent.NetWorthPanel)
 local SettingsPanel = require(script.Parent.SettingsPanel)
@@ -93,6 +95,15 @@ function MainUI.Init()
 	local endlessModeBuildingHandle = EndlessModeBuildingPanel.Create(screenGui, remotesFolder)
 	local endlessModeCashHudHandle = EndlessModeCashHud.Create(screenGui)
 	local endlessModeLoadoutHotbarHandle = EndlessModeLoadoutHotbar.Create(screenGui, remotesFolder)
+	local endlessModeLoadoutCountdownHandle = EndlessModeLoadoutCountdown.Create(screenGui, remotesFolder)
+	-- Per explicit request: the countdown banner only actually shows while
+	-- the Inventory panel itself is open, not the whole time a pick/lock
+	-- window is running server-side.
+	endlessModeLoadoutCountdownHandle.SetInventoryOpen(inventoryHandle.Frame.Visible)
+	inventoryHandle.Frame:GetPropertyChangedSignal("Visible"):Connect(function()
+		endlessModeLoadoutCountdownHandle.SetInventoryOpen(inventoryHandle.Frame.Visible)
+	end)
+	local endlessModeGameOverHandle = EndlessModeGameOverPanel.Create(screenGui, remotesFolder)
 	EndlessModeRangeIndicator.Init(remotesFolder)
 	RobuxManDialogChoices.Create(screenGui, remotesFolder)
 	local netWorthHandle = NetWorthPanel.Create(screenGui, remotesFolder)
@@ -121,10 +132,43 @@ function MainUI.Init()
 	-- with the destination label right as the portal fade covers the
 	-- screen, so toggling visibility here happens hidden behind that fade
 	-- instead of popping visibly.
+	-- Forward-declared -- the portalTeleport handler right below needs to
+	-- call this, but updateRollHud's real definition (further down, next to
+	-- modalFrames/inBattleZone which it also reads) comes textually AFTER
+	-- this point in the file. A `local` declared later does NOT retroactively
+	-- become visible to a closure defined earlier, same idiom InventoryPanel
+	-- .luau's own renderList/refreshStatusLabel forward-declarations use.
+	local updateRollHud: () -> ()
+
+	-- Whether the dice/Auto Roll/Upgrade cluster (all part of RollPanel's
+	-- single hudContainer, see SetHudVisible) should additionally hide right
+	-- now -- per explicit "zarul auto roll si upgrades sa dispara in
+	-- Endless" request. Deliberately NOT folded into the Sidebar's own
+	-- hudVisible below -- the Sidebar itself stays up in Endless Mode (its
+	-- Inventory/Store buttons still work there), only this cluster hides.
+	local inEndlessModeState = false
+
+	-- Whether an active EndlessModeLoadoutCountdownUpdated payload (Picking
+	-- or Locked) is currently running -- per explicit "waveurile abia dupa
+	-- ce s-au terminat ambele timere" request, the "WAVE N" readout
+	-- (endlessModeWaveHudHandle) shares the SAME top-center screen slot as
+	-- EndlessModeLoadoutCountdown.luau's own banner and is mutually
+	-- exclusive with it, not stacked -- showing "WAVE 3" while mobs haven't
+	-- even started yet read as confusing/wrong.
+	local isLoadoutCountdownActive = false
+
 	local ENDLESS_MODE_HIDDEN_SIDEBAR_KEYS = { "NetWorth", "Trade", "Settings", "Profile" }
 	local portalTeleport = remotesFolder:WaitForChild("PortalTeleport")
 	portalTeleport.OnClientEvent:Connect(function(destinationLabel: string)
 		local inEndlessMode = destinationLabel == "Endless Mode"
+		if inEndlessMode then
+			-- Optimistically assumed active right on entry (rather than
+			-- defaulting to false/stale until the first server push, ~1s
+			-- later, actually arrives) -- otherwise "WAVE N" would flash
+			-- briefly before the countdown listener below hides it again a
+			-- moment later.
+			isLoadoutCountdownActive = true
+		end
 		for _, key in ENDLESS_MODE_HIDDEN_SIDEBAR_KEYS do
 			local button = sidebarHandle.Buttons[key]
 			if button then
@@ -132,28 +176,92 @@ function MainUI.Init()
 			end
 		end
 		cashHudHandle.Frame.Visible = not inEndlessMode
-		endlessModeWaveHudHandle.Frame.Visible = inEndlessMode
+		endlessModeWaveHudHandle.Frame.Visible = inEndlessMode and not isLoadoutCountdownActive
 		endlessModeCashHudHandle.Frame.Visible = inEndlessMode
 		endlessModeLoadoutHotbarHandle.Frame.Visible = inEndlessMode
-		luckEventBannerHandle.SetSuppressed(inEndlessMode)
-		inventoryHandle.SetEstatesOnly(inEndlessMode)
-		-- Per explicit request: entering Endless Mode auto-pops the (now
-		-- Estates-only, per the line above) Inventory panel open so the
-		-- player immediately sees a big pickable list instead of having to
-		-- know to open it themselves -- Open() is idempotent, so this is
-		-- silent/harmless if they'd already had it open. Doesn't force it
-		-- shut again on the way OUT, so closing it mid-session doesn't get
-		-- fought if they reopen it manually.
-		if inEndlessMode then
-			inventoryHandle.Open()
+		-- Also force-hidden here (not just left to the remote payload going
+		-- nil on its own) -- a player who walks back to the Hub mid-
+		-- countdown (claim isn't cleared just by leaving) would otherwise
+		-- keep seeing it server-push right up until the window elapses.
+		if not inEndlessMode then
+			endlessModeLoadoutCountdownHandle.Frame.Visible = false
+			-- The loadout-lock listener below (EndlessModeLoadoutCountdownUpdated)
+			-- only restores this on a FRESH Endless Mode "Picking" phase --
+			-- without this, a player who leaves after their picking window
+			-- already ended (Locked, button hidden) would find the Hub's own
+			-- Inventory icon still missing, since nothing else here ever
+			-- explicitly turns it back on.
+			sidebarHandle.Buttons.Inventory.Visible = true
 		end
+		luckEventBannerHandle.SetSuppressed(inEndlessMode)
+		-- Estates-only filter applies the instant they're in Endless Mode
+		-- (so it's already correct whenever the panel DOES open), but the
+		-- panel itself no longer auto-opens right here -- per explicit
+		-- follow-up ("cand dai claim iti apare inventory ul si dupa textul
+		-- ... si timerul"), it opens on actually CLAIMING a plot instead
+		-- (see the EndlessModeLandClaimed listener below), same moment the
+		-- picking countdown itself starts server-side -- opening it earlier,
+		-- right on portal entry, meant the panel/timer could show with NO
+		-- countdown running yet if the player hadn't claimed anything.
+		inventoryHandle.SetEstatesOnly(inEndlessMode)
+		inEndlessModeState = inEndlessMode
+		updateRollHud()
 	end)
 
 	local endlessModeWaveUpdated = remotesFolder:WaitForChild("EndlessModeWaveUpdated")
 	endlessModeWaveUpdated.OnClientEvent:Connect(endlessModeWaveHudHandle.SetWave)
 
+	-- Independent listener (alongside EndlessModeClaimPanel.luau's own, which
+	-- just tracks claim state for ITS OWN popup) on EndlessModeLandClaimed --
+	-- FireAllClients'd to everyone on every claim/release, so this only acts
+	-- the instant the RIGHT side specifically becomes THIS player's own (not
+	-- already theirs a moment ago) -- auto-pops the (already Estates-only,
+	-- see SetEstatesOnly above) Inventory panel open right then, per explicit
+	-- "cand dai claim iti apare inventory ul si dupa textul cu Pick 4
+	-- Estates! si timerul" request -- syncs the panel opening with the exact
+	-- same moment EndlessModeMobManager.luau's picking countdown itself
+	-- starts server-side, instead of opening earlier with nothing counting
+	-- down yet.
+	local endlessModeLandClaimed = remotesFolder:WaitForChild("EndlessModeLandClaimed")
+	local wasRightClaimByMe = false
+	endlessModeLandClaimed.OnClientEvent:Connect(function(state: { Right: { UserId: number, Name: string }? })
+		local isRightClaimByMe = state.Right ~= nil and state.Right.UserId == Players.LocalPlayer.UserId
+		if isRightClaimByMe and not wasRightClaimByMe then
+			inventoryHandle.Open()
+		end
+		wasRightClaimByMe = isRightClaimByMe
+	end)
+
 	local endlessModeCashUpdated = remotesFolder:WaitForChild("EndlessModeCashUpdated")
 	endlessModeCashUpdated.OnClientEvent:Connect(endlessModeCashHudHandle.Update)
+
+	-- Independent SECOND listener on the same EndlessModeLoadoutCountdownUpdated
+	-- payload EndlessModeLoadoutCountdown.luau already displays -- that file only
+	-- draws the banner, this is the side effect: once the "Picking" phase ends
+	-- (mobs are about to start), the Sidebar's Inventory button hides and the
+	-- panel force-closes, per explicit "dupa ce ti-ai ales sa nu mai fie vizibil
+	-- butonul" request -- loadout picking is a one-time window at the start of a
+	-- claim, not editable once waves are already starting. Restored the instant
+	-- a fresh "Picking" phase begins (re-claiming resets the whole window).
+	local endlessModeLoadoutCountdownUpdated = remotesFolder:WaitForChild("EndlessModeLoadoutCountdownUpdated")
+	local wasPickingLoadout = false
+	endlessModeLoadoutCountdownUpdated.OnClientEvent:Connect(function(payload: { Phase: string, SecondsRemaining: number }?)
+		local isPickingLoadout = payload ~= nil and payload.Phase == "Picking"
+		if wasPickingLoadout and not isPickingLoadout then
+			sidebarHandle.Buttons.Inventory.Visible = false
+			inventoryHandle.Frame.Visible = false
+		elseif isPickingLoadout then
+			sidebarHandle.Buttons.Inventory.Visible = true
+		end
+		wasPickingLoadout = isPickingLoadout
+
+		-- Shares the same top-center slot as the "WAVE N" readout (see
+		-- isLoadoutCountdownActive's own comment above) -- toggled here
+		-- since this is the listener that actually knows, tick to tick,
+		-- whether a countdown is currently running.
+		isLoadoutCountdownActive = payload ~= nil
+		endlessModeWaveHudHandle.Frame.Visible = inEndlessModeState and not isLoadoutCountdownActive
+	end)
 
 	-- Built last -- needs the real ROLL/Inventory/Upgrade buttons (and the
 	-- Upgrades panel's own internals) to already exist so it can point its
@@ -188,6 +296,7 @@ function MainUI.Init()
 		codesProximityHandle.Frame,
 		stadiumOfferHandle.Frame,
 		endlessModeClaimHandle.Frame,
+		endlessModeGameOverHandle.Frame,
 	}
 
 	-- inBattleZone is a 3rd independent source of "should the always-on HUD
@@ -197,7 +306,7 @@ function MainUI.Init()
 	-- happens to still be open while walking into the LARP Battles circle).
 	local inBattleZone = false
 
-	local function updateRollHud()
+	function updateRollHud()
 		local anyModalOpen = false
 		for _, frame in modalFrames do
 			if frame.Visible then
@@ -213,7 +322,12 @@ function MainUI.Init()
 		-- modal's left edge instead of the other way around. Same
 		-- visibility formula as the Roll HUD now.
 		local hudVisible = not anyModalOpen and not inBattleZone
-		rollHandle.SetHudVisible(hudVisible)
+		-- The dice/Auto Roll/Upgrade cluster additionally hides in Endless
+		-- Mode (per explicit request) -- but NOT the Sidebar itself, which
+		-- still needs to show its Inventory/Store buttons there (see
+		-- ENDLESS_MODE_HIDDEN_SIDEBAR_KEYS above, which only hides SOME of
+		-- the sidebar's own buttons, not the whole cluster).
+		rollHandle.SetHudVisible(hudVisible and not inEndlessModeState)
 		sidebarHandle.Frame.Visible = hudVisible
 		sidebarHandle.BottomFrame.Visible = hudVisible
 	end

@@ -229,10 +229,17 @@ local items: { [string]: Item } = {
 	-- so existing Inventory/Catalog color-coding has something to key off,
 	-- not because the crate's own odds care about it). Images are all
 	-- placeholder ("rbxassetid://0") until real ones are provided.
-	CrateVilla = { Id = "CrateVilla", Name = "Storage Unit", Rarity = "Rare", Value = 480, IncomePerSecond = 11166666667, Image = "rbxassetid://132088067786776", NotRollable = true, CrateExclusive = true },
-	CrateManor = { Id = "CrateManor", Name = "Premium Restaurant", Rarity = "Epic", Value = 2700, IncomePerSecond = 15000000000, Image = "rbxassetid://77422980213305", NotRollable = true, CrateExclusive = true },
-	CratePalace = { Id = "CratePalace", Name = "Central Bank", Rarity = "Legendary", Value = 25200, IncomePerSecond = 41666666667, Image = "rbxassetid://72452908371552", NotRollable = true, CrateExclusive = true },
-	CrateCastle = { Id = "CrateCastle", Name = "Dream Castle", Rarity = "Luxury", Value = 900000, IncomePerSecond = 166666666667, Image = "rbxassetid://137534911114864", NotRollable = true, CrateExclusive = true },
+	-- All 4 share Rarity = "Exclusive" now, per explicit request -- matches
+	-- EstateRarityConfig's own "Exclusive" tier color (purple) once these
+	-- show in InventoryPanel.luau's Estates tab, and matches how
+	-- IndexRewardConfig.luau already bucketed them into the Index's own
+	-- "Exclusive" tier regardless of this field. Value/IncomePerSecond (the
+	-- actual odds-independent stats) are untouched -- only the display
+	-- rarity label/color changes.
+	CrateVilla = { Id = "CrateVilla", Name = "Storage Unit", Rarity = "Exclusive", Value = 480, IncomePerSecond = 11166666667, Image = "rbxassetid://132088067786776", NotRollable = true, CrateExclusive = true },
+	CrateManor = { Id = "CrateManor", Name = "Premium Restaurant", Rarity = "Exclusive", Value = 2700, IncomePerSecond = 15000000000, Image = "rbxassetid://77422980213305", NotRollable = true, CrateExclusive = true },
+	CratePalace = { Id = "CratePalace", Name = "Central Bank", Rarity = "Exclusive", Value = 25200, IncomePerSecond = 41666666667, Image = "rbxassetid://72452908371552", NotRollable = true, CrateExclusive = true },
+	CrateCastle = { Id = "CrateCastle", Name = "Dream Castle", Rarity = "Exclusive", Value = 900000, IncomePerSecond = 166666666667, Image = "rbxassetid://137534911114864", NotRollable = true, CrateExclusive = true },
 }
 
 function ItemDatabase.GetItem(id: string): Item?

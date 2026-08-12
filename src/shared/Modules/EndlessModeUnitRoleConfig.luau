@@ -45,7 +45,7 @@ local ROLES: { [string]: UnitRole } = {
 	-- Rare
 	FamilyHouse = "Tank",
 	LuxuryTownhouse = "Damage",
-	CrateVilla = "Spawner", -- "Storage Unit"
+	CrateVilla = "Tank", -- "Storage Unit" -- per explicit request, moved from Spawner
 	-- Epic
 	BeachfrontVilla = "Tank",
 	PrivateEstate = "Damage",
@@ -105,6 +105,7 @@ end
 local TANK_HP_MULTIPLIER: { [string]: number } = {
 	StudioApartment = 1, -- Common -- baseline, not OP at all
 	FamilyHouse = 2, -- Rare
+	CrateVilla = 2, -- "Storage Unit" (Rare) -- per explicit request, moved from Spawner; matches its rarity peer FamilyHouse
 	BeachfrontVilla = 4, -- Epic
 	CountrysideMansion = 8, -- Legendary
 	PrivateResort = 15, -- Godly -- OP starts here
@@ -144,12 +145,12 @@ local WAVE_DAMAGE_TIER_SIZE = 20
 local WAVE_DAMAGE_INCREMENT_PER_TIER = 0.15
 
 -- Callers (EndlessModeMobManager.luau, PetManager.luau's Spawner-ally hookup)
--- look up the OWNER's own current wave (WaveConfig.GetWaveForElapsedSeconds
--- on their session's EndlessModeElapsedSeconds) and pass it in here -- this
--- module doesn't read DataManager/WaveConfig itself to avoid pulling a
--- server-only dependency into a module also read by client code
--- (EndlessModeBuildingPanel.luau etc. only need the role/HP side of this
--- file, but Luau doesn't let a ModuleScript be "half required").
+-- look up the OWNER's own current wave (session.EndlessModeWave -- event-
+-- gated, owned by EndlessModeMobManager.luau) and pass it in here -- this
+-- module doesn't read DataManager itself to avoid pulling a server-only
+-- dependency into a module also read by client code (EndlessModeBuildingPanel
+-- .luau etc. only need the role/HP side of this file, but Luau doesn't let a
+-- ModuleScript be "half required").
 function EndlessModeUnitRoleConfig.GetMobDamageForWave(wave: number): number
 	local tier = math.floor((math.max(wave, 1) - 1) / WAVE_DAMAGE_TIER_SIZE)
 	local multiplier = 1 + tier * WAVE_DAMAGE_INCREMENT_PER_TIER
@@ -170,6 +171,22 @@ function EndlessModeUnitRoleConfig.GetMobKillRewardForWave(wave: number): number
 	local tier = math.floor((math.max(wave, 1) - 1) / WAVE_DAMAGE_TIER_SIZE)
 	local multiplier = 1 + tier * WAVE_DAMAGE_INCREMENT_PER_TIER
 	return math.floor(EndlessModeUnitRoleConfig.MobKillReward * multiplier)
+end
+
+-- EndlessModeCash awarded on top of individual kill rewards for actually
+-- CLEARING a whole wave (EndlessModeMobManager.luau's own wave-clear check
+-- -- every mob that wave was going to spawn is both spawned AND gone), per
+-- explicit "la fiecare wave sa iti dea cash... la fiecare wave trecut cu
+-- brio" request. Same every-20-wave tier/rate as MobKillReward above, base
+-- value roughly a wave-1 mob's worth of kills so clearing the wave itself
+-- feels like a real bonus, not just background noise next to the per-kill
+-- income.
+EndlessModeUnitRoleConfig.WaveClearReward = 2500
+
+function EndlessModeUnitRoleConfig.GetWaveClearRewardForWave(wave: number): number
+	local tier = math.floor((math.max(wave, 1) - 1) / WAVE_DAMAGE_TIER_SIZE)
+	local multiplier = 1 + tier * WAVE_DAMAGE_INCREMENT_PER_TIER
+	return math.floor(EndlessModeUnitRoleConfig.WaveClearReward * multiplier)
 end
 
 -- Same every-20-wave tier/rate as GetMobDamageForWave above, just applied to
@@ -204,11 +221,14 @@ local DAMAGE_AMOUNT_MULTIPLIER: { [string]: number } = {
 	PrivateEstate = 4, -- Epic
 	SkyscraperPenthouse = 8, -- Legendary
 	LuxuryHotelChain = 15, -- Godly -- OP starts here
-	-- Lowered from 40, per explicit request -- same reasoning as
-	-- PrivateAirport above (TANK_HP_MULTIPLIER): Central Bank/Premium
-	-- Restaurant/Storage Unit needed to overtake it overall, without
-	-- gutting it as a Damage Estate.
-	OldFarm = 18, -- Exclusive (Silver rank reward)
+	-- Lowered again, per explicit request -- now EndlessModeBuildingConfig.
+	-- GetPlacementCost prices Old Farm at $250 (a fraction of what its
+	-- Exclusive rarity would normally cost), explicitly meant to be "cel mai
+	-- ieftin AOE... dar sa aiba statistici relativ slabe" -- roughly
+	-- Legendary-tier damage despite being nominally Exclusive, so the
+	-- bargain price isn't a strictly-better pick over Luxury Hotel Chain/
+	-- Construction Shop.
+	OldFarm = 6, -- Exclusive (Silver rank reward) -- deliberately weak, see GetPlacementCost
 	ConstructionShop = 90, -- Exclusive (Diamond rank reward) -- hardest-hitting Damage Estate
 }
 
@@ -254,7 +274,7 @@ local DAMAGE_RANGE_MULTIPLIER: { [string]: number } = {
 	PrivateEstate = 1.6, -- Epic
 	SkyscraperPenthouse = 2, -- Legendary
 	LuxuryHotelChain = 2.5, -- Godly -- OP starts here
-	OldFarm = 3.5, -- Exclusive (Silver rank reward)
+	OldFarm = 2, -- Exclusive (Silver rank reward) -- deliberately weak, see GetPlacementCost
 	ConstructionShop = 5, -- Exclusive (Diamond rank reward) -- covers the whole claimed patch
 }
 
@@ -352,11 +372,12 @@ end
 -- multiplier is set above every other Estate's in the game (Tank, Damage,
 -- or Spawner) to reflect that.
 local SPAWNER_POWER_MULTIPLIER: { [string]: number } = {
-	-- Storage Unit/Premium Restaurant/Central Bank bumped up from their
-	-- original 1/2/4, per explicit request -- meant to land in the overall
-	-- top 10 (ahead of Old Farm/Private Airport, which were lowered to
-	-- make room, see TANK_HP_MULTIPLIER/DAMAGE_AMOUNT_MULTIPLIER above).
-	CrateVilla = 25, -- "Storage Unit" (Rare)
+	-- Premium Restaurant/Central Bank bumped up from their original 2/4,
+	-- per explicit request -- meant to land in the overall top 10 (ahead
+	-- of Old Farm/Private Airport, which were lowered to make room, see
+	-- TANK_HP_MULTIPLIER/DAMAGE_AMOUNT_MULTIPLIER above). Storage Unit
+	-- (CrateVilla) moved to Tank per a later explicit request -- see its
+	-- own entry in TANK_HP_MULTIPLIER instead.
 	CrateManor = 35, -- "Premium Restaurant" (Epic)
 	-- Raised from 48, per explicit request -- Central Bank now beats the
 	-- Solar Park/Construction Shop tier (90) to sit at #5 overall.

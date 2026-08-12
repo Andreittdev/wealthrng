@@ -19,6 +19,13 @@ local COLORS: { [string]: Color3 } = {
 	Godly = Color3.fromRGB(220, 40, 40),
 	Exclusive = Color3.fromRGB(170, 85, 255),
 	Leaderboards = Color3.fromRGB(255, 221, 0),
+	-- Only used by Dream Castle (CrateCastle, ItemDatabase's "Luxury" tier
+	-- -- separate rarity scheme from the rest of this table, see the header
+	-- comment) now that InventoryPanel.luau's Estates tab renders the 4
+	-- Crate-exclusive items alongside real AssetDatabase Estates -- without
+	-- this, THE single rarest Estate in the game fell through to the plain
+	-- white fallback below instead of a themed color.
+	Luxury = Color3.fromRGB(255, 90, 200),
 }
 EstateRarityConfig.Colors = COLORS
 

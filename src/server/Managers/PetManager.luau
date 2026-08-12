@@ -51,7 +51,6 @@ local ItemDatabase = require(ReplicatedStorage.Modules.ItemDatabase)
 local EndlessModeConfig = require(ReplicatedStorage.Modules.EndlessModeConfig)
 local EndlessModeBuildingConfig = require(ReplicatedStorage.Modules.EndlessModeBuildingConfig)
 local EndlessModeUnitRoleConfig = require(ReplicatedStorage.Modules.EndlessModeUnitRoleConfig)
-local WaveConfig = require(ReplicatedStorage.Modules.WaveConfig)
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local AssetManager = require(ServerScriptService.Managers.AssetManager)
 local InventoryManager = require(ServerScriptService.Managers.InventoryManager)
@@ -67,6 +66,7 @@ local endlessModeBuildingSelected = RemotesBootstrap:WaitForChild("EndlessModeBu
 local upgradeEndlessModeBuilding = RemotesBootstrap:WaitForChild("UpgradeEndlessModeBuilding")
 local pickUpEndlessModeBuilding = RemotesBootstrap:WaitForChild("PickUpEndlessModeBuilding")
 local endlessModeCashUpdated = RemotesBootstrap:WaitForChild("EndlessModeCashUpdated")
+local endlessModeGameOver = RemotesBootstrap:WaitForChild("EndlessModeGameOver")
 local systemMessage = RemotesBootstrap:WaitForChild("SystemMessage")
 
 local PetManager = {}
@@ -77,6 +77,15 @@ type PlacedBuilding = {
 	UpgradeLevel: number,
 	HP: number,
 	Model: Model,
+	-- Floating HP bar above the building -- same "filled Frame shrinking
+	-- left-to-right, green fading to red, N/MAX text overlaid on top" style
+	-- EndlessModeMobManager.luau's own mobs use, per explicit "vreau si la
+	-- ele sa fie un health bar ca la mobi" request (buildings used to show
+	-- plain "N/MAX HP" text alone). HpBillboard stored directly (not derived
+	-- via HpLabel.Parent.Parent) so rescalePlacedBuilding doesn't need to
+	-- know/assume the exact nesting depth.
+	HpBillboard: BillboardGui,
+	HpBarFill: Frame,
 	HpLabel: TextLabel,
 	-- "col,row" (EndlessModeClaimManager.SnapToPatchCell) -- which grid tile
 	-- of the checkerboard patch this building occupies, so a second
@@ -103,11 +112,12 @@ local selectedPlacementId: { [Player]: string? } = {}
 -- picked, via a EndlessModeLoadoutHotbar.luau square, to be the ONE actually
 -- held/placeable in Endless Mode right now -- per explicit "4 patrate, dai
 -- equip la unu si se adauga in patratul ala" request (up to
--- AssetDatabase.MaxEquipped Estates can be equipped/in the loadout at once,
--- but only one is ever actively "in hand"). Nil means "no explicit pick yet
--- (or it stopped being equipped)" -- doRefreshPets below falls back to the
--- first equipped Estate in that case. Not persisted -- resets to the default
--- fallback on rejoin, same as selectedPlacementId above.
+-- AssetDatabase.MaxEquippedEndlessMode Estates can be equipped/in the
+-- loadout at once, but only one is ever actively "in hand"). Nil means "no
+-- explicit pick yet (or it stopped being equipped)" -- doRefreshPets below
+-- falls back to the first equipped Estate in that case. Not persisted --
+-- resets to the default fallback on rejoin, same as selectedPlacementId
+-- above.
 local selectedHeldAssetId: { [Player]: string? } = {}
 
 -- Forward-declared (assigned further down, past doRefreshPets) -- the
@@ -117,18 +127,33 @@ local selectedHeldAssetId: { [Player]: string? } = {}
 -- global instead of this upvalue.
 local refreshPets: (Player) -> ()
 
--- Slots 1-4 fan out behind the character (up to AssetDatabase.MaxEquipped
--- equipped Assets) -- offset from HumanoidRootPart in ITS local space (+Z is
--- behind a character's default facing, +Y is up). Y was 3 (level with/above
--- head) -- lowered to sit around waist height instead. Slot 5 is dedicated
--- to an equipped Crate-exclusive Estate item (session.EquippedItemId,
--- separate from the equipped Assets in slots 1-4) -- centered, further back
--- so it doesn't overlap any Asset slot.
+-- Slots 1-4 fan out behind the character -- sized for AssetDatabase.
+-- MaxEquippedEndlessMode (Endless Mode's own, bigger equip cap), even
+-- though the Hub's own MaxEquipped stays at 2 (AssetManager.
+-- TrimEquippedToHubCap trims back down to it on the way out of Endless
+-- Mode, so a Hub floating pet realistically only ever uses slots 1-2, but
+-- the extra slots are harmless/future-proof to keep defined). Offset from
+-- HumanoidRootPart in ITS local space (+Z is behind a character's default
+-- facing, +Y is up). Y was 3 (level with/above head) -- lowered to sit
+-- around waist height instead. Slot 5 is dedicated to an equipped Crate-
+-- exclusive Estate item (session.EquippedItemId, separate from the equipped
+-- Assets in slots 1-4) -- centered, further back so it doesn't overlap any
+-- Asset slot.
+-- Slots 1 and 2 are the ORIGINAL left/right pair (unchanged from before the
+-- 4-slot Endless loadout existed) -- per explicit bug report, they'd both
+-- ended up on the SAME (left) side when this first grew from 2 to 4 slots,
+-- since the array was ordered left-to-right (-4.5,-1.5,1.5,4.5) instead of
+-- interleaved. The Hub only ever actually populates slots 1-2 (its own
+-- MaxEquipped stays at 2), so THOSE two specifically have to keep matching
+-- the pre-existing look; slots 3/4 (only ever relevant for a moment, if at
+-- all, right as a player carrying 4 from Endless Mode lands back in the
+-- Hub before AssetManager.TrimEquippedToHubCap's push settles) just flank
+-- further out on their matching side.
 local SLOT_OFFSETS = {
-	Vector3.new(-4.5, 0.5, 6),
-	Vector3.new(-1.5, 0.5, 6.5),
-	Vector3.new(1.5, 0.5, 6.5),
-	Vector3.new(4.5, 0.5, 6),
+	Vector3.new(-2, 0.5, 6),
+	Vector3.new(2, 0.5, 6),
+	Vector3.new(-4.5, 0.5, 6.5),
+	Vector3.new(4.5, 0.5, 6.5),
 	Vector3.new(0, 0.5, 9),
 }
 local EQUIPPED_ITEM_SLOT_INDEX = #SLOT_OFFSETS
@@ -256,7 +281,7 @@ end
 -- `assetId` alone is all a placed building's own data carries for identity
 -- -- looks it back up against both databases the same way doRefreshPets'
 -- equipped-slots loop does, so templates/names can be resolved from either.
-local function findSourceById(assetId: string): { Name: string, Id: string }?
+local function findSourceById(assetId: string): { Name: string, Id: string, Rarity: string? }?
 	local asset = AssetDatabase.GetAsset(assetId)
 	if asset then
 		return asset
@@ -269,9 +294,8 @@ local function findSourceById(assetId: string): { Name: string, Id: string }?
 end
 
 -- Exclusive/Leaderboards-tier Estates (see AssetDatabase's Rarity field
--- comment) get the tighter 3-copy cap -- Crate-exclusive ItemDatabase
--- "Estates" don't carry an equivalent field (different database), so they
--- fall through to the ordinary 5-copy cap.
+-- comment) get the tighter 3-copy cap -- includes the 4 Crate-exclusive
+-- Estates now that they're real AssetDatabase Assets (Rarity = "Exclusive").
 local function maxCopiesForAsset(assetId: string): number
 	local asset = AssetDatabase.GetAsset(assetId)
 	if asset and (asset.Rarity == "Exclusive" or asset.Rarity == "Leaderboards") then
@@ -353,7 +377,10 @@ local function buildSelectionPayload(player: Player, placementId: string)
 		payload.Range = math.floor(EndlessModeUnitRoleConfig.DamageRangeStuds * EndlessModeUnitRoleConfig.GetDamageRangeMultiplier(building.AssetId, building.UpgradeLevel))
 		payload.Cooldown = EndlessModeUnitRoleConfig.GetDamageCooldownSeconds(building.AssetId, building.UpgradeLevel)
 	elseif role == "Spawner" then
+		local spawnerPowerMultiplier = EndlessModeUnitRoleConfig.GetSpawnerPowerMultiplier(building.AssetId, building.UpgradeLevel)
 		payload.AllyCount = EndlessModeUnitRoleConfig.GetSpawnerAllyCount(building.UpgradeLevel)
+		payload.AllyDamage = math.floor(EndlessModeUnitRoleConfig.AllyDamagePerTick * spawnerPowerMultiplier)
+		payload.AllyHP = math.floor(EndlessModeUnitRoleConfig.AllyHP * spawnerPowerMultiplier)
 	end
 
 	return payload
@@ -390,14 +417,36 @@ local function hpLabelStudsUp(boundingSize: Vector3): number
 	return math.max(boundingSize.Y / 2 + 3, HP_LABEL_MIN_CLEARANCE_STUDS)
 end
 
+-- Same visual constants/idiom as EndlessModeMobManager.luau's own mob HP
+-- bars -- green at full health, sliding to red as it empties.
+local HP_BAR_SIZE = UDim2.new(0, 120, 0, 24)
+local HP_BAR_BACKGROUND_COLOR = Color3.fromRGB(35, 35, 35)
+local HP_BAR_FULL_COLOR = Color3.fromRGB(90, 220, 100)
+local HP_BAR_LOW_COLOR = Color3.fromRGB(220, 60, 60)
+
+local function updateBuildingHpBar(fill: Frame, label: TextLabel, hp: number, maxHp: number)
+	local fraction = maxHp > 0 and math.clamp(hp / maxHp, 0, 1) or 0
+	fill.Size = UDim2.new(fraction, 0, 1, 0)
+	fill.BackgroundColor3 = HP_BAR_LOW_COLOR:Lerp(HP_BAR_FULL_COLOR, fraction)
+	label.Text = string.format("%d/%d", math.max(hp, 0), maxHp)
+end
+
 -- Builds the actual standalone Workspace model for ONE placed building
--- instance. Returns (model, hpLabel), or nil if there's no matching pet
+-- instance. Returns (model, hpBillboard, hpBarFill, hpLabel), or nils if
+-- there's no matching pet
 -- template (same "silently skip if missing" convention as everything else
 -- in this file).
-local function createPlacedBuildingModel(player: Player, placementId: string, assetId: string, cframe: CFrame, upgradeLevel: number, hp: number): (Model?, TextLabel?)
+local function createPlacedBuildingModel(
+	player: Player,
+	placementId: string,
+	assetId: string,
+	cframe: CFrame,
+	upgradeLevel: number,
+	hp: number
+): (Model?, BillboardGui?, Frame?, TextLabel?)
 	local source = findSourceById(assetId)
 	if not source then
-		return nil, nil
+		return nil, nil, nil, nil
 	end
 
 	local template = findPetTemplate(source)
@@ -406,7 +455,7 @@ local function createPlacedBuildingModel(player: Player, placementId: string, as
 			warnedMissingTemplates[assetId] = true
 			warn(string.format("[PetManager] No pet model found for '%s' (Id: %s) -- expected a Model named '%s' or '%s' in ReplicatedStorage.PetModels or Workspace.", source.Name, source.Id, source.Name, source.Id))
 		end
-		return nil, nil
+		return nil, nil, nil, nil
 	end
 
 	-- Read BEFORE cloning -- `template` is the permanent, already-settled
@@ -481,28 +530,43 @@ local function createPlacedBuildingModel(player: Player, placementId: string, as
 	pet:PivotTo(cframe + Vector3.new(0, boundingSize.Y / 2, 0))
 	anchor.Anchored = true
 
-	-- Floating "N/MAX HP" label -- same idiom as EndlessModeClaimManager's
-	-- base HP display, StudsOffset instead of a dedicated anchor part since
-	-- `anchor` already sits at the right X/Z, just needs lifting above the
-	-- roofline.
+	-- Floating HP bar -- same style as EndlessModeMobManager.luau's own mob
+	-- bars (filled Frame shrinking left-to-right, green fading to red, N/MAX
+	-- text overlaid), per explicit "vreau si la ele sa fie un health bar ca
+	-- la mobi" request -- StudsOffset instead of a dedicated anchor part
+	-- since `anchor` already sits at the right X/Z, just needs lifting above
+	-- the roofline.
 	local hpBillboard = Instance.new("BillboardGui")
 	hpBillboard.Name = "HPDisplay"
-	hpBillboard.Size = UDim2.new(0, 120, 0, 28)
+	hpBillboard.Size = HP_BAR_SIZE
 	hpBillboard.StudsOffset = Vector3.new(0, hpLabelStudsUp(boundingSize), 0)
 	hpBillboard.AlwaysOnTop = true
 	hpBillboard.Adornee = anchor
 	hpBillboard.Parent = anchor
 
+	local hpBarBackground = Instance.new("Frame")
+	hpBarBackground.Size = UDim2.new(1, 0, 1, 0)
+	hpBarBackground.BackgroundColor3 = HP_BAR_BACKGROUND_COLOR
+	hpBarBackground.BorderSizePixel = 0
+	hpBarBackground.Parent = hpBillboard
+
+	local hpBarFill = Instance.new("Frame")
+	hpBarFill.Size = UDim2.new(1, 0, 1, 0)
+	hpBarFill.BackgroundColor3 = HP_BAR_FULL_COLOR
+	hpBarFill.BorderSizePixel = 0
+	hpBarFill.Parent = hpBarBackground
+
 	local hpLabel = Instance.new("TextLabel")
 	hpLabel.Size = UDim2.new(1, 0, 1, 0)
 	hpLabel.BackgroundTransparency = 1
 	hpLabel.Font = Enum.Font.LuckiestGuy
-	hpLabel.Text = string.format("%d/%d HP", hp, getEffectiveMaxHP(assetId, upgradeLevel))
-	hpLabel.TextColor3 = Color3.fromRGB(255, 90, 90)
+	hpLabel.TextColor3 = Color3.new(1, 1, 1)
 	hpLabel.TextStrokeTransparency = 0
 	hpLabel.TextStrokeColor3 = Color3.fromRGB(10, 10, 10)
 	hpLabel.TextScaled = true
-	hpLabel.Parent = hpBillboard
+	hpLabel.Parent = hpBarBackground
+
+	updateBuildingHpBar(hpBarFill, hpLabel, hp, getEffectiveMaxHP(assetId, upgradeLevel))
 
 	-- Clicking a placed building toggles the right-side HP/upgrade panel
 	-- (EndlessModeBuildingPanel.luau) instead of picking it up directly --
@@ -532,7 +596,7 @@ local function createPlacedBuildingModel(player: Player, placementId: string, as
 		end
 	end
 
-	return pet, hpLabel
+	return pet, hpBillboard, hpBarFill, hpLabel
 end
 
 -- Re-scales an ALREADY-PLACED building's Model in place (not a fresh clone)
@@ -562,9 +626,8 @@ local function rescalePlacedBuilding(building: PlacedBuilding)
 	local _, boundingSize = model:GetBoundingBox()
 	model:PivotTo(building.CFrame + Vector3.new(0, boundingSize.Y / 2, 0))
 
-	local billboard = building.HpLabel and building.HpLabel.Parent
-	if billboard and billboard:IsA("BillboardGui") then
-		billboard.StudsOffset = Vector3.new(0, hpLabelStudsUp(boundingSize), 0)
+	if building.HpBillboard then
+		building.HpBillboard.StudsOffset = Vector3.new(0, hpLabelStudsUp(boundingSize), 0)
 	end
 end
 
@@ -577,7 +640,7 @@ end
 -- one.
 --
 -- `wantsHand`, per explicit "4 patrate, un singur Estate activ" request:
--- with up to AssetDatabase.MaxEquipped (4) Estates equipped at once, only
+-- with up to AssetDatabase.MaxEquippedEndlessMode (4) Estates equipped at once, only
 -- ONE of them is ever actually held/welded in front of the character in
 -- Endless Mode at a time (whichever hotbar square is selected, see
 -- selectedHeldAssetId/doRefreshPets below) -- every OTHER equipped Estate
@@ -923,10 +986,12 @@ for _, player in Players:GetPlayers() do
 	end
 end
 
-Players.PlayerRemoving:Connect(function(player: Player)
-	activePets[player] = nil
-	latestRefreshGeneration[player] = nil
-
+-- Destroys every placed-Estate Model this player currently has and clears
+-- placedBuildings[player] entirely -- shared by the disconnect handler
+-- below AND the "base destroyed" reset (see EndlessModeClaimManager.
+-- BaseDestroyed listener further down), so a lost run wipes buildings the
+-- exact same way leaving does.
+local function clearAllPlacedBuildings(player: Player)
 	local playerPlaced = placedBuildings[player]
 	if playerPlaced then
 		for _, building in playerPlaced do
@@ -936,8 +1001,48 @@ Players.PlayerRemoving:Connect(function(player: Player)
 		end
 	end
 	placedBuildings[player] = nil
+end
+
+Players.PlayerRemoving:Connect(function(player: Player)
+	activePets[player] = nil
+	latestRefreshGeneration[player] = nil
+
+	clearAllPlacedBuildings(player)
+	EndlessModeAllyManager.ClearAlliesForOwner(player)
 	selectedPlacementId[player] = nil
 	selectedHeldAssetId[player] = nil
+end)
+
+-- Per explicit request ("baza aia de 200 HP... se duce tot progresul"):
+-- losing a run (the claimed side's base hits 0 HP, EndlessModeClaimManager.
+-- DamageBase) wipes it exactly like leaving would -- every placed building
+-- destroyed, everything unequipped (also closes the selection panel/clears
+-- the held estate if either was active), session progress reset back to a
+-- fresh start (DataManager.ResetEndlessModeProgress -- same wave/cash reset
+-- a disconnect uses). EndlessModeClaimManager has already released the
+-- claim itself by the time this fires (its own responsibility, not this
+-- file's) -- this only owns building/equip/session state, then tells the
+-- client to show the "You Died!" screen.
+EndlessModeClaimManager.BaseDestroyed.Event:Connect(function(side: string, owner: Player)
+	clearAllPlacedBuildings(owner)
+	EndlessModeAllyManager.ClearAlliesForOwner(owner)
+	if selectedPlacementId[owner] then
+		selectedPlacementId[owner] = nil
+		endlessModeBuildingSelected:FireClient(owner, nil)
+	end
+	selectedHeldAssetId[owner] = nil
+
+	-- Fires AssetManager.EquippedAssetsChanged, which refreshPets is already
+	-- subscribed to (see above) -- no separate refreshPets call needed here.
+	AssetManager.UnequipAll(owner)
+
+	DataManager.ResetEndlessModeProgress(owner)
+	local session = DataManager.Get(owner)
+	if session then
+		endlessModeCashUpdated:FireClient(owner, session.EndlessModeCash)
+	end
+
+	endlessModeGameOver:FireClient(owner)
 end)
 
 -- Right only for now -- matches EndlessModeClaimManager/EndlessModeMobManager's
@@ -945,13 +1050,13 @@ end)
 local PLACEABLE_SIDE = "Right"
 
 -- Current mob damage for `player` -- scales with their own wave progress
--- (WaveConfig.GetWaveForElapsedSeconds off session.EndlessModeElapsedSeconds),
--- same idiom EndlessModeMobManager.luau's own getMobDamage uses. Needed here
--- just to hand off to a Spawner's Ally (EndlessModeAllyManager.SpawnAlly) so
--- it knows how hard the mob it ends up fighting will hit back.
+-- (session.EndlessModeWave, event-gated now -- see EndlessModeMobManager.
+-- luau), same idiom EndlessModeMobManager.luau's own getMobDamage uses.
+-- Needed here just to hand off to a Spawner's Ally (EndlessModeAllyManager.
+-- SpawnAlly) so it knows how hard the mob it ends up fighting will hit back.
 local function getMobDamage(player: Player): number
 	local session = DataManager.Get(player)
-	local wave = session and WaveConfig.GetWaveForElapsedSeconds(session.EndlessModeElapsedSeconds) or 1
+	local wave = (session and session.EndlessModeWave) or 1
 	return EndlessModeUnitRoleConfig.GetMobDamageForWave(wave)
 end
 
@@ -964,7 +1069,7 @@ local function awardMobKillReward(player: Player)
 	if not session then
 		return
 	end
-	local wave = WaveConfig.GetWaveForElapsedSeconds(session.EndlessModeElapsedSeconds)
+	local wave = session.EndlessModeWave
 	session.EndlessModeCash += EndlessModeUnitRoleConfig.GetMobKillRewardForWave(wave)
 	endlessModeCashUpdated:FireClient(player, session.EndlessModeCash)
 end
@@ -1088,6 +1193,17 @@ local function tryFlyCustomModel(
 		humanoid:Destroy()
 	end
 
+	-- Manually placed Studio models routinely come in with Anchored = false
+	-- on some/all of their parts (same gotcha anchorTemplate above fixes for
+	-- pet templates) -- this clone is driven entirely by the anchor's own
+	-- tween below (never physics), so an unanchored part visibly sinks/falls
+	-- out from under the animation instead of flying where it's told to.
+	if instanceClone:IsA("Model") then
+		anchorTemplate(instanceClone)
+	elseif instanceClone:IsA("BasePart") then
+		instanceClone.Anchored = true
+	end
+
 	pivotFlyingInstance(instanceClone, CFrame.new(fromPosition))
 	instanceClone.Parent = Workspace
 
@@ -1168,33 +1284,117 @@ local function showBullet(assetId: string, fromPosition: Vector3, toPosition: Ve
 	Debris:AddItem(bullet, duration + 0.05)
 end
 
--- Explosion -- an expanding, fading sphere AT the target, per explicit
--- request for the strongest (Godly/Exclusive) Damage Estates -- a bigger,
--- more dramatic impact than a mere beam/bullet.
--- (Godly/Exclusive) Damage Estates get the biggest, showiest hit -- "sa arate
--- ca bubuie tare" (make it look like it booms hard), explicitly requested
--- after the first pass (a single fading sphere) read as too weak. Three
--- layered pieces instead of one: a near-white flash CORE that snaps in then
--- shrinks away fast (the "impact" instant), Roblox's own built-in Explosion
--- instance for the classic fireball+smoke+embers look (BlastPressure/
--- DestroyJointRadiusPercent zeroed out so it's pure VFX -- doesn't ragdoll
--- the player or yeet nearby placed buildings), and a flat expanding
--- shockwave RING on the ground (same "Cylinder rotated flat" trick
--- EndlessModeRangeIndicator.luau already uses for the range circle).
+-- Explosion -- a layered VFX burst AT the target, per explicit request for
+-- the strongest (Godly/Exclusive) Damage Estates -- a bigger, more dramatic
+-- impact than a mere beam/bullet. "sa arate ca bubuie tare" (make it look
+-- like it booms hard), explicitly requested after the first pass (a single
+-- fading sphere) read as too weak -- then later upgraded again ("vreau un
+-- efect mai premium de explosion nu ala clasic") away from Roblox's stock
+-- Instance.new("Explosion") toward a fully custom look: a near-white flash
+-- CORE that snaps in then shrinks away fast (the "impact" instant), a
+-- translucent 3D shockwave SHELL expanding outward in every direction, a
+-- flat expanding shockwave RING on the ground (same "Cylinder rotated flat"
+-- trick EndlessModeRangeIndicator.luau already uses for the range circle),
+-- and a one-shot ParticleEmitter burst (embers/smoke/sparks, see
+-- emitExplosionParticles above) for the actual fireball look.
 local EXPLOSION_CORE_START_DIAMETER_STUDS = 2.5
 local EXPLOSION_CORE_END_DIAMETER_STUDS = 0.5
 local EXPLOSION_CORE_COLOR = Color3.fromRGB(255, 230, 150)
 local EXPLOSION_CORE_DURATION_SECONDS = 0.15
 
--- Matches EndlessModeUnitRoleConfig.ExplosionAoeRadiusStuds (the ACTUAL AOE
--- hit radius) so the visual reads honestly -- a mob standing where the ring
--- reaches is a mob that really does take the hit.
-local EXPLOSION_BLAST_RADIUS_STUDS = EndlessModeUnitRoleConfig.ExplosionAoeRadiusStuds
-
+-- Ring diameter matches EndlessModeUnitRoleConfig.ExplosionAoeRadiusStuds
+-- (the ACTUAL AOE hit radius) so the visual reads honestly -- a mob
+-- standing where the ring reaches is a mob that really does take the hit.
 local EXPLOSION_RING_HEIGHT_STUDS = 0.3
 local EXPLOSION_RING_START_DIAMETER_STUDS = 1
 local EXPLOSION_RING_END_DIAMETER_STUDS = EndlessModeUnitRoleConfig.ExplosionAoeRadiusStuds * 2
 local EXPLOSION_RING_DURATION_SECONDS = 0.35
+
+-- Translucent 3D shockwave shell -- expands outward from the core in every
+-- direction (not just flat on the ground like the ring below), giving the
+-- blast actual volume instead of reading as a flat decal.
+local EXPLOSION_SHELL_START_DIAMETER_STUDS = 1.5
+local EXPLOSION_SHELL_END_DIAMETER_STUDS = EndlessModeUnitRoleConfig.ExplosionAoeRadiusStuds * 1.6
+local EXPLOSION_SHELL_DURATION_SECONDS = 0.3
+local EXPLOSION_SHELL_COLOR = Color3.fromRGB(255, 140, 40)
+
+-- One-shot particle burst -- per explicit "vreau un efect mai premium de
+-- explosion nu ala clasic" request, replaces Roblox's stock
+-- Instance.new("Explosion") (generic fireball/smoke everyone recognizes)
+-- with a layered custom burst: hot embers rocketing outward and cooling as
+-- they fade, a rising smoke puff, and bright streaking sparks. Built
+-- entirely from ParticleEmitters on a throwaway anchored Part -- no Studio-
+-- placed assets needed, unlike the thrown-projectile models above.
+local EXPLOSION_PARTICLE_CLEANUP_SECONDS = 1.2
+
+local function emitExplosionParticles(atPosition: Vector3)
+	local anchor = Instance.new("Part")
+	anchor.Name = "EndlessModeDamageExplosionParticles"
+	anchor.Size = Vector3.new(0.2, 0.2, 0.2)
+	anchor.Transparency = 1
+	anchor.Anchored = true
+	anchor.CanCollide = false
+	anchor.CanTouch = false
+	anchor.CFrame = CFrame.new(atPosition)
+	anchor.Parent = Workspace
+
+	local embers = Instance.new("ParticleEmitter")
+	embers.Texture = "rbxasset://textures/particles/fire_main.dds"
+	embers.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 235, 150)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 120, 40)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(110, 30, 10)),
+	})
+	embers.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1.6),
+		NumberSequenceKeypoint.new(1, 0.2),
+	})
+	embers.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.1),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	embers.Lifetime = NumberRange.new(0.35, 0.55)
+	embers.Speed = NumberRange.new(14, 22)
+	embers.SpreadAngle = Vector2.new(180, 180)
+	embers.Rate = 0
+	embers.Parent = anchor
+	embers:Emit(26)
+
+	local smoke = Instance.new("ParticleEmitter")
+	smoke.Texture = "rbxasset://textures/particles/smoke_main.dds"
+	smoke.Color = ColorSequence.new(Color3.fromRGB(90, 90, 95))
+	smoke.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(1, 5),
+	})
+	smoke.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.35),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	smoke.Lifetime = NumberRange.new(0.7, 0.9)
+	smoke.Speed = NumberRange.new(3, 6)
+	smoke.SpreadAngle = Vector2.new(180, 180)
+	smoke.Rate = 0
+	smoke.Parent = anchor
+	smoke:Emit(10)
+
+	local sparks = Instance.new("ParticleEmitter")
+	sparks.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	sparks.Color = ColorSequence.new(Color3.fromRGB(255, 245, 200))
+	sparks.Size = NumberSequence.new(0.25)
+	sparks.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	sparks.Lifetime = NumberRange.new(0.2, 0.35)
+	sparks.Speed = NumberRange.new(24, 36)
+	sparks.SpreadAngle = Vector2.new(180, 180)
+	sparks.Rate = 0
+	sparks.Parent = anchor
+	sparks:Emit(18)
+
+	Debris:AddItem(anchor, EXPLOSION_PARTICLE_CLEANUP_SECONDS)
+end
 
 -- `withRing` defaults true for the other Explosion-tier Estates -- Old
 -- Farm's own showExplosionProjectile config passes false, per explicit
@@ -1221,6 +1421,25 @@ local function showExplosion(atPosition: Vector3, withRing: boolean?)
 	}):Play()
 	Debris:AddItem(core, EXPLOSION_CORE_DURATION_SECONDS + 0.05)
 
+	local shell = Instance.new("Part")
+	shell.Name = "EndlessModeDamageExplosionShell"
+	shell.Shape = Enum.PartType.Ball
+	shell.Size = Vector3.new(EXPLOSION_SHELL_START_DIAMETER_STUDS, EXPLOSION_SHELL_START_DIAMETER_STUDS, EXPLOSION_SHELL_START_DIAMETER_STUDS)
+	shell.CFrame = CFrame.new(atPosition)
+	shell.Anchored = true
+	shell.CanCollide = false
+	shell.CanTouch = false
+	shell.Material = Enum.Material.ForceField
+	shell.Color = EXPLOSION_SHELL_COLOR
+	shell.Transparency = 0.35
+	shell.Parent = Workspace
+
+	TweenService:Create(shell, TweenInfo.new(EXPLOSION_SHELL_DURATION_SECONDS, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = Vector3.new(EXPLOSION_SHELL_END_DIAMETER_STUDS, EXPLOSION_SHELL_END_DIAMETER_STUDS, EXPLOSION_SHELL_END_DIAMETER_STUDS),
+		Transparency = 1,
+	}):Play()
+	Debris:AddItem(shell, EXPLOSION_SHELL_DURATION_SECONDS + 0.05)
+
 	if withRing ~= false then
 		local ring = Instance.new("Part")
 		ring.Name = "EndlessModeDamageExplosionRing"
@@ -1242,12 +1461,7 @@ local function showExplosion(atPosition: Vector3, withRing: boolean?)
 		Debris:AddItem(ring, EXPLOSION_RING_DURATION_SECONDS + 0.05)
 	end
 
-	local blast = Instance.new("Explosion")
-	blast.Position = atPosition
-	blast.BlastRadius = EXPLOSION_BLAST_RADIUS_STUDS
-	blast.BlastPressure = 0
-	blast.DestroyJointRadiusPercent = 0
-	blast.Parent = Workspace
+	emitExplosionParticles(atPosition)
 end
 
 -- Some Explosion-tier Estates throw a specific object that detonates
@@ -1269,6 +1483,8 @@ local EXPLOSION_PROJECTILE_CONFIG: {
 		SpeedStudsPerSecond: number,
 		SpinDegreesPerSecond: number,
 		WithRing: boolean,
+		IsTornado: boolean?,
+		IsDiamondBurst: boolean?,
 	},
 } = {
 	OldFarm = {
@@ -1281,6 +1497,12 @@ local EXPLOSION_PROJECTILE_CONFIG: {
 		-- as the "special" part of that hit by itself.
 		WithRing = false,
 	},
+	-- Per explicit request ("vreau un efect si la ala mai special ca da cu
+	-- diamante") -- a small glittering CLUSTER (see showDiamondBurstProjectile
+	-- below) instead of a single Diamond: one full-size "hero" diamond at
+	-- the center plus several smaller ones orbiting it for the whole
+	-- flight, trailing sparkles -- the ONLY Explosion-tier Estate with
+	-- IsDiamondBurst set.
 	LuxuryHotelChain = {
 		ModelName = "Diamond",
 		FallbackColor = Color3.fromRGB(150, 220, 255),
@@ -1288,7 +1510,13 @@ local EXPLOSION_PROJECTILE_CONFIG: {
 		SpeedStudsPerSecond = 50,
 		SpinDegreesPerSecond = 540,
 		WithRing = true,
+		IsDiamondBurst = true,
 	},
+	-- Per explicit request ("sa arunce cu tornada aia si in jurul ei sa fie
+	-- Construction Worker") -- the TORNADO ITSELF is the thing that flies
+	-- from the building to the mob (see showTornadoProjectile below), with
+	-- several Construction Worker models orbiting around it the whole
+	-- flight -- the ONLY Explosion-tier Estate with IsTornado set.
 	ConstructionShop = {
 		ModelName = "Construction Worker",
 		FallbackColor = Color3.fromRGB(255, 200, 60),
@@ -1296,25 +1524,18 @@ local EXPLOSION_PROJECTILE_CONFIG: {
 		SpeedStudsPerSecond = 45,
 		SpinDegreesPerSecond = 480,
 		WithRing = true,
+		IsTornado = true,
 	},
 }
 
-local function showExplosionProjectile(assetId: string, fromPosition: Vector3, toPosition: Vector3, onImpact: (() -> ())?)
-	local config = EXPLOSION_PROJECTILE_CONFIG[assetId]
-	local distance = (toPosition - fromPosition).Magnitude
-	local duration = math.max(distance / config.SpeedStudsPerSecond, 0.05)
-
-	-- Damage lands exactly when the projectile arrives, not when it's
-	-- thrown -- per explicit "vreau sa moara fix cand porcul intra in el"
-	-- request (kept for every thrown Explosion effect, not just the pig).
-	local function detonate()
-		if onImpact then
-			onImpact()
-		end
-		showExplosion(toPosition, config.WithRing)
-	end
-
-	if tryFlyCustomModel(config.ModelName, fromPosition, toPosition, duration, config.SpinDegreesPerSecond, detonate) then
+local function throwOneExplosionProjectile(
+	config: { ModelName: string, FallbackColor: Color3, FallbackSizeStuds: number, SpinDegreesPerSecond: number },
+	fromPosition: Vector3,
+	toPosition: Vector3,
+	duration: number,
+	onArrive: () -> ()
+)
+	if tryFlyCustomModel(config.ModelName, fromPosition, toPosition, duration, config.SpinDegreesPerSecond, onArrive) then
 		return
 	end
 
@@ -1337,9 +1558,296 @@ local function showExplosionProjectile(assetId: string, fromPosition: Vector3, t
 	local flightTween = TweenService:Create(projectile, TweenInfo.new(duration, Enum.EasingStyle.Linear), { Position = toPosition })
 	flightTween.Completed:Connect(function()
 		projectile:Destroy()
-		detonate()
+		onArrive()
 	end)
 	flightTween:Play()
+end
+
+-- Clones the Construction Worker template (or a small fallback ball if none
+-- exists under ReplicatedStorage.EndlessModeEffects) for orbiting around
+-- the flying tornado below -- same "strip the Humanoid so no nameplate
+-- shows" treatment tryFlyCustomModel gives its own clones.
+local function createOrbitingInstance(config: { ModelName: string, FallbackColor: Color3, FallbackSizeStuds: number }): Instance
+	local template = getEffectTemplate(config.ModelName)
+	local usableTemplate = template and (template:IsA("Model") or template:IsA("BasePart")) and template
+
+	if usableTemplate then
+		local clone = usableTemplate:Clone()
+		local humanoid = clone:FindFirstChildWhichIsA("Humanoid", true)
+		if humanoid then
+			humanoid:Destroy()
+		end
+		-- Same "Studio models come in unanchored" fix tryFlyCustomModel
+		-- above applies -- these orbit for the whole flight duration
+		-- (showTornadoProjectile/showDiamondBurstProjectile), driven purely
+		-- by pivotFlyingInstance each frame, so an unanchored part visibly
+		-- sags/falls out of orbit instead of staying pinned to it.
+		if clone:IsA("Model") then
+			anchorTemplate(clone)
+		elseif clone:IsA("BasePart") then
+			clone.Anchored = true
+		end
+		clone.Parent = Workspace
+		return clone
+	end
+
+	local ball = Instance.new("Part")
+	ball.Name = "EndlessModeTornadoOrbitFallback"
+	ball.Shape = Enum.PartType.Ball
+	ball.Size = Vector3.new(config.FallbackSizeStuds, config.FallbackSizeStuds, config.FallbackSizeStuds)
+	ball.Anchored = true
+	ball.CanCollide = false
+	ball.CanTouch = false
+	ball.Material = Enum.Material.Neon
+	ball.Color = config.FallbackColor
+	ball.Parent = Workspace
+	return ball
+end
+
+-- Construction Shop's own thrown effect -- a small funnel of stacked
+-- spinning discs (same "Cylinder rotated flat" trick showExplosion's ring
+-- uses, just several stacked at rising heights/diameters instead of one,
+-- narrow at the bottom/wide at the top like a real tornado's cloud) travels
+-- the full distance from the building to the mob, with ORBIT_WORKER_COUNT
+-- Construction Worker models circling around it (at different heights/
+-- start angles) for the entire flight, like debris caught inside. Manual
+-- per-frame loop (not TweenService) since both the funnel's own spin AND
+-- each worker's orbit angle need to keep advancing independently of the
+-- shared translation from fromPosition to toPosition.
+local TORNADO_SEGMENT_COUNT = 4
+local TORNADO_BASE_DIAMETER_STUDS = 0.8
+local TORNADO_TOP_DIAMETER_STUDS = 3.2
+local TORNADO_HEIGHT_STUDS = 4.5
+local TORNADO_SEGMENT_THICKNESS_STUDS = 0.3
+local TORNADO_SPIN_DEGREES_PER_SECOND = 900
+-- Flat neutral gray, per explicit "tornada sa fie gri" request (was a
+-- lighter, slightly blue-tinted gray before).
+local TORNADO_COLOR = Color3.fromRGB(120, 120, 120)
+
+local TORNADO_ORBIT_WORKER_COUNT = 3
+local TORNADO_ORBIT_RADIUS_STUDS = 2.5
+local TORNADO_ORBIT_DEGREES_PER_SECOND = 420
+
+local function showTornadoProjectile(
+	config: { ModelName: string, FallbackColor: Color3, FallbackSizeStuds: number },
+	fromPosition: Vector3,
+	toPosition: Vector3,
+	duration: number,
+	onArrive: () -> ()
+)
+	local segments = {}
+	for i = 1, TORNADO_SEGMENT_COUNT do
+		local t = (i - 1) / (TORNADO_SEGMENT_COUNT - 1)
+		local diameter = TORNADO_BASE_DIAMETER_STUDS + (TORNADO_TOP_DIAMETER_STUDS - TORNADO_BASE_DIAMETER_STUDS) * t
+
+		local segment = Instance.new("Part")
+		segment.Name = "EndlessModeTornadoSegment"
+		segment.Shape = Enum.PartType.Cylinder
+		segment.Size = Vector3.new(TORNADO_SEGMENT_THICKNESS_STUDS, diameter, diameter)
+		segment.Anchored = true
+		segment.CanCollide = false
+		segment.CanTouch = false
+		segment.Material = Enum.Material.Neon
+		segment.Color = TORNADO_COLOR
+		segment.Transparency = 0.35 + t * 0.3
+		-- Positioned right away at fromPosition (elapsed=0) instead of
+		-- waiting for the loop's first task.wait() to run -- otherwise
+		-- these sit at the default Instance.new origin for one frame
+		-- before ever being placed, a brief flash at (0,0,0).
+		segment.CFrame = CFrame.new(fromPosition + Vector3.new(0, t * TORNADO_HEIGHT_STUDS, 0)) * CFrame.Angles(0, 0, math.rad(90))
+		segment.Parent = Workspace
+		table.insert(segments, { Part = segment, HeightOffset = t * TORNADO_HEIGHT_STUDS, Spin = 0 })
+	end
+
+	local workers = {}
+	for i = 1, TORNADO_ORBIT_WORKER_COUNT do
+		local angleOffsetDegrees = (i - 1) * (360 / TORNADO_ORBIT_WORKER_COUNT)
+		local heightOffset = (i - 1) * (TORNADO_HEIGHT_STUDS / TORNADO_ORBIT_WORKER_COUNT)
+		local instance = createOrbitingInstance(config)
+		local initialAngleRadians = math.rad(angleOffsetDegrees)
+		local initialOrbitPosition = fromPosition
+			+ Vector3.new(math.cos(initialAngleRadians) * TORNADO_ORBIT_RADIUS_STUDS, heightOffset, math.sin(initialAngleRadians) * TORNADO_ORBIT_RADIUS_STUDS)
+		pivotFlyingInstance(instance, CFrame.new(initialOrbitPosition) * CFrame.Angles(0, initialAngleRadians, 0))
+		table.insert(workers, {
+			Instance = instance,
+			AngleOffsetDegrees = angleOffsetDegrees,
+			HeightOffset = heightOffset,
+		})
+	end
+
+	task.spawn(function()
+		local elapsed = 0
+		while elapsed < duration do
+			local dt = task.wait()
+			elapsed = math.min(elapsed + dt, duration)
+			local currentCenter = fromPosition:Lerp(toPosition, elapsed / duration)
+
+			for _, segment in segments do
+				segment.Spin += TORNADO_SPIN_DEGREES_PER_SECOND * dt
+				-- The 90-degree Z rotation makes local X the segment's
+				-- vertical axis, so spinning around local X spins the disc
+				-- around the world-vertical axis it's now standing on.
+				segment.Part.CFrame = CFrame.new(currentCenter + Vector3.new(0, segment.HeightOffset, 0))
+					* CFrame.Angles(0, 0, math.rad(90))
+					* CFrame.Angles(math.rad(segment.Spin), 0, 0)
+			end
+
+			for _, worker in workers do
+				local angleRadians = math.rad(worker.AngleOffsetDegrees + TORNADO_ORBIT_DEGREES_PER_SECOND * elapsed)
+				local orbitPosition = currentCenter
+					+ Vector3.new(math.cos(angleRadians) * TORNADO_ORBIT_RADIUS_STUDS, worker.HeightOffset, math.sin(angleRadians) * TORNADO_ORBIT_RADIUS_STUDS)
+				pivotFlyingInstance(worker.Instance, CFrame.new(orbitPosition) * CFrame.Angles(0, angleRadians, 0))
+			end
+		end
+
+		for _, segment in segments do
+			segment.Part:Destroy()
+		end
+		for _, worker in workers do
+			worker.Instance:Destroy()
+		end
+
+		onArrive()
+	end)
+end
+
+-- Luxury Hotel Chain's own thrown effect -- a small glittering CLUSTER
+-- instead of a single Diamond: one full-size "hero" diamond travels the
+-- straight line from building to mob (spinning the whole way), with
+-- DIAMOND_BURST_SATELLITE_COUNT smaller diamonds orbiting it, plus a
+-- continuous sparkle trail for extra shine. Same moving-orbit technique
+-- showTornadoProjectile above uses (a shared `currentCenter` interpolated
+-- every frame, satellites offset from it by a rotating angle).
+local DIAMOND_BURST_SATELLITE_COUNT = 4
+local DIAMOND_BURST_ORBIT_RADIUS_STUDS = 2
+local DIAMOND_BURST_ORBIT_DEGREES_PER_SECOND = 540
+local DIAMOND_BURST_SATELLITE_SCALE = 0.5
+local DIAMOND_BURST_CENTRAL_SPIN_DEGREES_PER_SECOND = 420
+local DIAMOND_BURST_SPARKLE_INTERVAL_SECONDS = 0.08
+
+local function scaleFlyingInstance(instance: Instance, scaleFactor: number)
+	if instance:IsA("Model") then
+		instance:ScaleTo(scaleFactor)
+	elseif instance:IsA("BasePart") then
+		instance.Size = instance.Size * scaleFactor
+	end
+end
+
+-- Small one-shot sparkle puff -- reuses the same ParticleEmitter idiom
+-- emitExplosionParticles above uses, just a lighter/faster burst meant to
+-- read as glinting light off the diamonds rather than an impact.
+local function emitDiamondSparkle(atPosition: Vector3)
+	local anchor = Instance.new("Part")
+	anchor.Name = "EndlessModeDiamondSparkle"
+	anchor.Size = Vector3.new(0.1, 0.1, 0.1)
+	anchor.Transparency = 1
+	anchor.Anchored = true
+	anchor.CanCollide = false
+	anchor.CanTouch = false
+	anchor.CFrame = CFrame.new(atPosition)
+	anchor.Parent = Workspace
+
+	local sparkle = Instance.new("ParticleEmitter")
+	sparkle.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	sparkle.Color = ColorSequence.new(Color3.fromRGB(210, 240, 255))
+	sparkle.Size = NumberSequence.new(0.18)
+	sparkle.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	sparkle.Lifetime = NumberRange.new(0.15, 0.25)
+	sparkle.Speed = NumberRange.new(2, 5)
+	sparkle.SpreadAngle = Vector2.new(180, 180)
+	sparkle.Rate = 0
+	sparkle.Parent = anchor
+	sparkle:Emit(3)
+
+	Debris:AddItem(anchor, 0.4)
+end
+
+local function showDiamondBurstProjectile(
+	config: { ModelName: string, FallbackColor: Color3, FallbackSizeStuds: number },
+	fromPosition: Vector3,
+	toPosition: Vector3,
+	duration: number,
+	onArrive: () -> ()
+)
+	local central = createOrbitingInstance(config)
+	pivotFlyingInstance(central, CFrame.new(fromPosition))
+
+	local satellites = {}
+	for i = 1, DIAMOND_BURST_SATELLITE_COUNT do
+		local angleOffsetDegrees = (i - 1) * (360 / DIAMOND_BURST_SATELLITE_COUNT)
+		local instance = createOrbitingInstance(config)
+		scaleFlyingInstance(instance, DIAMOND_BURST_SATELLITE_SCALE)
+		local initialAngleRadians = math.rad(angleOffsetDegrees)
+		local initialOrbitPosition = fromPosition
+			+ Vector3.new(math.cos(initialAngleRadians) * DIAMOND_BURST_ORBIT_RADIUS_STUDS, 0, math.sin(initialAngleRadians) * DIAMOND_BURST_ORBIT_RADIUS_STUDS)
+		pivotFlyingInstance(instance, CFrame.new(initialOrbitPosition) * CFrame.Angles(0, initialAngleRadians, 0))
+		table.insert(satellites, { Instance = instance, AngleOffsetDegrees = angleOffsetDegrees })
+	end
+
+	task.spawn(function()
+		local elapsed = 0
+		local centralSpin = 0
+		local sparkleTimer = 0
+		while elapsed < duration do
+			local dt = task.wait()
+			elapsed = math.min(elapsed + dt, duration)
+			centralSpin += DIAMOND_BURST_CENTRAL_SPIN_DEGREES_PER_SECOND * dt
+			sparkleTimer += dt
+			local currentCenter = fromPosition:Lerp(toPosition, elapsed / duration)
+
+			pivotFlyingInstance(central, CFrame.new(currentCenter) * CFrame.Angles(0, math.rad(centralSpin), 0))
+
+			for _, satellite in satellites do
+				local angleRadians = math.rad(satellite.AngleOffsetDegrees + DIAMOND_BURST_ORBIT_DEGREES_PER_SECOND * elapsed)
+				local orbitPosition = currentCenter
+					+ Vector3.new(math.cos(angleRadians) * DIAMOND_BURST_ORBIT_RADIUS_STUDS, 0, math.sin(angleRadians) * DIAMOND_BURST_ORBIT_RADIUS_STUDS)
+				pivotFlyingInstance(satellite.Instance, CFrame.new(orbitPosition) * CFrame.Angles(0, angleRadians, 0))
+			end
+
+			if sparkleTimer >= DIAMOND_BURST_SPARKLE_INTERVAL_SECONDS then
+				sparkleTimer = 0
+				emitDiamondSparkle(currentCenter)
+			end
+		end
+
+		central:Destroy()
+		for _, satellite in satellites do
+			satellite.Instance:Destroy()
+		end
+
+		onArrive()
+	end)
+end
+
+local function showExplosionProjectile(assetId: string, fromPosition: Vector3, toPosition: Vector3, onImpact: (() -> ())?)
+	local config = EXPLOSION_PROJECTILE_CONFIG[assetId]
+	local duration = math.max((toPosition - fromPosition).Magnitude / config.SpeedStudsPerSecond, 0.05)
+
+	-- Damage lands exactly when the effect actually arrives, not when the
+	-- throw starts -- per explicit "vreau sa moara fix cand porcul intra in
+	-- el" request (kept for every thrown Explosion effect, not just the
+	-- pig).
+	local function detonate()
+		if onImpact then
+			onImpact()
+		end
+		showExplosion(toPosition, config.WithRing)
+	end
+
+	if config.IsTornado then
+		showTornadoProjectile(config, fromPosition, toPosition, duration, detonate)
+		return
+	end
+
+	if config.IsDiamondBurst then
+		showDiamondBurstProjectile(config, fromPosition, toPosition, duration, detonate)
+		return
+	end
+
+	throwOneExplosionProjectile(config, fromPosition, toPosition, duration, detonate)
 end
 
 -- Dispatches to whichever of the 3 effects above matches this Estate's role.
@@ -1449,7 +1957,7 @@ local function startSpawnerLoop(player: Player, placementId: string)
 			local powerMultiplier = EndlessModeUnitRoleConfig.GetSpawnerPowerMultiplier(building.AssetId, building.UpgradeLevel)
 			local allyCount = EndlessModeUnitRoleConfig.GetSpawnerAllyCount(building.UpgradeLevel)
 			for _ = 1, allyCount do
-				EndlessModeAllyManager.SpawnAlly(player, building.CFrame.Position, getMobDamage(player), powerMultiplier)
+				EndlessModeAllyManager.SpawnAlly(player, building.AssetId, building.CFrame.Position, getMobDamage(player), powerMultiplier)
 			end
 		end
 	end)
@@ -1484,6 +1992,18 @@ placeEndlessModeEstate.OnServerEvent:Connect(function(player: Player, assetId: s
 		return
 	end
 
+	-- Placing now costs EndlessModeCash, per explicit request -- pricier the
+	-- rarer the Estate (EndlessModeBuildingConfig.GetPlacementCost), paid
+	-- from the same Endless-only economy upgrades already use. `source`
+	-- (AssetDatabase or, for a Crate-exclusive "Estate" item, ItemDatabase)
+	-- carries the Rarity the cost is actually keyed on.
+	local source = findSourceById(assetId)
+	local placementCost = EndlessModeBuildingConfig.GetPlacementCost(assetId, source and source.Rarity)
+	if session.EndlessModeCash < placementCost then
+		systemMessage:FireClient(player, "You don't have enough cash!")
+		return
+	end
+
 	-- Snaps to the checkerboard patch's own grid (EndlessModeClaimManager.
 	-- spawnPatch's tiles) instead of free-form placement -- per explicit
 	-- request, so Estates land in tidy invisible slots instead of
@@ -1508,10 +2028,16 @@ placeEndlessModeEstate.OnServerEvent:Connect(function(player: Player, assetId: s
 
 	local placementId = HttpService:GenerateGUID(false)
 	local initialMaxHP = getEffectiveMaxHP(assetId, 0)
-	local model, hpLabel = createPlacedBuildingModel(player, placementId, assetId, cframe, 0, initialMaxHP)
-	if not model or not hpLabel then
+	local model, hpBillboard, hpBarFill, hpLabel = createPlacedBuildingModel(player, placementId, assetId, cframe, 0, initialMaxHP)
+	if not model or not hpBillboard or not hpBarFill or not hpLabel then
 		return
 	end
+
+	-- Deducted only now that placement has actually succeeded (not back at
+	-- the affordability check above) -- nothing should be charged for a
+	-- placement that fails for some OTHER reason (a bad template, etc.).
+	session.EndlessModeCash -= placementCost
+	endlessModeCashUpdated:FireClient(player, session.EndlessModeCash)
 
 	if not playerPlaced then
 		playerPlaced = {}
@@ -1523,6 +2049,8 @@ placeEndlessModeEstate.OnServerEvent:Connect(function(player: Player, assetId: s
 		UpgradeLevel = 0,
 		HP = initialMaxHP,
 		Model = model,
+		HpBillboard = hpBillboard,
+		HpBarFill = hpBarFill,
 		HpLabel = hpLabel,
 		CellKey = cellKey,
 	}
@@ -1608,7 +2136,7 @@ upgradeEndlessModeBuilding.OnServerEvent:Connect(function(player: Player, placem
 	-- Cash -- per explicit request, upgrades are entirely funded by the
 	-- separate Endless Mode economy.
 	if session.EndlessModeCash < cost then
-		systemMessage:FireClient(player, "You don't have enough Endless Cash!")
+		systemMessage:FireClient(player, "You don't have enough cash!")
 		return
 	end
 
@@ -1621,8 +2149,8 @@ upgradeEndlessModeBuilding.OnServerEvent:Connect(function(player: Player, placem
 	-- new (higher) max.
 	building.HP = getEffectiveMaxHP(building.AssetId, building.UpgradeLevel)
 
-	if building.HpLabel then
-		building.HpLabel.Text = string.format("%d/%d HP", building.HP, building.HP)
+	if building.HpBarFill and building.HpLabel then
+		updateBuildingHpBar(building.HpBarFill, building.HpLabel, building.HP, building.HP)
 	end
 
 	-- Grows the actual Model too, per explicit request -- starts small at
@@ -1632,11 +2160,14 @@ upgradeEndlessModeBuilding.OnServerEvent:Connect(function(player: Player, placem
 	endlessModeBuildingSelected:FireClient(player, buildSelectionPayload(player, placementId))
 end)
 
--- The panel's "Pick Up" button -- destroys this specific placed instance and
--- frees up a placement-cap slot. Doesn't put it back in a special "held"
--- state of its own -- with multiple copies allowed now, "held" just means
--- "this equipped type has room for one more", so the existing held preview
--- (or a freshly-reappearing one, via refreshPets below) covers replanting.
+-- The panel's "Sell" button (was "Pick Up") -- destroys this specific placed
+-- instance, frees up a placement-cap slot, and refunds HALF the Estate's
+-- placement cost (EndlessModeBuildingConfig.GetPlacementCost, same rarity-
+-- keyed cost paid when it was placed) back to EndlessModeCash, per explicit
+-- request. Doesn't put it back in a special "held" state of its own -- with
+-- multiple copies allowed now, "held" just means "this equipped type has
+-- room for one more", so the existing held preview (or a freshly-
+-- reappearing one, via refreshPets below) covers replanting.
 pickUpEndlessModeBuilding.OnServerEvent:Connect(function(player: Player, placementId: string)
 	if typeof(placementId) ~= "string" then
 		return
@@ -1652,6 +2183,14 @@ pickUpEndlessModeBuilding.OnServerEvent:Connect(function(player: Player, placeme
 	local building = playerPlaced and playerPlaced[placementId]
 	if not building then
 		return
+	end
+
+	local session = DataManager.Get(player)
+	if session then
+		local source = findSourceById(building.AssetId)
+		local placementCost = EndlessModeBuildingConfig.GetPlacementCost(building.AssetId, source and source.Rarity)
+		session.EndlessModeCash += math.floor(placementCost / 2)
+		endlessModeCashUpdated:FireClient(player, session.EndlessModeCash)
 	end
 
 	if building.Model then
@@ -1727,8 +2266,8 @@ function PetManager.DamageBuilding(player: Player, placementId: string, amount: 
 		return
 	end
 
-	if building.HpLabel then
-		building.HpLabel.Text = string.format("%d/%d HP", building.HP, getEffectiveMaxHP(building.AssetId, building.UpgradeLevel))
+	if building.HpBarFill and building.HpLabel then
+		updateBuildingHpBar(building.HpBarFill, building.HpLabel, building.HP, getEffectiveMaxHP(building.AssetId, building.UpgradeLevel))
 	end
 
 	if selectedPlacementId[player] == placementId then

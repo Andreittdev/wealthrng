@@ -208,16 +208,30 @@ export type Session = {
 	-- recomputed -- an existing owner's serial can't change retroactively
 	-- just because the global count moved on.
 	AssetSerialNumbers: { [string]: { number } },
-	-- Endless Mode's wave clock (WaveConfig.luau/EndlessModeWaveManager.luau)
-	-- -- total seconds ever spent ACTUALLY standing in Endless Mode, never
-	-- decreases, capped implicitly once WaveConfig.GetWaveForElapsedSeconds
-	-- hits MaxWave. Only accumulates while physically there (paused the rest
-	-- of the time), per explicit request.
+	-- Endless Mode's play-time clock (EndlessModeWaveManager.luau) -- total
+	-- seconds ever spent ACTUALLY standing in Endless Mode, never decreases.
+	-- Only accumulates while physically there (paused the rest of the
+	-- time), per explicit request. A "how long have they played" stat only
+	-- now -- EndlessModeWave below is the actual gameplay-facing wave.
 	EndlessModeElapsedSeconds: number,
+	-- The player's own ACTUAL current wave -- event-gated now, per explicit
+	-- request ("sa treaca la waveul urmator numai dupa ce au fost omorati
+	-- toti mobii"), not derived from EndlessModeElapsedSeconds anymore.
+	-- EndlessModeMobManager.luau is the only writer (increments it once a
+	-- wave's mobs are fully spawned AND none remain alive on the field,
+	-- whether killed in combat or having reached the base) -- every other
+	-- reader (mob HP/damage/kill-reward scaling, the WAVE HUD) just reads
+	-- this directly now. Clamped at WaveConfig.MaxWave, same ceiling the old
+	-- time-based formula enforced.
+	EndlessModeWave: number,
 	-- Separate currency from the Hub's own Cash -- earned/spent entirely
 	-- within Endless Mode (EndlessModeCashHud.luau shows it top-right while
-	-- there, same icon as the regular Cash pill). No earning source wired up
-	-- yet -- just the stored/displayed number for now, per explicit request.
+	-- there, same icon as the regular Cash pill). Earned from mob kills
+	-- (EndlessModeUnitRoleConfig.GetMobKillRewardForWave) and spent on
+	-- Estate placement costs (EndlessModeBuildingConfig.GetPlacementCost).
+	-- New players start with a flat 1000, per explicit "tu primesti $1K la
+	-- inceput fara sa bati vreun mob" request -- enough to place a few
+	-- Common/Rare Estates before ever landing a kill.
 	EndlessModeCash: number,
 	LoadedOk: boolean,
 }
@@ -267,7 +281,8 @@ local function newDefaultSession(): Session
 		GrantedRankRewards = {},
 		AssetSerialNumbers = {},
 		EndlessModeElapsedSeconds = 0,
-		EndlessModeCash = 0,
+		EndlessModeWave = 1,
+		EndlessModeCash = 1000,
 		LoadedOk = true,
 	}
 end
@@ -338,6 +353,36 @@ function DataManager.Load(player: Player): Session
 
 			local inventory = data.Inventory or {}
 			local equippedItemUids = data.EquippedItemUids or {}
+			local ownedAssets = data.OwnedAssets or {}
+
+			-- One-time migration: the 4 Crate-exclusive Estates used to be
+			-- ItemDatabase/InventoryManager entries (session.Inventory) --
+			-- per explicit "lasa sa fie si ele Estateuri normale sa le dai
+			-- equip normal ca la restu" request, they're real AssetDatabase
+			-- Assets now (see AssetDatabase.luau's own comment on them), so
+			-- any OLD copies still sitting in a returning player's Inventory
+			-- get converted into a real OwnedAssets entry here instead
+			-- (self-healing, not flag-gated -- a fully-migrated save is a
+			-- true no-op, same idiom EstateExistenceManager.BackfillOwnedAssets
+			-- already uses). EstateExistenceManager.BackfillOwnedAssets
+			-- (Main.server.luau, already runs on every join) picks up the
+			-- freshly-set OwnedAssets flag and stamps a serial the same way
+			-- it does for every other pre-existing Estate owner.
+			local migratedCrateAssetIds: { [string]: boolean } = { CrateVilla = true, CrateManor = true, CratePalace = true, CrateCastle = true }
+			local remainingInventory = {}
+			for _, entry in inventory do
+				if migratedCrateAssetIds[entry.ItemId] then
+					ownedAssets[entry.ItemId] = true
+					local uidIndex = table.find(equippedItemUids, entry.Uid)
+					if uidIndex then
+						table.remove(equippedItemUids, uidIndex)
+					end
+				else
+					table.insert(remainingInventory, entry)
+				end
+			end
+			inventory = remainingInventory
+
 			local ownedItemCounts, inventoryTotalValue, equippedItemId = deriveInventoryState(inventory, equippedItemUids)
 
 			-- Common/Rare/Epic default ON (see newDefaultSession) -- but that
@@ -374,7 +419,7 @@ function DataManager.Load(player: Player): Session
 				NextUid = data.NextUid or 1,
 				EquippedItemUids = equippedItemUids,
 				TotalRolls = data.TotalRolls or 0,
-				OwnedAssets = data.OwnedAssets or {},
+				OwnedAssets = ownedAssets,
 				EquippedAssets = data.EquippedAssets or {},
 				Investments = investments,
 				NextInvestmentUid = data.NextInvestmentUid or 1,
@@ -410,7 +455,8 @@ function DataManager.Load(player: Player): Session
 				GrantedRankRewards = data.GrantedRankRewards or {},
 				AssetSerialNumbers = data.AssetSerialNumbers or {},
 				EndlessModeElapsedSeconds = data.EndlessModeElapsedSeconds or 0,
-				EndlessModeCash = data.EndlessModeCash or 0,
+				EndlessModeWave = data.EndlessModeWave or 1,
+				EndlessModeCash = data.EndlessModeCash or 1000,
 				LoadedOk = true,
 			}
 
@@ -517,6 +563,7 @@ function DataManager.Save(player: Player)
 		GrantedRankRewards = session.GrantedRankRewards,
 		AssetSerialNumbers = session.AssetSerialNumbers,
 		EndlessModeElapsedSeconds = session.EndlessModeElapsedSeconds,
+		EndlessModeWave = session.EndlessModeWave,
 		EndlessModeCash = session.EndlessModeCash,
 	}
 
@@ -531,6 +578,27 @@ end
 
 function DataManager.Release(player: Player)
 	sessions[player] = nil
+end
+
+-- Wipes this player's Endless Mode "run" back to a fresh start -- per
+-- explicit request, both when their base (200 HP) gets destroyed by mobs
+-- (EndlessModeClaimManager.BaseDestroyed, handled in PetManager.luau) AND
+-- whenever they disconnect (PlayerRemoving below), regardless of whether
+-- they were even in Endless Mode that session. EndlessModeCash resets to
+-- the same starting grant a brand-new player gets (see newDefaultSession
+-- above), not to 0 -- losing a run shouldn't leave someone with less than
+-- they'd have on a fresh account. Doesn't touch placed buildings/equipped
+-- Estates/claim state -- those are each their own separate systems'
+-- responsibility to clear (PetManager.luau/AssetManager.luau/
+-- EndlessModeClaimManager.luau).
+function DataManager.ResetEndlessModeProgress(player: Player)
+	local session = sessions[player]
+	if not session then
+		return
+	end
+	session.EndlessModeWave = 1
+	session.EndlessModeCash = 1000
+	session.EndlessModeElapsedSeconds = 0
 end
 
 -- One-off/admin direct patch of a player's PERSISTED save, for a player who
@@ -568,6 +636,10 @@ function DataManager.PatchOfflineSession(userId: number, mutator: (any) -> ())
 end
 
 Players.PlayerRemoving:Connect(function(player)
+	-- Per explicit request ("sau iesi din joc se duce tot progresul") --
+	-- reset BEFORE Save, so the wiped values are what actually gets
+	-- persisted, not whatever they had a moment before disconnecting.
+	DataManager.ResetEndlessModeProgress(player)
 	DataManager.Save(player)
 	DataManager.Release(player)
 end)

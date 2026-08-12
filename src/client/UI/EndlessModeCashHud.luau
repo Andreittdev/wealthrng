@@ -52,7 +52,7 @@ function EndlessModeCashHud.Create(screenGui: ScreenGui)
 	label.Font = Theme.Fonts.Header
 	label.TextScaled = true
 	label.Text = "$0"
-	label.TextColor3 = Theme.Colors.Accent
+	label.TextColor3 = Theme.Colors.Success
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.TextStrokeTransparency = 0
 	label.TextStrokeColor3 = Color3.new(0, 0, 0)

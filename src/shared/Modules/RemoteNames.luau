@@ -135,7 +135,7 @@ local RemoteNames = {
 		-- whether to show the new-player roll -> equip -> explore walkthrough at all.
 		"MarkOnboardingComplete", -- client -> server, no payload -- fired once the onboarding
 		-- walkthrough's final step is shown, so it never shows again for this player.
-		"CrateOpenResult", -- server -> client, payload: { { ItemId, Uid }, ... } -- fired once
+		"CrateOpenResult", -- server -> client, payload: { { ItemId }, ... } -- fired once
 		-- per Crate Developer Product purchase (CrateManager.OpenCrates, called from
 		-- CashPackManager.luau's ProcessReceipt), one entry per crate opened in that
 		-- purchase, so CrateShopPanel.luau can show a single batch reveal.
@@ -177,17 +177,28 @@ local RemoteNames = {
 		-- {UserId, Name}? } -- current claim state for both halves; sent to one player on request,
 		-- FireAllClients to everyone after a successful claim/release so every open panel stays fresh.
 		"EndlessModeWaveUpdated", -- server -> client, payload: wave (number) -- current wave
-		-- (WaveConfig.GetWaveForElapsedSeconds), pushed roughly once/second by
+		-- (session.EndlessModeWave, event-gated -- owned by EndlessModeMobManager.luau, only
+		-- advances once a wave's mobs are fully cleared), pushed roughly once/second by
 		-- EndlessModeWaveManager.luau while the player is physically standing in Endless Mode; not
-		-- fired at all while they're elsewhere (see WaveConfig.luau for the pacing/cap).
+		-- fired at all while they're elsewhere (see WaveConfig.luau for the MaxWave cap).
+		"EndlessModeLoadoutCountdownUpdated", -- server -> client, payload: { Phase: "Picking" |
+		-- "Locked", SecondsRemaining: number }? -- pushed once/second by EndlessModeMobManager.luau
+		-- for as long as a player's claimed side is still within its LOADOUT_PICK_SECONDS (picking
+		-- their up-to-4 Endless Mode loadout, EndlessModeLoadoutCountdown.luau shows a live countdown)
+		-- or POST_PICK_GRACE_SECONDS (picking's over, mobs are about to start) window -- nil once
+		-- that whole grace window has elapsed (mobs have started, nothing left to show/lock). The
+		-- Picking -> Locked transition is also what hides the Sidebar's Inventory button and force-
+		-- closes InventoryPanel.luau, per explicit "dupa ce ti-ai ales sa nu mai fie vizibil butonul"
+		-- request -- picking your loadout is a one-time window at the start of a claim, not editable
+		-- once waves are already starting.
 		"EndlessModeHeldEstateUpdated", -- server -> client, payload: assetId (string?) -- which
 		-- equipped Estate (if any) is currently unplaced/"in hand" and should show a placement
 		-- preview (EndlessModePlacementController.luau), nil once it's been placed or unequipped.
 		-- PetManager.luau owns this -- fired whenever the held/placed state changes for this player.
 		"SelectEndlessModeHeldEstate", -- client -> server, payload: assetId (string) -- fired by
 		-- EndlessModeLoadoutHotbar.luau when the player taps one of their (up to
-		-- AssetDatabase.MaxEquipped, currently 4) equipped Estates' hotbar squares to make THAT one
-		-- the active "in hand"/placeable Estate. Rejected server-side (PetManager.luau) unless
+		-- AssetDatabase.MaxEquippedEndlessMode, currently 4) equipped Estates' hotbar squares to make
+		-- THAT one the active "in hand"/placeable Estate. Rejected server-side (PetManager.luau) unless
 		-- assetId is actually currently equipped. Only one Estate is ever "held" at a time -- picking
 		-- a new one silently swaps out whichever was held before (mirrors EndlessModeHeldEstateUpdated
 		-- above, which still only ever reports a single assetId).
@@ -222,6 +233,17 @@ local RemoteNames = {
 		-- server.luau's sendInitialState) and whenever it changes. EndlessModeCashHud.luau shows it
 		-- top-right, same icon as the regular Cash pill, visible only while in Endless Mode. No
 		-- earning source wired up yet -- just the stored/displayed number for now.
+		"EndlessModeGameOver", -- server -> client, no payload -- fired by PetManager.luau (listening
+		-- to EndlessModeClaimManager.BaseDestroyed) the instant a player's 200 HP base gets destroyed
+		-- by mobs, per explicit request. By the time this fires, the server has ALREADY reset that
+		-- player's Endless Mode progress (session.EndlessModeWave/EndlessModeCash back to their
+		-- starting values, every placed building destroyed, everything unequipped, the claim
+		-- released) -- this is purely the "here's what happened" trigger for EndlessModeGameOverPanel
+		-- .luau's "You Died!" modal.
+		"RequestEndlessModeLobbyTeleport", -- client -> server, no payload -- fired by
+		-- EndlessModeGameOverPanel.luau's "Go Lobby" button. Handled in PortalManager.luau (reuses
+		-- the SAME beginTeleport/hubLanding the walk-through-the-return-portal trigger already uses)
+		-- -- rejected unless the player is actually in Endless Mode.
 	},
 	Functions = {},
 }

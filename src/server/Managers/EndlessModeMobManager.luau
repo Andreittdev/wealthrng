@@ -19,15 +19,28 @@
 -- re-targets from where it's standing (possibly another Tank, possibly not)
 -- instead of just vanishing. Only MAX_CONCURRENT_TANK_ATTACKERS mobs can be
 -- stuck on the SAME Tank at once -- since it never kills any of them itself,
--- an uncapped queue would only ever grow; anything arriving at an already-
--- full Tank just deals one hit and moves past instead of joining the queue.
+-- an uncapped queue would only ever grow. Per explicit bug report, a mob
+-- arriving at an ALREADY-FULL Tank no longer deals a "free" hit and
+-- instantly self-destructs (that read as mobs dying with no attacker/damage
+-- ever applied to them, since nothing had actually killed them) -- it now
+-- RE-TARGETS instead, same as when a Tank it was already fighting dies
+-- (excluding that specific saturated Tank so it doesn't just walk straight
+-- back into the same dead end), falling through to another building or the
+-- base if nothing else is left. A mob is only EVER removed from the field
+-- either by dying to real combat damage or by actually reaching/hitting a
+-- target -- see removeMob below.
 --
 -- Structured by WAVE now, not a flat repeating timer -- wave N spawns a
 -- growing count of mobs (N+1..N+2, trickled evenly across that wave's own
 -- 45 seconds), and every BOSS_WAVE_INTERVAL-th wave (10, 20, 30...) ALSO
 -- spawns a Boss on top of the normal count, the instant that wave begins
--- (see tick/spawnMob below). "Wave" here is the OWNER's own ongoing
--- progress (WaveConfig.GetWaveForElapsedSeconds), not reset by (re)claiming.
+-- (see tick/spawnMob below). Per explicit request, wave progression is now
+-- EVENT-gated, not time-based -- session.EndlessModeWave (this file's own,
+-- the only writer) only advances once every mob wave N was ever going to
+-- spawn (including its Boss, on a Boss wave) has both been spawned AND left
+-- the field (killed, or reached its target), tracked in aliveMobsThisWave
+-- below. Not reset by (re)claiming, same "player's own ongoing progress"
+-- property the old elapsed-time version had.
 --
 -- Only spawns while the Right plot is actually claimed (EndlessModeClaimManager.
 -- GetOwner) -- no owner means nothing to attack, so nothing spawns.
@@ -46,6 +59,11 @@ local EndlessModeMobRegistry = require(ServerScriptService.Managers.EndlessModeM
 local DataManager = require(ServerScriptService.Managers.DataManager)
 local EndlessModeUnitRoleConfig = require(ReplicatedStorage.Modules.EndlessModeUnitRoleConfig)
 local WaveConfig = require(ReplicatedStorage.Modules.WaveConfig)
+local AssetDatabase = require(ReplicatedStorage.Modules.AssetDatabase)
+local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
+
+local endlessModeLoadoutCountdownUpdated = RemotesBootstrap:WaitForChild("EndlessModeLoadoutCountdownUpdated")
+local endlessModeCashUpdated = RemotesBootstrap:WaitForChild("EndlessModeCashUpdated")
 
 local EndlessModeMobManager = {}
 
@@ -53,20 +71,39 @@ local EndlessModeMobManager = {}
 -- scope (see its SIDES comment).
 local SIDE = "Right"
 
--- First mob doesn't show up the instant you claim -- gives the player a
--- moment to actually look around first, per explicit request.
-local CLAIM_GRACE_SECONDS = 5
+-- The first mob doesn't show up the instant you claim -- per explicit
+-- request, split into two distinct, player-visible phases (EndlessMode
+-- LoadoutCountdown.luau shows a live countdown for both) instead of one
+-- silent flat delay: up to LOADOUT_PICK_SECONDS to actually pick your up-to-
+-- 4 Estate loadout (EndlessModeLoadoutHotbar.luau/InventoryPanel.luau --
+-- the Sidebar's Inventory button hides once this ends, locking further
+-- changes in for the rest of this claim), then POST_PICK_GRACE_SECONDS more
+-- as a final "place your Estates" warning before the first mob actually
+-- spawns. Picking ends EARLY (before the full LOADOUT_PICK_SECONDS) the
+-- instant the player equips all AssetDatabase.MaxEquippedEndlessMode
+-- Estates -- per explicit request, finishing your pick shouldn't force you
+-- to sit out the rest of a timer that was only ever a CAP, not a fixed
+-- wait. See pickingEndedAt/updateLoadoutCountdown below.
+local LOADOUT_PICK_SECONDS = 30
+local POST_PICK_GRACE_SECONDS = 10
 local TICK_SECONDS = 1
 local MOB_SPEED_STUDS_PER_SECOND = 8
 local MOB_SIZE = Vector3.new(2.5, 3, 2.5)
 local MOB_COLOR = Color3.fromRGB(120, 20, 30)
 -- Must match MapBuilder.buildEndlessModeArea's own ENDLESS_MODE_ROAD_WIDTH/2
--- -- mobs spawn just past the road edge (the plot's front), not relative to
--- the door anymore (the door moved to the back, see EndlessModeClaimManager.
--- spawnBase).
+-- -- mobs spawn ON the road itself, BEFORE its edge, not relative to the
+-- door anymore (the door moved to the back, see EndlessModeClaimManager.
+-- spawnBase). Per a real bug report ("mobi... se spawneaza direct in
+-- Estates"): the road edge (X = ROAD_HALF_WIDTH) is also exactly where
+-- EndlessModeClaimManager's own claimed patch/placement grid STARTS -- the
+-- old offsets (+3 to +12 PAST that edge) put mobs inside the first
+-- buildable column instead of on the road in front of it, so a mob could
+-- spawn literally overlapping an Estate placed in that front row. Spawning
+-- BELOW ROAD_HALF_WIDTH instead keeps every spawn point safely on the road,
+-- never inside a placeable tile, regardless of what's built there.
 local ROAD_HALF_WIDTH = 10
-local SPAWN_X_MIN_OFFSET = 3
-local SPAWN_X_MAX_OFFSET = 12
+local SPAWN_X_MIN_OFFSET_FROM_ROAD_EDGE = 2
+local SPAWN_X_MAX_OFFSET_FROM_ROAD_EDGE = 8
 local SPAWN_Z_JITTER = 30
 
 -- Swarm Waves -- per explicit request, waves where a bunch of mobs show up
@@ -96,8 +133,9 @@ type Target = { Position: Vector3, PlacementId: string?, AssetId: string? }
 -- predictable number (MAX_CONCURRENT_TANK_ATTACKERS * MobDamagePerTick /
 -- TankTickSeconds) -- per explicit "top 3 Tanks should hold for several
 -- waves" request, that's what actually makes a big HP number mean anything.
--- A mob that arrives at an already-full Tank just deals ONE hit and moves on
--- (same as a non-Tank building), instead of joining the queue.
+-- A mob that arrives at an already-full Tank re-routes to another target
+-- instead of joining the queue (or dealing a "free" hit -- see onMobArrived
+-- below).
 local MAX_CONCURRENT_TANK_ATTACKERS = 3
 local tankEngagementCounts: { [string]: number } = {}
 
@@ -111,15 +149,80 @@ local function tryEngageTank(placementId: string): boolean
 end
 
 local function disengageTank(placementId: string)
-	local count = tankEngagementCounts[placementId] or 0
-	tankEngagementCounts[placementId] = math.max(0, count - 1)
+	local count = math.max(0, (tankEngagementCounts[placementId] or 0) - 1)
+	-- Cleared entirely (not left at a stale 0) once nothing's engaged --
+	-- placementId is a fresh GUID per placement, so leaving a 0-valued
+	-- entry behind forever would grow this table by one for every Tank
+	-- ever placed across the server's whole lifetime.
+	tankEngagementCounts[placementId] = count > 0 and count or nil
 end
+
+-- Per-side count of mobs from the CURRENT wave still active on the field --
+-- spawned, but not yet gone (killed in combat OR reached their target and
+-- expired, either way -- see removeMob below). Wave progression (tick's own
+-- clear-check) only advances session.EndlessModeWave once this hits 0 AND
+-- every mob that wave was ever going to spawn already has, per explicit "sa
+-- treaca la waveul urmator numai dupa ce au fost omorati toti mobii"
+-- request.
+local aliveMobsThisWave: { [string]: number } = {}
+
+-- Per-side list of every mob currently alive/mid-walk on that side --
+-- separate from aliveMobsThisWave (a count) because this needs the actual
+-- BasePart references. Exists ONLY to fix a real orphaning bug: spawnMob
+-- parents mobs to door.Parent.Parent (the Map folder), the SAME folder
+-- EndlessModeClaimManager's spawnBase parents baseFolder to -- siblings,
+-- not parent/child, so when a claim releases (base actually dies, or the
+-- owner disconnects) clearBase's base:Destroy() never touches any mob still
+-- on the field. The ClaimReleased listener below force-removes everything
+-- still tracked here for that side.
+local activeMobsBySide: { [string]: { BasePart } } = {}
+
+-- The ONLY place a spawned mob is ever removed from the field -- whether it
+-- died to real combat damage (a Damage building/Ally reduced its HP to 0,
+-- see spawnMob's OnDeath below, which routes through here too) or it
+-- successfully reached/hit a target and expired (onMobArrived/
+-- sendMobToTarget's own no-door edge case). Centralizing this is what makes
+-- aliveMobsThisWave an honest count -- every mob that ever spawns is
+-- guaranteed to decrement it exactly once, by exactly one path, whenever it
+-- actually leaves.
+local function removeMob(mob: BasePart, side: string)
+	if EndlessModeMobRegistry.IsAlive(mob) then
+		EndlessModeMobRegistry.Unregister(mob)
+	end
+	if mob.Parent then
+		mob:Destroy()
+	end
+	aliveMobsThisWave[side] = math.max(0, (aliveMobsThisWave[side] or 0) - 1)
+
+	local sideMobs = activeMobsBySide[side]
+	if sideMobs then
+		local index = table.find(sideMobs, mob)
+		if index then
+			table.remove(sideMobs, index)
+		end
+	end
+end
+
+-- EndlessModeClaimManager fires this (side) from inside releaseClaim, for
+-- EITHER release path (base death or plain disconnect). Iterates a COPY of
+-- the side's list since removeMob mutates activeMobsBySide[side] mid-call.
+EndlessModeClaimManager.ClaimReleased.Event:Connect(function(side: string)
+	local sideMobs = activeMobsBySide[side]
+	if sideMobs then
+		local snapshot = table.clone(sideMobs)
+		for _, mob in snapshot do
+			removeMob(mob, side)
+		end
+	end
+	activeMobsBySide[side] = nil
+	aliveMobsThisWave[side] = 0
+end)
 
 -- Forward-declared -- sendMobToTarget, onMobArrived, and meleeTank call each
 -- other (mob "wins" a melee -> re-targets -> may walk into another Tank ->
 -- melee again), so each needs to already be a visible local by the time the
 -- others are defined, same idiom PetManager.luau's own refreshPets uses.
-local sendMobToTarget: (BasePart, Player, string, Vector3) -> ()
+local sendMobToTarget: (BasePart, Player, string, Vector3, string?) -> ()
 local onMobArrived: (BasePart, Player, string, Target) -> ()
 local meleeTank: (BasePart, Player, string, string) -> ()
 
@@ -131,46 +234,47 @@ local function findDoor(side: string): BasePart?
 end
 
 -- Current mob damage for THIS owner -- scales with their own wave progress
--- (WaveConfig.GetWaveForElapsedSeconds off session.EndlessModeElapsedSeconds,
--- the same clock EndlessModeWaveManager.luau/the WAVE HUD use), not a flat
+-- (session.EndlessModeWave, event-gated now -- see tick below), not a flat
 -- number for the whole run. Re-read fresh on every hit rather than cached
 -- once per mob, since a mob can live across a wave boundary.
 local function getMobDamage(owner: Player): number
 	local session = DataManager.Get(owner)
-	local wave = session and WaveConfig.GetWaveForElapsedSeconds(session.EndlessModeElapsedSeconds) or 1
+	local wave = (session and session.EndlessModeWave) or 1
 	return EndlessModeUnitRoleConfig.GetMobDamageForWave(wave)
 end
 
 -- Nearest alive placed Estate to `fromPosition`, or the base door if the
--- owner has none standing right now. Y is pinned to `fromPosition`'s own
--- (the mob's current height) for every candidate -- these are ground-level
--- walk targets, not asking the mob to climb/descend to a building's actual
--- (raised, bounding-box-center) anchor height.
-local function pickTarget(owner: Player, fromPosition: Vector3, door: BasePart): Target
+-- owner has none standing right now (or the only one left is `excludePlacementId`
+-- -- a Tank already at MAX_CONCURRENT_TANK_ATTACKERS, which onMobArrived
+-- routes here through instead of letting a mob hit it for free). Y is
+-- pinned to `fromPosition`'s own (the mob's current height) for every
+-- candidate -- these are ground-level walk targets, not asking the mob to
+-- climb/descend to a building's actual (raised, bounding-box-center) anchor
+-- height.
+local function pickTarget(owner: Player, fromPosition: Vector3, door: BasePart, excludePlacementId: string?): Target
 	local best: Target = { Position = door.Position }
 	local nearestDistance = math.huge
 	for _, building in PetManager.GetAlivePlacedBuildings(owner) do
-		local walkPosition = Vector3.new(building.Position.X, fromPosition.Y, building.Position.Z)
-		local distance = (walkPosition - fromPosition).Magnitude
-		if distance < nearestDistance then
-			nearestDistance = distance
-			best = { Position = walkPosition, PlacementId = building.PlacementId, AssetId = building.AssetId }
+		if building.PlacementId ~= excludePlacementId then
+			local walkPosition = Vector3.new(building.Position.X, fromPosition.Y, building.Position.Z)
+			local distance = (walkPosition - fromPosition).Magnitude
+			if distance < nearestDistance then
+				nearestDistance = distance
+				best = { Position = walkPosition, PlacementId = building.PlacementId, AssetId = building.AssetId }
+			end
 		end
 	end
 	return best
 end
 
-sendMobToTarget = function(mob: BasePart, owner: Player, side: string, fromPosition: Vector3)
+sendMobToTarget = function(mob: BasePart, owner: Player, side: string, fromPosition: Vector3, excludePlacementId: string?)
 	local door = findDoor(side)
 	if not door then
-		EndlessModeMobRegistry.Unregister(mob)
-		if mob.Parent then
-			mob:Destroy()
-		end
+		removeMob(mob, side)
 		return
 	end
 
-	local target = pickTarget(owner, fromPosition, door)
+	local target = pickTarget(owner, fromPosition, door, excludePlacementId)
 	local distance = (target.Position - fromPosition).Magnitude
 	local duration = math.max(distance / MOB_SPEED_STUDS_PER_SECOND, 0.05)
 
@@ -200,8 +304,20 @@ onMobArrived = function(mob: BasePart, owner: Player, side: string, target: Targ
 		end
 
 		local role = target.AssetId and EndlessModeUnitRoleConfig.GetRole(target.AssetId)
-		if role == "Tank" and tryEngageTank(target.PlacementId) then
-			meleeTank(mob, owner, side, target.PlacementId)
+		if role == "Tank" then
+			if tryEngageTank(target.PlacementId) then
+				meleeTank(mob, owner, side, target.PlacementId)
+				return
+			end
+			-- Already at MAX_CONCURRENT_TANK_ATTACKERS -- per explicit bug
+			-- report, this no longer deals a "free" hit and instantly
+			-- self-destructs (nothing had actually killed it, so that read
+			-- as mobs dying without receiving damage from anyone). It just
+			-- re-routes instead, excluding THIS specific saturated Tank so
+			-- it doesn't immediately walk right back into the same dead
+			-- end -- falls through to another building, or the base, same
+			-- as a Tank that died mid-melee already does below.
+			sendMobToTarget(mob, owner, side, mob.Position, target.PlacementId)
 			return
 		end
 
@@ -210,10 +326,7 @@ onMobArrived = function(mob: BasePart, owner: Player, side: string, target: Targ
 		EndlessModeClaimManager.DamageBase(side, getMobDamage(owner))
 	end
 
-	EndlessModeMobRegistry.Unregister(mob)
-	if mob.Parent then
-		mob:Destroy()
-	end
+	removeMob(mob, side)
 end
 
 -- A mob that arrived at a Tank-role building (and won a slot via
@@ -338,7 +451,9 @@ local function spawnMob(side: string, wave: number, isBoss: boolean?, clusterZOf
 		return
 	end
 
-	local spawnX = ROAD_HALF_WIDTH + SPAWN_X_MIN_OFFSET + math.random() * (SPAWN_X_MAX_OFFSET - SPAWN_X_MIN_OFFSET)
+	local spawnX = ROAD_HALF_WIDTH
+		- SPAWN_X_MIN_OFFSET_FROM_ROAD_EDGE
+		- math.random() * (SPAWN_X_MAX_OFFSET_FROM_ROAD_EDGE - SPAWN_X_MIN_OFFSET_FROM_ROAD_EDGE)
 	local spawnZ
 	if clusterZOffset then
 		spawnZ = door.Position.Z + clusterZOffset + (math.random() * 2 - 1) * SWARM_CLUSTER_JITTER_STUDS
@@ -362,25 +477,26 @@ local function spawnMob(side: string, wave: number, isBoss: boolean?, clusterZOf
 	local hpBarFill, hpBarLabel = createHpBar(mob)
 	hpBarLabel.Text = string.format("%d/%d", maxHp, maxHp)
 
+	-- Counted toward aliveMobsThisWave the instant it's actually on the
+	-- field (registered) -- OnDeath (a real combat kill, mob already
+	-- unregistered by EndlessModeMobRegistry.Damage by the time this fires)
+	-- routes through the SAME removeMob helper as every other "this mob is
+	-- gone" path, so the count can never miss a decrement no matter how the
+	-- mob actually left.
 	EndlessModeMobRegistry.Register(mob, maxHp, function()
-		if mob.Parent then
-			mob:Destroy()
-		end
+		removeMob(mob, side)
 	end, function(hp, currentMaxHp)
 		updateHpBar(hpBarFill, hpBarLabel, hp, currentMaxHp)
 	end)
+	aliveMobsThisWave[side] = (aliveMobsThisWave[side] or 0) + 1
+	local sideMobs = activeMobsBySide[side]
+	if not sideMobs then
+		sideMobs = {}
+		activeMobsBySide[side] = sideMobs
+	end
+	table.insert(sideMobs, mob)
 
 	sendMobToTarget(mob, owner, side, spawnPosition)
-end
-
--- Current wave for THIS owner -- same "read the session's own elapsed time"
--- idiom getMobDamage above uses. A wave here isn't reset by claiming --
--- it's the player's own ongoing progress (session.EndlessModeElapsedSeconds
--- persists across sessions), so re-claiming after a break picks up
--- wherever their wave count already was, not back at wave 1.
-local function getOwnerWave(owner: Player): number
-	local session = DataManager.Get(owner)
-	return session and WaveConfig.GetWaveForElapsedSeconds(session.EndlessModeElapsedSeconds) or 1
 end
 
 type WaveSpawnState = {
@@ -422,25 +538,105 @@ end
 local waveSpawnState: { [string]: WaveSpawnState? } = {}
 
 -- Tracks the claim's own lifecycle (not just a flat repeating timer) so the
--- CLAIM_GRACE_SECONDS delay is measured from the moment THIS claim started,
--- not from whenever the module happened to load.
+-- grace delay is measured from the moment THIS claim started, not from
+-- whenever the module happened to load.
 local lastOwner: { [string]: Player? } = {}
 local nextSpawnAt: { [string]: number? } = {}
+local claimedAt: { [string]: number? } = {}
+-- Set ONCE per claim -- the moment Picking phase actually ended, whether
+-- that's LOADOUT_PICK_SECONDS after claimedAt (the cap) or earlier (the
+-- player equipped all AssetDatabase.MaxEquippedEndlessMode Estates before
+-- that). Anchors the Locked phase's own POST_PICK_GRACE_SECONDS countdown
+-- AND the mob-spawn gate (nextSpawnAt) -- see updateLoadoutCountdown below.
+local pickingEndedAt: { [string]: number? } = {}
+-- Last Phase actually pushed to the owner (EndlessModeLoadoutCountdownUpdated)
+-- -- lets updateLoadoutCountdown below fire the ONE-TIME nil clear exactly
+-- once when the whole grace window elapses, instead of re-firing nil every
+-- tick for the rest of the claim.
+local lastLoadoutCountdownPhase: { [string]: ("Picking" | "Locked")? } = {}
+
+-- Short pause once a wave is confirmed cleared before the next one's mobs
+-- start trickling in -- gives the player a breath/moment to notice it
+-- happened, instead of the very next mob appearing on the exact same tick
+-- the last one died.
+local WAVE_CLEAR_GRACE_SECONDS = 3
+
+-- Live countdown for EndlessModeLoadoutCountdown.luau -- Picking until
+-- pickingEndedAt[side] gets set (see its own comment above), Locked for
+-- POST_PICK_GRACE_SECONDS after that, nil (fired once, to clear the
+-- client's own display) once the whole window has passed. Runs every tick
+-- regardless of the mob-spawn gate below, same "always current, not tied to
+-- spawn pacing" reasoning the wave-clear check uses.
+local function updateLoadoutCountdown(side: string, owner: Player, session)
+	local now = os.clock()
+
+	if not pickingEndedAt[side] then
+		local elapsedSinceClaim = now - (claimedAt[side] or now)
+		local reachedFullLoadout = #session.EquippedAssets >= AssetDatabase.MaxEquippedEndlessMode
+		if reachedFullLoadout or elapsedSinceClaim >= LOADOUT_PICK_SECONDS then
+			-- Picking just ended (right now) -- anchors both the Locked
+			-- countdown below AND the mob-spawn gate to THIS moment, not a
+			-- fixed claim+40 that would ignore an early finish.
+			pickingEndedAt[side] = now
+			nextSpawnAt[side] = now + POST_PICK_GRACE_SECONDS
+		end
+	end
+
+	local phase: ("Picking" | "Locked")? = nil
+	local secondsRemaining = 0
+	if pickingEndedAt[side] then
+		local elapsedSincePickingEnded = now - pickingEndedAt[side]
+		if elapsedSincePickingEnded < POST_PICK_GRACE_SECONDS then
+			phase = "Locked"
+			secondsRemaining = math.ceil(POST_PICK_GRACE_SECONDS - elapsedSincePickingEnded)
+		end
+	else
+		phase = "Picking"
+		secondsRemaining = math.ceil(LOADOUT_PICK_SECONDS - (now - (claimedAt[side] or now)))
+	end
+
+	if phase then
+		endlessModeLoadoutCountdownUpdated:FireClient(owner, { Phase = phase, SecondsRemaining = secondsRemaining })
+	elseif lastLoadoutCountdownPhase[side] then
+		endlessModeLoadoutCountdownUpdated:FireClient(owner, nil)
+	end
+	lastLoadoutCountdownPhase[side] = phase
+end
 
 local function tick(side: string)
 	local owner = EndlessModeClaimManager.GetOwner(side)
 	if owner ~= lastOwner[side] then
+		-- Clears the OLD owner's own countdown display -- they might still
+		-- be standing right there physically (unclaimed but not yet walked
+		-- off), so their HUD shouldn't keep showing a stale countdown for a
+		-- claim that no longer exists.
+		if lastOwner[side] and lastLoadoutCountdownPhase[side] then
+			endlessModeLoadoutCountdownUpdated:FireClient(lastOwner[side] :: Player, nil)
+		end
 		lastOwner[side] = owner
 		waveSpawnState[side] = nil
-		nextSpawnAt[side] = owner and (os.clock() + CLAIM_GRACE_SECONDS) or nil
+		aliveMobsThisWave[side] = 0
+		claimedAt[side] = owner and os.clock() or nil
+		pickingEndedAt[side] = nil
+		lastLoadoutCountdownPhase[side] = nil
+		-- Not set to a fixed claim+40 anymore -- updateLoadoutCountdown sets
+		-- this itself, dynamically, the instant Picking actually ends
+		-- (early or at the cap).
+		nextSpawnAt[side] = nil
 	end
 
-	local spawnAt = nextSpawnAt[side]
-	if not owner or not spawnAt or os.clock() < spawnAt then
+	if not owner then
 		return
 	end
 
-	local wave = getOwnerWave(owner)
+	local session = DataManager.Get(owner)
+	if not session then
+		return
+	end
+
+	updateLoadoutCountdown(side, owner, session)
+
+	local wave = session.EndlessModeWave
 	local state = waveSpawnState[side]
 	if not state or state.Wave ~= wave then
 		-- New wave (or first-ever spawn state for this claim) -- roll a
@@ -456,9 +652,35 @@ local function tick(side: string)
 			SwarmClusterZOffset = isSwarmWave and ((math.random() * 2 - 1) * SPAWN_Z_JITTER) or nil,
 		}
 		waveSpawnState[side] = state
+		aliveMobsThisWave[side] = 0
 	end
 
-	if wave % BOSS_WAVE_INTERVAL == 0 and not state.BossSpawned then
+	-- Wave-clear check -- runs every tick (every TICK_SECONDS), independent
+	-- of the spawn-pacing gate below, so advancing to the next wave doesn't
+	-- have to wait on a stale spawn-interval timer once there's nothing
+	-- left to spawn AND nothing left alive. Per explicit request, this is
+	-- what actually GATES progression now -- not elapsed time.
+	local requiresBoss = wave % BOSS_WAVE_INTERVAL == 0
+	local allSpawned = state.SpawnedCount >= state.TargetCount and (not requiresBoss or state.BossSpawned)
+	if allSpawned and (aliveMobsThisWave[side] or 0) <= 0 then
+		-- Wave-clear Cash bonus, on TOP of whatever individual kill rewards
+		-- already came in during the wave -- per explicit "la fiecare wave
+		-- trecut cu brio" request.
+		session.EndlessModeCash += EndlessModeUnitRoleConfig.GetWaveClearRewardForWave(wave)
+		endlessModeCashUpdated:FireClient(owner, session.EndlessModeCash)
+
+		session.EndlessModeWave = math.min(wave + 1, WaveConfig.MaxWave)
+		waveSpawnState[side] = nil
+		nextSpawnAt[side] = os.clock() + WAVE_CLEAR_GRACE_SECONDS
+		return
+	end
+
+	local spawnAt = nextSpawnAt[side]
+	if not spawnAt or os.clock() < spawnAt then
+		return
+	end
+
+	if requiresBoss and not state.BossSpawned then
 		state.BossSpawned = true
 		spawnMob(side, wave, true)
 	end

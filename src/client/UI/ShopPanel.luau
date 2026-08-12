@@ -537,9 +537,9 @@ local function createCrateSection(parent: Instance, order: number, screenGui: Sc
 	-- an earlier still-pending batch's reveal if a 3rd purchase lands while
 	-- the 2nd is still waiting (items from all of them are still granted
 	-- server-side regardless, only the reveal animation was going missing).
-	local pendingWonItemsQueue: { { { ItemId: string, Uid: number } } } = {}
+	local pendingWonItemsQueue: { { { ItemId: string } } } = {}
 
-	local function playCrateReveal(wonItems: { { ItemId: string, Uid: number } })
+	local function playCrateReveal(wonItems: { { ItemId: string } })
 		revealBusy = true
 		revealOverlay.Visible = true
 
@@ -594,7 +594,7 @@ local function createCrateSection(parent: Instance, order: number, screenGui: Sc
 		end
 	end
 
-	crateOpenResult.OnClientEvent:Connect(function(wonItems: { { ItemId: string, Uid: number } })
+	crateOpenResult.OnClientEvent:Connect(function(wonItems: { { ItemId: string } })
 		if revealBusy then
 			table.insert(pendingWonItemsQueue, wonItems)
 			return

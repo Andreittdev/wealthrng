@@ -27,6 +27,8 @@ type Selection = {
 	Range: number?,
 	Cooldown: number?,
 	AllyCount: number?,
+	AllyDamage: number?,
+	AllyHP: number?,
 }
 
 -- Rejected upgrade/pick-up attempts never echo anything back, so a click
@@ -76,15 +78,16 @@ function EndlessModeBuildingPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	levelLabel.Position = UDim2.new(0, 12, 0, 62)
 	levelLabel.TextColor3 = Theme.Colors.TextSecondary
 
-	-- Damage: "Damage: N | Range: N" -- Spawner: "Allies per spawn: N" --
-	-- Tank has nothing extra to show here (pure soak, no offensive stat),
-	-- so this just stays hidden for it.
+	-- Damage: "Damage: N | Range: N" -- Spawner: "Allies per spawn: N | Ally
+	-- Damage: N" -- Tank has nothing extra to show here (pure soak, no
+	-- offensive stat), so this just stays hidden for it.
 	local statsLabel = Theme.Label(panel, UDim2.new(1, -24, 0, 20), "")
 	statsLabel.Position = UDim2.new(0, 12, 0, 84)
 	statsLabel.TextColor3 = Theme.Colors.TextSecondary
 
-	-- Damage only: "Cooldown: Ns" -- own line directly under the Damage/
-	-- Range line above, per explicit request.
+	-- Damage: "Cooldown: Ns" -- Spawner: "Ally HP: N" -- own line directly
+	-- under the stats line above, per explicit request (Spawner's own
+	-- request: "sa scrie si damageul de la fiecare alias").
 	local cooldownLabel = Theme.Label(panel, UDim2.new(1, -24, 0, 18), "")
 	cooldownLabel.Position = UDim2.new(0, 12, 0, 106)
 	cooldownLabel.TextColor3 = Theme.Colors.TextSecondary
@@ -96,7 +99,7 @@ function EndlessModeBuildingPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		end
 	end))
 
-	local pickUpButton = Theme.Button(panel, UDim2.new(1, -24, 0, 36), UDim2.new(0, 12, 1, -50), "Pick Up")
+	local pickUpButton = Theme.Button(panel, UDim2.new(1, -24, 0, 36), UDim2.new(0, 12, 1, -50), "Sell")
 	pickUpButton.Activated:Connect(debounce(function()
 		if selection then
 			pickUpEndlessModeBuilding:FireServer(selection.PlacementId)
@@ -120,9 +123,10 @@ function EndlessModeBuildingPanel.Create(screenGui: ScreenGui, remotes: Folder)
 			cooldownLabel.Text = string.format("Cooldown: %.1fs", selection.Cooldown or 0)
 			cooldownLabel.Visible = selection.Cooldown ~= nil
 		elseif selection.Role == "Spawner" and selection.AllyCount then
-			statsLabel.Text = string.format("Allies per spawn: %d", selection.AllyCount)
+			statsLabel.Text = string.format("Allies per spawn: %d | Ally Damage: %d", selection.AllyCount, selection.AllyDamage or 0)
 			statsLabel.Visible = true
-			cooldownLabel.Visible = false
+			cooldownLabel.Text = string.format("Ally HP: %d", selection.AllyHP or 0)
+			cooldownLabel.Visible = selection.AllyHP ~= nil
 		else
 			statsLabel.Visible = false
 			cooldownLabel.Visible = false
