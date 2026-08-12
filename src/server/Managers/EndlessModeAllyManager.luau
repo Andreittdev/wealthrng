@@ -16,7 +16,29 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local EndlessModeUnitRoleConfig = require(ReplicatedStorage.Modules.EndlessModeUnitRoleConfig)
+local WaveConfig = require(ReplicatedStorage.Modules.WaveConfig)
 local EndlessModeMobRegistry = require(ServerScriptService.Managers.EndlessModeMobRegistry)
+local DataManager = require(ServerScriptService.Managers.DataManager)
+local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
+
+local endlessModeCashUpdated = RemotesBootstrap:WaitForChild("EndlessModeCashUpdated")
+
+-- Credits `owner`'s EndlessModeCash for actually DEFEATING a mob (its own HP
+-- hit 0 from this ally's own hit) -- same wave-scaled reward idiom
+-- PetManager.luau's own awardMobKillReward uses (duplicated rather than
+-- shared, same "each file reads DataManager/WaveConfig itself" idiom
+-- EndlessModeMobManager.luau's getMobDamage already established, to avoid
+-- EndlessModeAllyManager requiring PetManager back -- PetManager already
+-- requires THIS file, so that would be circular).
+local function awardMobKillReward(owner: Player)
+	local session = DataManager.Get(owner)
+	if not session then
+		return
+	end
+	local wave = WaveConfig.GetWaveForElapsedSeconds(session.EndlessModeElapsedSeconds)
+	session.EndlessModeCash += EndlessModeUnitRoleConfig.GetMobKillRewardForWave(wave)
+	endlessModeCashUpdated:FireClient(owner, session.EndlessModeCash)
+end
 
 local EndlessModeAllyManager = {}
 
@@ -43,12 +65,20 @@ local function getAlliesFolder(): Folder
 	return folder :: Folder
 end
 
--- `mobDamagePerTick` -- the CURRENT wave-scaled mob damage (EndlessModeMobManager.
--- luau's getMobDamage, computed by the caller since it needs the owner's own
--- session/wave, which this file has no reason to know about otherwise) --
--- how hard the mob this ally ends up fighting hits back.
-function EndlessModeAllyManager.SpawnAlly(position: Vector3, mobDamagePerTick: number)
+-- `owner` -- credited with EndlessModeCash for every mob this ally actually
+-- defeats. `mobDamagePerTick` -- the CURRENT wave-scaled mob damage
+-- (EndlessModeMobManager.luau's getMobDamage, computed by the caller since
+-- it needs the owner's own session/wave, which this file has no reason to
+-- know about otherwise) -- how hard the mob this ally ends up fighting hits
+-- back. `powerMultiplier` -- EndlessModeUnitRoleConfig.
+-- GetSpawnerPowerMultiplier(assetId), also computed by the caller
+-- (PetManager.luau, which knows which Spawner Estate this is) -- scales the
+-- ally's OWN HP and damage output, same "hard-to-get tier gets to be OP"
+-- idiom Tank/Damage already use.
+function EndlessModeAllyManager.SpawnAlly(owner: Player, position: Vector3, mobDamagePerTick: number, powerMultiplier: number?)
 	task.spawn(function()
+		local multiplier = powerMultiplier or 1
+
 		local ally = Instance.new("Part")
 		ally.Name = "EndlessMode_Ally"
 		ally.Size = EndlessModeUnitRoleConfig.AllySize
@@ -59,7 +89,8 @@ function EndlessModeAllyManager.SpawnAlly(position: Vector3, mobDamagePerTick: n
 		ally.CFrame = CFrame.new(position)
 		ally.Parent = getAlliesFolder()
 
-		local hp = EndlessModeUnitRoleConfig.AllyHP
+		local hp = EndlessModeUnitRoleConfig.AllyHP * multiplier
+		local damagePerTick = EndlessModeUnitRoleConfig.AllyDamagePerTick * multiplier
 		local idleSecondsWaited = 0
 
 		while ally.Parent do
@@ -103,8 +134,8 @@ function EndlessModeAllyManager.SpawnAlly(position: Vector3, mobDamagePerTick: n
 					break
 				end
 
-				EndlessModeMobRegistry.Damage(mob, EndlessModeUnitRoleConfig.AllyDamagePerTick)
-				if not EndlessModeMobRegistry.IsAlive(mob) then
+				if EndlessModeMobRegistry.Damage(mob, damagePerTick) then
+					awardMobKillReward(owner)
 					break
 				end
 

@@ -81,4 +81,17 @@ function EndlessModeMobRegistry.GetNearestAliveMob(position: Vector3, maxRange: 
 	return nearest
 end
 
+-- EVERY currently-alive mob within `radius` studs of `position` -- for AOE
+-- hits (Explosion-tier Damage Estates) where the blast should catch every
+-- mob standing in it, not just whichever one was originally targeted.
+function EndlessModeMobRegistry.GetAliveMobsWithinRadius(position: Vector3, radius: number): { BasePart }
+	local result = {}
+	for mob in mobs do
+		if mob.Parent and (mob.Position - position).Magnitude <= radius then
+			table.insert(result, mob)
+		end
+	end
+	return result
+end
+
 return EndlessModeMobRegistry

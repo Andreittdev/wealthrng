@@ -184,6 +184,13 @@ local RemoteNames = {
 		-- equipped Estate (if any) is currently unplaced/"in hand" and should show a placement
 		-- preview (EndlessModePlacementController.luau), nil once it's been placed or unequipped.
 		-- PetManager.luau owns this -- fired whenever the held/placed state changes for this player.
+		"SelectEndlessModeHeldEstate", -- client -> server, payload: assetId (string) -- fired by
+		-- EndlessModeLoadoutHotbar.luau when the player taps one of their (up to
+		-- AssetDatabase.MaxEquipped, currently 4) equipped Estates' hotbar squares to make THAT one
+		-- the active "in hand"/placeable Estate. Rejected server-side (PetManager.luau) unless
+		-- assetId is actually currently equipped. Only one Estate is ever "held" at a time -- picking
+		-- a new one silently swaps out whichever was held before (mirrors EndlessModeHeldEstateUpdated
+		-- above, which still only ever reports a single assetId).
 		"PlaceEndlessModeEstate", -- client -> server, payload: assetId (string), position (Vector3)
 		-- -- fired when the player clicks/taps to plant their currently-held Estate at that spot.
 		-- Rejected server-side (PetManager.luau) unless assetId is actually this player's current

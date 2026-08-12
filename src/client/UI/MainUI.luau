@@ -38,6 +38,8 @@ local EndlessModeClaimPanel = require(script.Parent.EndlessModeClaimPanel)
 local EndlessModeWaveHUD = require(script.Parent.EndlessModeWaveHUD)
 local EndlessModeBuildingPanel = require(script.Parent.EndlessModeBuildingPanel)
 local EndlessModeCashHud = require(script.Parent.EndlessModeCashHud)
+local EndlessModeRangeIndicator = require(script.Parent.EndlessModeRangeIndicator)
+local EndlessModeLoadoutHotbar = require(script.Parent.EndlessModeLoadoutHotbar)
 local RobuxManDialogChoices = require(script.Parent.RobuxManDialogChoices)
 local NetWorthPanel = require(script.Parent.NetWorthPanel)
 local SettingsPanel = require(script.Parent.SettingsPanel)
@@ -90,6 +92,8 @@ function MainUI.Init()
 	local endlessModeWaveHudHandle = EndlessModeWaveHUD.Create(screenGui)
 	local endlessModeBuildingHandle = EndlessModeBuildingPanel.Create(screenGui, remotesFolder)
 	local endlessModeCashHudHandle = EndlessModeCashHud.Create(screenGui)
+	local endlessModeLoadoutHotbarHandle = EndlessModeLoadoutHotbar.Create(screenGui, remotesFolder)
+	EndlessModeRangeIndicator.Init(remotesFolder)
 	RobuxManDialogChoices.Create(screenGui, remotesFolder)
 	local netWorthHandle = NetWorthPanel.Create(screenGui, remotesFolder)
 	local settingsHandle = SettingsPanel.Create(screenGui, remotesFolder)
@@ -130,8 +134,19 @@ function MainUI.Init()
 		cashHudHandle.Frame.Visible = not inEndlessMode
 		endlessModeWaveHudHandle.Frame.Visible = inEndlessMode
 		endlessModeCashHudHandle.Frame.Visible = inEndlessMode
+		endlessModeLoadoutHotbarHandle.Frame.Visible = inEndlessMode
 		luckEventBannerHandle.SetSuppressed(inEndlessMode)
 		inventoryHandle.SetEstatesOnly(inEndlessMode)
+		-- Per explicit request: entering Endless Mode auto-pops the (now
+		-- Estates-only, per the line above) Inventory panel open so the
+		-- player immediately sees a big pickable list instead of having to
+		-- know to open it themselves -- Open() is idempotent, so this is
+		-- silent/harmless if they'd already had it open. Doesn't force it
+		-- shut again on the way OUT, so closing it mid-session doesn't get
+		-- fought if they reopen it manually.
+		if inEndlessMode then
+			inventoryHandle.Open()
+		end
 	end)
 
 	local endlessModeWaveUpdated = remotesFolder:WaitForChild("EndlessModeWaveUpdated")

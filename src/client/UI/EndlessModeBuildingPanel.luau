@@ -22,6 +22,11 @@ type Selection = {
 	MaxHP: number,
 	UpgradeLevel: number,
 	UpgradeCost: number?,
+	Role: string?,
+	Damage: number?,
+	Range: number?,
+	Cooldown: number?,
+	AllyCount: number?,
 }
 
 -- Rejected upgrade/pick-up attempts never echo anything back, so a click
@@ -71,6 +76,19 @@ function EndlessModeBuildingPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	levelLabel.Position = UDim2.new(0, 12, 0, 62)
 	levelLabel.TextColor3 = Theme.Colors.TextSecondary
 
+	-- Damage: "Damage: N | Range: N" -- Spawner: "Allies per spawn: N" --
+	-- Tank has nothing extra to show here (pure soak, no offensive stat),
+	-- so this just stays hidden for it.
+	local statsLabel = Theme.Label(panel, UDim2.new(1, -24, 0, 20), "")
+	statsLabel.Position = UDim2.new(0, 12, 0, 84)
+	statsLabel.TextColor3 = Theme.Colors.TextSecondary
+
+	-- Damage only: "Cooldown: Ns" -- own line directly under the Damage/
+	-- Range line above, per explicit request.
+	local cooldownLabel = Theme.Label(panel, UDim2.new(1, -24, 0, 18), "")
+	cooldownLabel.Position = UDim2.new(0, 12, 0, 106)
+	cooldownLabel.TextColor3 = Theme.Colors.TextSecondary
+
 	local upgradeButton = Theme.Button(panel, UDim2.new(1, -24, 0, 40), UDim2.new(0, 12, 1, -96), "Upgrade", true)
 	upgradeButton.Activated:Connect(debounce(function()
 		if selection then
@@ -95,6 +113,20 @@ function EndlessModeBuildingPanel.Create(screenGui: ScreenGui, remotes: Folder)
 		nameLabel.Text = selection.Name
 		hpLabel.Text = string.format("HP: %d / %d", selection.HP, selection.MaxHP)
 		levelLabel.Text = string.format("Upgrade Level: %d / %d", selection.UpgradeLevel, EndlessModeBuildingConfig.MaxUpgradeLevel)
+
+		if selection.Role == "Damage" and selection.Damage and selection.Range then
+			statsLabel.Text = string.format("Damage: %d | Range: %d", selection.Damage, selection.Range)
+			statsLabel.Visible = true
+			cooldownLabel.Text = string.format("Cooldown: %.1fs", selection.Cooldown or 0)
+			cooldownLabel.Visible = selection.Cooldown ~= nil
+		elseif selection.Role == "Spawner" and selection.AllyCount then
+			statsLabel.Text = string.format("Allies per spawn: %d", selection.AllyCount)
+			statsLabel.Visible = true
+			cooldownLabel.Visible = false
+		else
+			statsLabel.Visible = false
+			cooldownLabel.Visible = false
+		end
 
 		if selection.UpgradeCost then
 			upgradeButton.Text = string.format("Upgrade (%s)", NumberFormat.FormatCash(selection.UpgradeCost))

@@ -43,6 +43,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 local TweenService = game:GetService("TweenService")
 local HttpService = game:GetService("HttpService")
+local Debris = game:GetService("Debris")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local AssetDatabase = require(ReplicatedStorage.Modules.AssetDatabase)
@@ -61,6 +62,7 @@ local RemotesBootstrap = require(ServerScriptService.RemotesBootstrap)
 
 local placeEndlessModeEstate = RemotesBootstrap:WaitForChild("PlaceEndlessModeEstate")
 local endlessModeHeldEstateUpdated = RemotesBootstrap:WaitForChild("EndlessModeHeldEstateUpdated")
+local selectEndlessModeHeldEstate = RemotesBootstrap:WaitForChild("SelectEndlessModeHeldEstate")
 local endlessModeBuildingSelected = RemotesBootstrap:WaitForChild("EndlessModeBuildingSelected")
 local upgradeEndlessModeBuilding = RemotesBootstrap:WaitForChild("UpgradeEndlessModeBuilding")
 local pickUpEndlessModeBuilding = RemotesBootstrap:WaitForChild("PickUpEndlessModeBuilding")
@@ -97,6 +99,17 @@ local placedBuildings: { [Player]: { [string]: PlacedBuilding } } = {}
 -- (a specific instance), not AssetId, for the same reason as above.
 local selectedPlacementId: { [Player]: string? } = {}
 
+-- Which equipped Estate (or the equipped Crate-exclusive item) the player
+-- picked, via a EndlessModeLoadoutHotbar.luau square, to be the ONE actually
+-- held/placeable in Endless Mode right now -- per explicit "4 patrate, dai
+-- equip la unu si se adauga in patratul ala" request (up to
+-- AssetDatabase.MaxEquipped Estates can be equipped/in the loadout at once,
+-- but only one is ever actively "in hand"). Nil means "no explicit pick yet
+-- (or it stopped being equipped)" -- doRefreshPets below falls back to the
+-- first equipped Estate in that case. Not persisted -- resets to the default
+-- fallback on rejoin, same as selectedPlacementId above.
+local selectedHeldAssetId: { [Player]: string? } = {}
+
 -- Forward-declared (assigned further down, past doRefreshPets) -- the
 -- placement/upgrade/pickup remote handlers need to call this, but are
 -- defined textually earlier in the file than the real definition, so a
@@ -104,14 +117,21 @@ local selectedPlacementId: { [Player]: string? } = {}
 -- global instead of this upvalue.
 local refreshPets: (Player) -> ()
 
--- Slot 1 sits left-behind, slot 2 right-behind -- offset from
--- HumanoidRootPart in ITS local space (+Z is behind a character's default
--- facing, +Y is up). Y was 3 (level with/above head) -- lowered to sit
--- around waist height instead. Slot 3 is dedicated to an equipped
--- Crate-exclusive Estate item (session.EquippedItemId, separate from the up-
--- to-2 equipped Assets in slots 1-2) -- centered, a bit further back so it
--- doesn't overlap either Asset slot.
-local SLOT_OFFSETS = { Vector3.new(-2, 0.5, 6), Vector3.new(2, 0.5, 6), Vector3.new(0, 0.5, 8) }
+-- Slots 1-4 fan out behind the character (up to AssetDatabase.MaxEquipped
+-- equipped Assets) -- offset from HumanoidRootPart in ITS local space (+Z is
+-- behind a character's default facing, +Y is up). Y was 3 (level with/above
+-- head) -- lowered to sit around waist height instead. Slot 5 is dedicated
+-- to an equipped Crate-exclusive Estate item (session.EquippedItemId,
+-- separate from the equipped Assets in slots 1-4) -- centered, further back
+-- so it doesn't overlap any Asset slot.
+local SLOT_OFFSETS = {
+	Vector3.new(-4.5, 0.5, 6),
+	Vector3.new(-1.5, 0.5, 6.5),
+	Vector3.new(1.5, 0.5, 6.5),
+	Vector3.new(4.5, 0.5, 6),
+	Vector3.new(0, 0.5, 9),
+}
+local EQUIPPED_ITEM_SLOT_INDEX = #SLOT_OFFSETS
 local BOB_HEIGHT_STUDS = 1.4
 local BOB_SECONDS = 1.8
 -- Applied to a PLACED Estate -- was 2.5 (bigger than the Hub's floating-pet
@@ -295,7 +315,7 @@ end
 -- divide evenly.
 local function getEffectiveMaxHP(assetId: string, upgradeLevel: number): number
 	local baseMaxHP = EndlessModeBuildingConfig.GetMaxHP(upgradeLevel)
-	return math.floor(baseMaxHP * EndlessModeUnitRoleConfig.GetTankHPMultiplier(assetId))
+	return math.floor(baseMaxHP * EndlessModeUnitRoleConfig.GetTankHPMultiplier(assetId, upgradeLevel))
 end
 
 -- Nil if that placementId isn't actually placed for this player anymore
@@ -309,8 +329,9 @@ local function buildSelectionPayload(player: Player, placementId: string)
 	end
 
 	local source = findSourceById(building.AssetId)
+	local role = EndlessModeUnitRoleConfig.GetRole(building.AssetId)
 
-	return {
+	local payload = {
 		PlacementId = placementId,
 		AssetId = building.AssetId,
 		Name = (source and source.Name) or building.AssetId,
@@ -318,7 +339,24 @@ local function buildSelectionPayload(player: Player, placementId: string)
 		MaxHP = getEffectiveMaxHP(building.AssetId, building.UpgradeLevel),
 		UpgradeLevel = building.UpgradeLevel,
 		UpgradeCost = EndlessModeBuildingConfig.GetUpgradeCost(building.UpgradeLevel),
+		Role = role,
+		-- Ground position -- EndlessModeRangeIndicator.luau needs this to
+		-- draw a Damage building's range circle at the right spot.
+		Position = building.CFrame.Position,
 	}
+
+	-- Role-specific combat stats, per explicit request -- shown under HP/
+	-- Level in EndlessModeBuildingPanel.luau so the player can see what
+	-- they're actually paying to upgrade, not just a bigger HP number.
+	if role == "Damage" then
+		payload.Damage = math.floor(EndlessModeUnitRoleConfig.DamageAmount * EndlessModeUnitRoleConfig.GetDamageAmountMultiplier(building.AssetId, building.UpgradeLevel))
+		payload.Range = math.floor(EndlessModeUnitRoleConfig.DamageRangeStuds * EndlessModeUnitRoleConfig.GetDamageRangeMultiplier(building.AssetId, building.UpgradeLevel))
+		payload.Cooldown = EndlessModeUnitRoleConfig.GetDamageCooldownSeconds(building.AssetId, building.UpgradeLevel)
+	elseif role == "Spawner" then
+		payload.AllyCount = EndlessModeUnitRoleConfig.GetSpawnerAllyCount(building.UpgradeLevel)
+	end
+
+	return payload
 end
 
 -- Dedicated Workspace folder for placed buildings -- separate from the
@@ -339,6 +377,18 @@ local function getPlacedBuildingsFolder(): Folder
 end
 
 local warnedMissingTemplates: { [string]: boolean } = {}
+
+-- A freshly-placed (level 0) building is SMALL (EndlessModeBuildingConfig.
+-- GetScaleMultiplier), which left its HP label floating almost right on top
+-- of a barely-visible model -- a flat MIN clearance (not just half the
+-- model's own tiny height) keeps the label readable regardless of how small
+-- the building currently is, per explicit "nu prea il vad" (can't really
+-- see it) feedback.
+local HP_LABEL_MIN_CLEARANCE_STUDS = 6
+
+local function hpLabelStudsUp(boundingSize: Vector3): number
+	return math.max(boundingSize.Y / 2 + 3, HP_LABEL_MIN_CLEARANCE_STUDS)
+end
 
 -- Builds the actual standalone Workspace model for ONE placed building
 -- instance. Returns (model, hpLabel), or nil if there's no matching pet
@@ -438,7 +488,7 @@ local function createPlacedBuildingModel(player: Player, placementId: string, as
 	local hpBillboard = Instance.new("BillboardGui")
 	hpBillboard.Name = "HPDisplay"
 	hpBillboard.Size = UDim2.new(0, 120, 0, 28)
-	hpBillboard.StudsOffset = Vector3.new(0, boundingSize.Y / 2 + 2, 0)
+	hpBillboard.StudsOffset = Vector3.new(0, hpLabelStudsUp(boundingSize), 0)
 	hpBillboard.AlwaysOnTop = true
 	hpBillboard.Adornee = anchor
 	hpBillboard.Parent = anchor
@@ -514,7 +564,7 @@ local function rescalePlacedBuilding(building: PlacedBuilding)
 
 	local billboard = building.HpLabel and building.HpLabel.Parent
 	if billboard and billboard:IsA("BillboardGui") then
-		billboard.StudsOffset = Vector3.new(0, boundingSize.Y / 2 + 2, 0)
+		billboard.StudsOffset = Vector3.new(0, hpLabelStudsUp(boundingSize), 0)
 	end
 end
 
@@ -525,7 +575,18 @@ end
 -- client's placement preview. Placed copies are entirely separate objects
 -- now (see createPlacedBuildingModel above) -- this function never renders
 -- one.
-local function spawnEquippedPet(player: Player, character: Model, hrp: BasePart, source: { Name: string, Id: string }, slotIndex: number): (boolean, boolean)
+--
+-- `wantsHand`, per explicit "4 patrate, un singur Estate activ" request:
+-- with up to AssetDatabase.MaxEquipped (4) Estates equipped at once, only
+-- ONE of them is ever actually held/welded in front of the character in
+-- Endless Mode at a time (whichever hotbar square is selected, see
+-- selectedHeldAssetId/doRefreshPets below) -- every OTHER equipped Estate
+-- still counts as equipped (its other effects, e.g. income, still apply)
+-- but renders no hand model at all while in Endless Mode, same as already
+-- being at the placement cap. Without this, every placeable equipped Estate
+-- would weld to the SAME fixed HAND_GRIP_OFFSET simultaneously and visibly
+-- overlap/z-fight.
+local function spawnEquippedPet(player: Player, character: Model, hrp: BasePart, source: { Name: string, Id: string }, slotIndex: number, wantsHand: boolean): (boolean, boolean)
 	local template = findPetTemplate(source)
 	if not template then
 		if not warnedMissingTemplates[source.Id] then
@@ -536,11 +597,12 @@ local function spawnEquippedPet(player: Player, character: Model, hrp: BasePart,
 	end
 
 	local inEndlessMode = EndlessModeConfig.IsCharacterInEndlessMode(character)
-	local heldInHand = inEndlessMode and canPlaceMore(player, source.Id)
+	local heldInHand = inEndlessMode and wantsHand and canPlaceMore(player, source.Id)
 
 	if inEndlessMode and not heldInHand then
-		-- Equipped and in Endless Mode, but already at this type's (or the
-		-- overall) placement cap -- nothing left to hold/place, so no pet
+		-- Equipped and in Endless Mode, but either already at this type's
+		-- (or the overall) placement cap, or simply not the currently-
+		-- selected hand slot -- nothing to hold/place right now, so no pet
 		-- renders for this slot at all. The Estate's other effects (income
 		-- etc.) still apply from simply being equipped.
 		return true, false
@@ -764,32 +826,42 @@ local function doRefreshPets(player: Player, myGeneration: number)
 		return
 	end
 
-	-- Whichever equipped Estate can still be planted (under its cap) is
-	-- reported to the client as "this is what you're holding, show the
-	-- placement preview" -- if more than one is somehow holdable at once
-	-- (MaxEquipped is 2), the LAST one wins, simplest reasonable default
-	-- since only one placement preview can sensibly show at a time.
+	-- Only ONE equipped Estate is ever actually "held"/welded at a time now
+	-- (per explicit request, see spawnEquippedPet's wantsHand comment) --
+	-- whichever the player last picked via a EndlessModeLoadoutHotbar.luau
+	-- square (selectedHeldAssetId), falling back to the FIRST equipped
+	-- Estate (or the equipped item, if no Estates are equipped) the moment
+	-- nothing's been explicitly picked yet, or the pick stopped being
+	-- equipped (unequipped, or swapped out by hitting the 4-slot cap).
+	local desiredHeldAssetId = selectedHeldAssetId[player]
+	if desiredHeldAssetId and table.find(session.EquippedAssets, desiredHeldAssetId) == nil and session.EquippedItemId ~= desiredHeldAssetId then
+		desiredHeldAssetId = nil
+	end
+	if not desiredHeldAssetId then
+		desiredHeldAssetId = session.EquippedAssets[1] or session.EquippedItemId
+	end
+
 	local heldAssetId: string? = nil
 
 	for slotIndex, assetId in session.EquippedAssets do
 		local asset = AssetDatabase.GetAsset(assetId)
 		if asset then
-			local _, heldInHand = spawnEquippedPet(player, character, hrp, asset, slotIndex)
+			local _, heldInHand = spawnEquippedPet(player, character, hrp, asset, slotIndex, assetId == desiredHeldAssetId)
 			if heldInHand then
 				heldAssetId = assetId
 			end
 		end
 	end
 
-	-- Slot 3 -- an equipped Crate-exclusive Estate item (session.
-	-- EquippedItemId, from InventoryManager, separate from the up-to-2
-	-- equipped Assets above). Only Crate-exclusive items get a pet -- a
-	-- regular rolled item (watch, sneakers, etc.) isn't an Estate and was
-	-- never meant to float a model behind the player.
+	-- Slot 5 -- an equipped Crate-exclusive Estate item (session.
+	-- EquippedItemId, from InventoryManager, separate from the equipped
+	-- Assets above). Only Crate-exclusive items get a pet -- a regular
+	-- rolled item (watch, sneakers, etc.) isn't an Estate and was never
+	-- meant to float a model behind the player.
 	if session.EquippedItemId then
 		local item = ItemDatabase.GetItem(session.EquippedItemId)
 		if item and item.CrateExclusive then
-			local _, heldInHand = spawnEquippedPet(player, character, hrp, item, 3)
+			local _, heldInHand = spawnEquippedPet(player, character, hrp, item, EQUIPPED_ITEM_SLOT_INDEX, session.EquippedItemId == desiredHeldAssetId)
 			if heldInHand then
 				heldAssetId = session.EquippedItemId
 			end
@@ -865,6 +937,7 @@ Players.PlayerRemoving:Connect(function(player: Player)
 	end
 	placedBuildings[player] = nil
 	selectedPlacementId[player] = nil
+	selectedHeldAssetId[player] = nil
 end)
 
 -- Right only for now -- matches EndlessModeClaimManager/EndlessModeMobManager's
@@ -882,6 +955,423 @@ local function getMobDamage(player: Player): number
 	return EndlessModeUnitRoleConfig.GetMobDamageForWave(wave)
 end
 
+-- Credits `player`'s EndlessModeCash for actually DEFEATING a mob (its own
+-- HP hit 0, not just "delivered a hit and despawned") -- called wherever
+-- EndlessModeMobRegistry.Damage returns true. Wave-scaled the same way
+-- getMobDamage is, per explicit request.
+local function awardMobKillReward(player: Player)
+	local session = DataManager.Get(player)
+	if not session then
+		return
+	end
+	local wave = WaveConfig.GetWaveForElapsedSeconds(session.EndlessModeElapsedSeconds)
+	session.EndlessModeCash += EndlessModeUnitRoleConfig.GetMobKillRewardForWave(wave)
+	endlessModeCashUpdated:FireClient(player, session.EndlessModeCash)
+end
+
+-- Visual-only -- a Damage building's attack was completely silent/invisible
+-- before (the mob just lost HP with no on-screen sign anything fired at
+-- all). 3 different effects, per explicit request ("nu vreau sa aiba toate
+-- efect de laser") -- EndlessModeUnitRoleConfig.GetDamageEffectType picks
+-- one per Estate, grouped by rarity: Common/Rare get a small traveling
+-- bullet, Epic/Legendary get a laser beam, Godly/Exclusive get a bigger
+-- impact/explosion at the target. Debris cleans all of them up shortly
+-- after so nothing piles up.
+local DAMAGE_EFFECT_COLOR = Color3.fromRGB(255, 70, 70)
+-- Roughly building height -- effects originate from here instead of
+-- literally ground level so they don't look like they're firing out of the
+-- dirt.
+local DAMAGE_EFFECT_ORIGIN_HEIGHT_STUDS = 3
+
+-- Laser -- a thin Neon Part stretched between the two points (CFrame.new
+-- (from, to) points its local -Z at `to`, then nudging it forward by half
+-- the distance centers it on the midpoint, same "stretch a part into a
+-- beam" trick used all over Roblox dev since there's no lightweight
+-- built-in "draw a line in 3D" primitive). Thickness scales with the SAME
+-- DamageAmount multiplier that scales its actual damage -- a cheap/weak
+-- Damage Estate's beam reads as a thin, unimpressive zap, a maxed one reads
+-- as a thick, powerful blast. Capped so even the strongest (90x) doesn't
+-- blow up into something absurd.
+local LASER_LIFETIME_SECONDS = 0.15
+local LASER_MIN_THICKNESS_STUDS = 0.15
+local LASER_MAX_THICKNESS_STUDS = 1
+local LASER_THICKNESS_PER_MULTIPLIER_POINT = 0.01
+
+local function getLaserThickness(assetId: string, upgradeLevel: number): number
+	local multiplier = EndlessModeUnitRoleConfig.GetDamageAmountMultiplier(assetId, upgradeLevel)
+	local thickness = LASER_MIN_THICKNESS_STUDS + (multiplier - 1) * LASER_THICKNESS_PER_MULTIPLIER_POINT
+	return math.clamp(thickness, LASER_MIN_THICKNESS_STUDS, LASER_MAX_THICKNESS_STUDS)
+end
+
+local function showLaser(fromPosition: Vector3, toPosition: Vector3, thickness: number)
+	local distance = (toPosition - fromPosition).Magnitude
+	if distance <= 0 then
+		return
+	end
+
+	local beam = Instance.new("Part")
+	beam.Name = "EndlessModeDamageLaser"
+	beam.Size = Vector3.new(thickness, thickness, distance)
+	beam.CFrame = CFrame.new(fromPosition, toPosition) * CFrame.new(0, 0, -distance / 2)
+	beam.Anchored = true
+	beam.CanCollide = false
+	beam.CanTouch = false
+	beam.Material = Enum.Material.Neon
+	beam.Color = DAMAGE_EFFECT_COLOR
+	beam.Parent = Workspace
+
+	Debris:AddItem(beam, LASER_LIFETIME_SECONDS)
+end
+
+-- Custom-model support, shared by any Damage effect that can fly a real 3D
+-- prop instead of a generated primitive shape (Bullet's ball, the pig
+-- throw's ball below) -- same "manually placed Studio content wins over the
+-- generated fallback" idiom PetModels already uses for Estates/Pets.
+-- Looked up by exact Instance name under ReplicatedStorage.EndlessModeEffects.
+local effectTemplateWarned: { [string]: boolean } = {}
+
+local function getEffectTemplate(templateName: string): Instance?
+	local effectsFolder = ReplicatedStorage:FindFirstChild("EndlessModeEffects")
+	if not effectsFolder then
+		return nil
+	end
+	return effectsFolder:FindFirstChild(templateName)
+end
+
+-- Works for both a Model (moved via PivotTo -- no PrimaryPart needed, it
+-- falls back to an auto-computed bounding-box pivot when one isn't set) and
+-- a single BasePart/MeshPart (moved via .CFrame directly).
+local function pivotFlyingInstance(instance: Instance, cframe: CFrame)
+	if instance:IsA("Model") then
+		instance:PivotTo(cframe)
+	elseif instance:IsA("BasePart") then
+		instance.CFrame = cframe
+	end
+end
+
+-- Clones `templateName` (if a usable Model/BasePart exists under
+-- ReplicatedStorage.EndlessModeEffects with that exact name) and flies it in
+-- a straight line from `fromPosition` to `toPosition` over `durationSeconds`,
+-- spinning the whole way, firing `onArrive` (then destroying the clone) once
+-- it lands. Returns false and does nothing else if no usable template was
+-- found, so the caller falls back to its own generated primitive shape.
+local function tryFlyCustomModel(
+	templateName: string,
+	fromPosition: Vector3,
+	toPosition: Vector3,
+	durationSeconds: number,
+	spinDegreesPerSecond: number,
+	onArrive: (() -> ())?
+): boolean
+	local template = getEffectTemplate(templateName)
+	local usableTemplate = template and (template:IsA("Model") or template:IsA("BasePart")) and template
+
+	if not usableTemplate then
+		if not effectTemplateWarned[templateName] then
+			effectTemplateWarned[templateName] = true
+			if not template then
+				warn(string.format("[PetManager] No %s found -- expected ReplicatedStorage.EndlessModeEffects.%s. Using the generated effect instead.", templateName, templateName))
+			else
+				warn(string.format("[PetManager] ReplicatedStorage.EndlessModeEffects.%s is a %s, not a Model or BasePart -- using the generated effect instead.", templateName, template.ClassName))
+			end
+		end
+		return false
+	end
+
+	local instanceClone = usableTemplate:Clone()
+
+	-- A Humanoid anywhere in the model makes Roblox's default overhead
+	-- nameplate (name + health bar) show above it -- not wanted for a
+	-- flying prop with no animation/rig needs, so it's stripped out.
+	local humanoid = instanceClone:FindFirstChildWhichIsA("Humanoid", true)
+	if humanoid then
+		humanoid:Destroy()
+	end
+
+	pivotFlyingInstance(instanceClone, CFrame.new(fromPosition))
+	instanceClone.Parent = Workspace
+
+	-- TweenService can't animate a whole Model's position directly -- an
+	-- invisible anchor Part is tweened instead, and the clone is re-pivoted
+	-- to match it on every step (its CFrame changing every tweened frame is
+	-- what drives that).
+	local anchor = Instance.new("Part")
+	anchor.Name = "EndlessModeFlyingEffectAnchor"
+	anchor.Size = Vector3.new(0.1, 0.1, 0.1)
+	anchor.Transparency = 1
+	anchor.Anchored = true
+	anchor.CanCollide = false
+	anchor.CanTouch = false
+	anchor.CFrame = CFrame.new(fromPosition)
+	anchor.Parent = Workspace
+
+	local changedConnection = anchor:GetPropertyChangedSignal("CFrame"):Connect(function()
+		pivotFlyingInstance(instanceClone, anchor.CFrame)
+	end)
+
+	local spinCFrame = CFrame.Angles(0, 0, math.rad(spinDegreesPerSecond * durationSeconds))
+	local tween = TweenService:Create(anchor, TweenInfo.new(durationSeconds, Enum.EasingStyle.Linear), {
+		CFrame = CFrame.new(toPosition) * spinCFrame,
+	})
+	tween.Completed:Connect(function()
+		changedConnection:Disconnect()
+		anchor:Destroy()
+		instanceClone:Destroy()
+		if onArrive then
+			onArrive()
+		end
+	end)
+	tween:Play()
+
+	return true
+end
+
+-- Bullet -- a small ball that visibly travels from the building to the mob
+-- over a short tween, per explicit "un mic efect" request for the weakest
+-- (Common/Rare) Damage Estates. DowntownCondo flies a real model (LabTable,
+-- per explicit request) instead of the generated ball, same "custom model
+-- wins if it exists" idiom Old Farm's pig throw below already established.
+local BULLET_SIZE_STUDS = 0.6
+local BULLET_SPEED_STUDS_PER_SECOND = 60
+local BULLET_SPIN_DEGREES_PER_SECOND = 360
+local BULLET_MODEL_NAME_BY_ASSET_ID: { [string]: string } = {
+	DowntownCondo = "LabTable",
+}
+
+local function showBullet(assetId: string, fromPosition: Vector3, toPosition: Vector3, onImpact: (() -> ())?)
+	local distance = (toPosition - fromPosition).Magnitude
+	local duration = math.max(distance / BULLET_SPEED_STUDS_PER_SECOND, 0.05)
+
+	local customModelName = BULLET_MODEL_NAME_BY_ASSET_ID[assetId]
+	if customModelName and tryFlyCustomModel(customModelName, fromPosition, toPosition, duration, BULLET_SPIN_DEGREES_PER_SECOND, onImpact) then
+		return
+	end
+
+	local bullet = Instance.new("Part")
+	bullet.Name = "EndlessModeDamageBullet"
+	bullet.Shape = Enum.PartType.Ball
+	bullet.Size = Vector3.new(BULLET_SIZE_STUDS, BULLET_SIZE_STUDS, BULLET_SIZE_STUDS)
+	bullet.CFrame = CFrame.new(fromPosition)
+	bullet.Anchored = true
+	bullet.CanCollide = false
+	bullet.CanTouch = false
+	bullet.Material = Enum.Material.Neon
+	bullet.Color = DAMAGE_EFFECT_COLOR
+	bullet.Parent = Workspace
+
+	local tween = TweenService:Create(bullet, TweenInfo.new(duration, Enum.EasingStyle.Linear), { Position = toPosition })
+	if onImpact then
+		tween.Completed:Connect(onImpact)
+	end
+	tween:Play()
+
+	Debris:AddItem(bullet, duration + 0.05)
+end
+
+-- Explosion -- an expanding, fading sphere AT the target, per explicit
+-- request for the strongest (Godly/Exclusive) Damage Estates -- a bigger,
+-- more dramatic impact than a mere beam/bullet.
+-- (Godly/Exclusive) Damage Estates get the biggest, showiest hit -- "sa arate
+-- ca bubuie tare" (make it look like it booms hard), explicitly requested
+-- after the first pass (a single fading sphere) read as too weak. Three
+-- layered pieces instead of one: a near-white flash CORE that snaps in then
+-- shrinks away fast (the "impact" instant), Roblox's own built-in Explosion
+-- instance for the classic fireball+smoke+embers look (BlastPressure/
+-- DestroyJointRadiusPercent zeroed out so it's pure VFX -- doesn't ragdoll
+-- the player or yeet nearby placed buildings), and a flat expanding
+-- shockwave RING on the ground (same "Cylinder rotated flat" trick
+-- EndlessModeRangeIndicator.luau already uses for the range circle).
+local EXPLOSION_CORE_START_DIAMETER_STUDS = 2.5
+local EXPLOSION_CORE_END_DIAMETER_STUDS = 0.5
+local EXPLOSION_CORE_COLOR = Color3.fromRGB(255, 230, 150)
+local EXPLOSION_CORE_DURATION_SECONDS = 0.15
+
+-- Matches EndlessModeUnitRoleConfig.ExplosionAoeRadiusStuds (the ACTUAL AOE
+-- hit radius) so the visual reads honestly -- a mob standing where the ring
+-- reaches is a mob that really does take the hit.
+local EXPLOSION_BLAST_RADIUS_STUDS = EndlessModeUnitRoleConfig.ExplosionAoeRadiusStuds
+
+local EXPLOSION_RING_HEIGHT_STUDS = 0.3
+local EXPLOSION_RING_START_DIAMETER_STUDS = 1
+local EXPLOSION_RING_END_DIAMETER_STUDS = EndlessModeUnitRoleConfig.ExplosionAoeRadiusStuds * 2
+local EXPLOSION_RING_DURATION_SECONDS = 0.35
+
+-- `withRing` defaults true for the other Explosion-tier Estates -- Old
+-- Farm's own showExplosionProjectile config passes false, per explicit
+-- request, since the thrown OldFarmPig model itself is meant to read as the
+-- "special" part of that hit instead of the same flat ring every Explosion
+-- Estate shows.
+local function showExplosion(atPosition: Vector3, withRing: boolean?)
+	local core = Instance.new("Part")
+	core.Name = "EndlessModeDamageExplosionCore"
+	core.Shape = Enum.PartType.Ball
+	core.Size = Vector3.new(EXPLOSION_CORE_START_DIAMETER_STUDS, EXPLOSION_CORE_START_DIAMETER_STUDS, EXPLOSION_CORE_START_DIAMETER_STUDS)
+	core.CFrame = CFrame.new(atPosition)
+	core.Anchored = true
+	core.CanCollide = false
+	core.CanTouch = false
+	core.Material = Enum.Material.Neon
+	core.Color = EXPLOSION_CORE_COLOR
+	core.Transparency = 0
+	core.Parent = Workspace
+
+	TweenService:Create(core, TweenInfo.new(EXPLOSION_CORE_DURATION_SECONDS, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = Vector3.new(EXPLOSION_CORE_END_DIAMETER_STUDS, EXPLOSION_CORE_END_DIAMETER_STUDS, EXPLOSION_CORE_END_DIAMETER_STUDS),
+		Transparency = 1,
+	}):Play()
+	Debris:AddItem(core, EXPLOSION_CORE_DURATION_SECONDS + 0.05)
+
+	if withRing ~= false then
+		local ring = Instance.new("Part")
+		ring.Name = "EndlessModeDamageExplosionRing"
+		ring.Shape = Enum.PartType.Cylinder
+		ring.Size = Vector3.new(EXPLOSION_RING_HEIGHT_STUDS, EXPLOSION_RING_START_DIAMETER_STUDS, EXPLOSION_RING_START_DIAMETER_STUDS)
+		ring.CFrame = CFrame.new(atPosition) * CFrame.Angles(0, 0, math.rad(90))
+		ring.Anchored = true
+		ring.CanCollide = false
+		ring.CanTouch = false
+		ring.Material = Enum.Material.Neon
+		ring.Color = DAMAGE_EFFECT_COLOR
+		ring.Transparency = 0.2
+		ring.Parent = Workspace
+
+		TweenService:Create(ring, TweenInfo.new(EXPLOSION_RING_DURATION_SECONDS, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Size = Vector3.new(EXPLOSION_RING_HEIGHT_STUDS, EXPLOSION_RING_END_DIAMETER_STUDS, EXPLOSION_RING_END_DIAMETER_STUDS),
+			Transparency = 1,
+		}):Play()
+		Debris:AddItem(ring, EXPLOSION_RING_DURATION_SECONDS + 0.05)
+	end
+
+	local blast = Instance.new("Explosion")
+	blast.Position = atPosition
+	blast.BlastRadius = EXPLOSION_BLAST_RADIUS_STUDS
+	blast.BlastPressure = 0
+	blast.DestroyJointRadiusPercent = 0
+	blast.Parent = Workspace
+end
+
+-- Some Explosion-tier Estates throw a specific object that detonates
+-- (the same showExplosion above) once it actually lands, instead of the
+-- blast just appearing instantly at the target -- Old Farm's pig ("sa
+-- arunce cu un porc care sa explodeze cand ajunge in Mob"), Luxury Hotel
+-- Chain's diamond, and Construction Shop's Construction Worker, per explicit
+-- requests. Real-model support: if the user
+-- has manually dropped a model into ReplicatedStorage.EndlessModeEffects
+-- with the given name (a Model or a single BasePart/MeshPart, either
+-- works -- same "manually placed Studio content" idiom PetModels already
+-- uses for Estates/Pets), that's cloned and flown instead of the generated
+-- fallback ball, same as showBullet's custom-model support above.
+local EXPLOSION_PROJECTILE_CONFIG: {
+	[string]: {
+		ModelName: string,
+		FallbackColor: Color3,
+		FallbackSizeStuds: number,
+		SpeedStudsPerSecond: number,
+		SpinDegreesPerSecond: number,
+		WithRing: boolean,
+	},
+} = {
+	OldFarm = {
+		ModelName = "OldFarmPig",
+		FallbackColor = Color3.fromRGB(255, 170, 180),
+		FallbackSizeStuds = 1.4,
+		SpeedStudsPerSecond = 40,
+		SpinDegreesPerSecond = 720,
+		-- Per explicit request, no ring for the pig -- it's meant to read
+		-- as the "special" part of that hit by itself.
+		WithRing = false,
+	},
+	LuxuryHotelChain = {
+		ModelName = "Diamond",
+		FallbackColor = Color3.fromRGB(150, 220, 255),
+		FallbackSizeStuds = 1.2,
+		SpeedStudsPerSecond = 50,
+		SpinDegreesPerSecond = 540,
+		WithRing = true,
+	},
+	ConstructionShop = {
+		ModelName = "Construction Worker",
+		FallbackColor = Color3.fromRGB(255, 200, 60),
+		FallbackSizeStuds = 1.6,
+		SpeedStudsPerSecond = 45,
+		SpinDegreesPerSecond = 480,
+		WithRing = true,
+	},
+}
+
+local function showExplosionProjectile(assetId: string, fromPosition: Vector3, toPosition: Vector3, onImpact: (() -> ())?)
+	local config = EXPLOSION_PROJECTILE_CONFIG[assetId]
+	local distance = (toPosition - fromPosition).Magnitude
+	local duration = math.max(distance / config.SpeedStudsPerSecond, 0.05)
+
+	-- Damage lands exactly when the projectile arrives, not when it's
+	-- thrown -- per explicit "vreau sa moara fix cand porcul intra in el"
+	-- request (kept for every thrown Explosion effect, not just the pig).
+	local function detonate()
+		if onImpact then
+			onImpact()
+		end
+		showExplosion(toPosition, config.WithRing)
+	end
+
+	if tryFlyCustomModel(config.ModelName, fromPosition, toPosition, duration, config.SpinDegreesPerSecond, detonate) then
+		return
+	end
+
+	local projectile = Instance.new("Part")
+	projectile.Name = "EndlessModeDamageExplosionProjectile"
+	projectile.Shape = Enum.PartType.Ball
+	projectile.Size = Vector3.new(config.FallbackSizeStuds, config.FallbackSizeStuds, config.FallbackSizeStuds)
+	projectile.CFrame = CFrame.new(fromPosition)
+	projectile.Anchored = true
+	projectile.CanCollide = false
+	projectile.CanTouch = false
+	projectile.Material = Enum.Material.Neon
+	projectile.Color = config.FallbackColor
+	projectile.Parent = Workspace
+
+	TweenService:Create(projectile, TweenInfo.new(duration, Enum.EasingStyle.Linear), {
+		Orientation = Vector3.new(0, 0, config.SpinDegreesPerSecond * duration),
+	}):Play()
+
+	local flightTween = TweenService:Create(projectile, TweenInfo.new(duration, Enum.EasingStyle.Linear), { Position = toPosition })
+	flightTween.Completed:Connect(function()
+		projectile:Destroy()
+		detonate()
+	end)
+	flightTween:Play()
+end
+
+-- Dispatches to whichever of the 3 effects above matches this Estate's role.
+-- `onImpact`, if given, fires exactly when the effect actually LANDS on the
+-- target -- immediately for Laser/instant-Explosion (nothing travels), but
+-- only once the projectile itself arrives for Bullet/the pig throw. Lets
+-- the caller (startDamageLoop) apply the mob's actual damage/death in sync
+-- with what's on screen, instead of the mob dying before a slow-flying
+-- effect (the pig) even reaches it.
+local function showDamageEffect(assetId: string, upgradeLevel: number, fromGroundPosition: Vector3, toPosition: Vector3, onImpact: (() -> ())?)
+	local fromPosition = fromGroundPosition + Vector3.new(0, DAMAGE_EFFECT_ORIGIN_HEIGHT_STUDS, 0)
+	local effectType = EndlessModeUnitRoleConfig.GetDamageEffectType(assetId)
+
+	if effectType == "Bullet" then
+		showBullet(assetId, fromPosition, toPosition, onImpact)
+	elseif effectType == "Explosion" then
+		if EXPLOSION_PROJECTILE_CONFIG[assetId] then
+			showExplosionProjectile(assetId, fromPosition, toPosition, onImpact)
+		else
+			showExplosion(toPosition)
+			if onImpact then
+				onImpact()
+			end
+		end
+	else
+		showLaser(fromPosition, toPosition, getLaserThickness(assetId, upgradeLevel))
+		if onImpact then
+			onImpact()
+		end
+	end
+end
+
 -- Started once, right after a Damage-role building is placed -- ticks for as
 -- long as `placementId` stays in placedBuildings (checked fresh every tick,
 -- no separate "still alive" flag needed), attacking whichever mob is nearest
@@ -891,17 +1381,53 @@ end
 local function startDamageLoop(player: Player, placementId: string)
 	task.spawn(function()
 		while true do
-			task.wait(EndlessModeUnitRoleConfig.DamageTickSeconds)
+			-- Cooldown itself is level-scaled now, so the building has to be
+			-- read BEFORE the wait to know how long that wait should even
+			-- be -- then re-read AFTER (it may have been picked up/killed,
+			-- or upgraded, while waiting).
 			local playerPlaced = placedBuildings[player]
 			local building = playerPlaced and playerPlaced[placementId]
 			if not building then
 				return
 			end
-			local range = EndlessModeUnitRoleConfig.DamageRangeStuds * EndlessModeUnitRoleConfig.GetDamageRangeMultiplier(building.AssetId)
+			task.wait(EndlessModeUnitRoleConfig.GetDamageCooldownSeconds(building.AssetId, building.UpgradeLevel))
+
+			playerPlaced = placedBuildings[player]
+			building = playerPlaced and playerPlaced[placementId]
+			if not building then
+				return
+			end
+			local range = EndlessModeUnitRoleConfig.DamageRangeStuds * EndlessModeUnitRoleConfig.GetDamageRangeMultiplier(building.AssetId, building.UpgradeLevel)
 			local mob = EndlessModeMobRegistry.GetNearestAliveMob(building.CFrame.Position, range)
 			if mob then
-				local amount = EndlessModeUnitRoleConfig.DamageAmount * EndlessModeUnitRoleConfig.GetDamageAmountMultiplier(building.AssetId)
-				EndlessModeMobRegistry.Damage(mob, amount)
+				local amount = EndlessModeUnitRoleConfig.DamageAmount * EndlessModeUnitRoleConfig.GetDamageAmountMultiplier(building.AssetId, building.UpgradeLevel)
+				local isAoe = EndlessModeUnitRoleConfig.GetDamageEffectType(building.AssetId) == "Explosion"
+				-- Snapshotted now, not read again after the effect lands --
+				-- the AOE hit is centered on where the blast actually
+				-- landed, not wherever that original mob has since walked
+				-- to (it might even be dead by then, from this same hit).
+				local impactPosition = mob.Position
+				-- Actual damage/death is applied from showDamageEffect's
+				-- onImpact callback, not right here -- for a Bullet or a
+				-- thrown Explosion projectile, that's only once the effect
+				-- visually REACHES the target, not the instant the attack
+				-- starts (which used to let a mob die well before a
+				-- slow-flying pig ever got to it).
+				showDamageEffect(building.AssetId, building.UpgradeLevel, building.CFrame.Position, impactPosition, function()
+					if isAoe then
+						-- Per explicit request, an Explosion-tier hit isn't
+						-- single-target -- it catches EVERY mob standing in
+						-- the blast, so a cluster spawned close together
+						-- (e.g. a heavy wave) can get wiped by one hit.
+						for _, aoeMob in EndlessModeMobRegistry.GetAliveMobsWithinRadius(impactPosition, EndlessModeUnitRoleConfig.ExplosionAoeRadiusStuds) do
+							if EndlessModeMobRegistry.Damage(aoeMob, amount) then
+								awardMobKillReward(player)
+							end
+						end
+					elseif EndlessModeMobRegistry.Damage(mob, amount) then
+						awardMobKillReward(player)
+					end
+				end)
 			end
 		end
 	end)
@@ -909,7 +1435,8 @@ end
 
 -- Same lifetime idiom as startDamageLoop above, but for Spawner-role
 -- buildings -- periodically hands off to EndlessModeAllyManager to actually
--- create and run the ally.
+-- create and run each ally in the batch (GetSpawnerAllyCount -- 1 at low
+-- levels, ramping to 3 at MaxUpgradeLevel, per explicit request).
 local function startSpawnerLoop(player: Player, placementId: string)
 	task.spawn(function()
 		while true do
@@ -919,7 +1446,11 @@ local function startSpawnerLoop(player: Player, placementId: string)
 			if not building then
 				return
 			end
-			EndlessModeAllyManager.SpawnAlly(building.CFrame.Position, getMobDamage(player))
+			local powerMultiplier = EndlessModeUnitRoleConfig.GetSpawnerPowerMultiplier(building.AssetId, building.UpgradeLevel)
+			local allyCount = EndlessModeUnitRoleConfig.GetSpawnerAllyCount(building.UpgradeLevel)
+			for _ = 1, allyCount do
+				EndlessModeAllyManager.SpawnAlly(player, building.CFrame.Position, getMobDamage(player), powerMultiplier)
+			end
 		end
 	end)
 end
@@ -1015,6 +1546,31 @@ placeEndlessModeEstate.OnServerEvent:Connect(function(player: Player, assetId: s
 	-- Re-evaluates the held-in-hand preview -- this placement may have just
 	-- hit the per-type/total cap, in which case the held pet/ghost needs to
 	-- disappear now that no more can be planted.
+	refreshPets(player)
+end)
+
+-- Fired by EndlessModeLoadoutHotbar.luau when the player taps one of their
+-- equipped Estates' hotbar squares -- makes THAT one the single actively
+-- held/placeable Estate (see selectedHeldAssetId/spawnEquippedPet's
+-- wantsHand). Re-validated here (not just trusted from the client's last-
+-- known equip list) so a stale FireServer replay can't select something
+-- that's since been unequipped.
+selectEndlessModeHeldEstate.OnServerEvent:Connect(function(player: Player, assetId: string)
+	if typeof(assetId) ~= "string" then
+		return
+	end
+
+	local session = DataManager.Get(player)
+	if not session then
+		return
+	end
+
+	local isEquipped = table.find(session.EquippedAssets, assetId) ~= nil or session.EquippedItemId == assetId
+	if not isEquipped then
+		return
+	end
+
+	selectedHeldAssetId[player] = assetId
 	refreshPets(player)
 end)
 
@@ -1140,9 +1696,16 @@ end
 -- Called by EndlessModeMobManager.luau when a mob reaches a placed Estate
 -- instead of the base. Clamped at 0; hitting 0 destroys that specific
 -- building outright (model destroyed, removed from placedBuildings, panel
--- closed if it was the selected one, and its cap slot freed up) -- unlike
--- EndlessModeClaimManager.DamageBase's shared base HP (which just sits at 0,
--- nothing to "lose"), an individual building can actually be lost here.
+-- closed if it was the selected one) -- unlike EndlessModeClaimManager.
+-- DamageBase's shared base HP (which just sits at 0, nothing to "lose"), an
+-- individual building can actually be lost here.
+--
+-- Deliberately does NOT call refreshPets -- per explicit request, a building
+-- mobs killed doesn't silently pop back into "held in hand" just because its
+-- cap slot freed up. It's just gone; the player has to unequip/re-equip (or
+-- place a different copy) if they want to plant that type again -- unlike
+-- pickUpEndlessModeBuilding's handler below, where refreshPets is correct
+-- (the player is deliberately taking it back into their hand).
 function PetManager.DamageBuilding(player: Player, placementId: string, amount: number)
 	local playerPlaced = placedBuildings[player]
 	local building = playerPlaced and playerPlaced[placementId]
@@ -1161,9 +1724,6 @@ function PetManager.DamageBuilding(player: Player, placementId: string, amount: 
 			selectedPlacementId[player] = nil
 			endlessModeBuildingSelected:FireClient(player, nil)
 		end
-		-- Freed up a placement-cap slot -- re-evaluate whether the held
-		-- preview for this Estate type should reappear.
-		refreshPets(player)
 		return
 	end
 

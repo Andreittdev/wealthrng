@@ -10,7 +10,7 @@
 -- MaxEquipped (currently 1) can be equipped at once, so tapping Equip on
 -- the selected item just swaps out whichever one was equipped before
 -- (server-side swap in InventoryManager.Equip, this panel doesn't need to
--- know). Estates (AssetDatabase.MaxEquipped, currently 2) work the same
+-- know). Estates (AssetDatabase.MaxEquipped, currently 4) work the same
 -- way. Equip/Unequip for Estates lives ONLY here now -- AssetShopPanel.luau
 -- (the physical Shop kiosk) is buy-only once something's owned.
 
@@ -359,6 +359,24 @@ function InventoryPanel.Create(screenGui: ScreenGui, remotes: Folder)
 	function handle.Toggle()
 		panel.Visible = not panel.Visible
 		if panel.Visible and pendingRerender then
+			pendingRerender = false
+			refreshList()
+			renderDetail()
+		end
+	end
+
+	-- Idempotent open (unlike Toggle, calling this while already open is a
+	-- no-op instead of closing it) -- MainUI.luau uses this to auto-pop the
+	-- Estates tab open the instant a player enters Endless Mode, per
+	-- explicit "cand intri in Endless sa iti apara un tabel mare cu
+	-- inventoryul" request, without needing to guess/track whether the
+	-- panel already happened to be open.
+	function handle.Open()
+		if panel.Visible then
+			return
+		end
+		panel.Visible = true
+		if pendingRerender then
 			pendingRerender = false
 			refreshList()
 			renderDetail()

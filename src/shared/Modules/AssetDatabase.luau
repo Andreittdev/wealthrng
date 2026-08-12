@@ -62,7 +62,10 @@ export type Asset = {
 local AssetDatabase = {}
 
 -- How many owned Assets can be equipped (earning income) at the same time.
-AssetDatabase.MaxEquipped = 2
+-- Raised from 2 to 4, per explicit request -- Endless Mode wants up to 4
+-- Estates picked into a loadout at once (EndlessModeLoadoutHotbar.luau),
+-- which reuses this SAME equip system/cap rather than a separate one.
+AssetDatabase.MaxEquipped = 4
 
 -- Every tier below RealEstateEmpire is Price x15 / Income x15 from the
 -- original figures (same ratio, so payback-time pacing between tiers is

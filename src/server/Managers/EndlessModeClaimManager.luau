@@ -47,13 +47,16 @@ local PATCH_WIDTH = GROUND_HALF_SIZE - ROAD_HALF_WIDTH
 local PATCH_DEPTH = GROUND_HALF_SIZE * 0.65
 local PATCH_HEIGHT = 1
 local PATCH_CLEARANCE = 0.15
--- Same "Bloxy" checkerboard-of-square-tiles trick as MapBuilder's grass/
--- plaza/Endless Mode ground, per explicit request, instead of one flat slab.
--- Derived from PATCH_WIDTH (not a flat 15) so there are EXACTLY 5 tiles per
--- row, per explicit request -- also doubles as the placement grid
--- (SnapToPatchCell below), so this same tile size determines both what you
+-- Same "Bloxy" checkerboard-of-tiles trick as MapBuilder's grass/plaza/
+-- Endless Mode ground, per explicit request, instead of one flat slab.
+-- Separate X/Z sizes (not one shared PATCH_TILE_SIZE) so there are EXACTLY
+-- 5 columns AND 5 rows, per explicit request -- PATCH_WIDTH (90) and
+-- PATCH_DEPTH (65) aren't equal, so hitting 5x5 means the tiles are
+-- slightly rectangular, not perfectly square. Also doubles as the placement
+-- grid (SnapToPatchCell below), so these same sizes determine both what you
 -- see and where an Estate is allowed to land.
-local PATCH_TILE_SIZE = PATCH_WIDTH / 5
+local PATCH_TILE_SIZE_X = PATCH_WIDTH / 5
+local PATCH_TILE_SIZE_Z = PATCH_DEPTH / 5
 local PATCH_COLOR_A = Color3.fromRGB(125, 85, 50)
 local PATCH_COLOR_B = Color3.fromRGB(100, 68, 40)
 -- Base HP display + a plain 3D door prototype marking the entrance (right at
@@ -189,20 +192,20 @@ local function spawnPatch(side: string)
 	patchFolder.Name = "EndlessMode_ClaimPatch" .. side
 	patchFolder.Parent = marker.Parent
 
-	local tileCountX = math.max(1, math.floor(PATCH_WIDTH / PATCH_TILE_SIZE))
-	local tileCountZ = math.max(1, math.floor(PATCH_DEPTH / PATCH_TILE_SIZE))
-	local halfSpanX = (tileCountX * PATCH_TILE_SIZE) / 2
-	local halfSpanZ = (tileCountZ * PATCH_TILE_SIZE) / 2
+	local tileCountX = math.max(1, math.floor(PATCH_WIDTH / PATCH_TILE_SIZE_X))
+	local tileCountZ = math.max(1, math.floor(PATCH_DEPTH / PATCH_TILE_SIZE_Z))
+	local halfSpanX = (tileCountX * PATCH_TILE_SIZE_X) / 2
+	local halfSpanZ = (tileCountZ * PATCH_TILE_SIZE_Z) / 2
 
 	for row = 0, tileCountZ - 1 do
 		for col = 0, tileCountX - 1 do
-			local x = patchCenterX - halfSpanX + PATCH_TILE_SIZE * col + PATCH_TILE_SIZE / 2
-			local z = patchCenterZ - halfSpanZ + PATCH_TILE_SIZE * row + PATCH_TILE_SIZE / 2
+			local x = patchCenterX - halfSpanX + PATCH_TILE_SIZE_X * col + PATCH_TILE_SIZE_X / 2
+			local z = patchCenterZ - halfSpanZ + PATCH_TILE_SIZE_Z * row + PATCH_TILE_SIZE_Z / 2
 			local isEven = (row + col) % 2 == 0
 
 			local tile = Instance.new("Part")
 			tile.Name = "PatchTile"
-			tile.Size = Vector3.new(PATCH_TILE_SIZE, PATCH_HEIGHT, PATCH_TILE_SIZE)
+			tile.Size = Vector3.new(PATCH_TILE_SIZE_X, PATCH_HEIGHT, PATCH_TILE_SIZE_Z)
 			tile.CFrame = CFrame.new(x, patchTopY - PATCH_HEIGHT / 2, z)
 			tile.Anchored = true
 			tile.CanCollide = false
@@ -344,15 +347,15 @@ function EndlessModeClaimManager.GetPatchBounds(side: string): { MinX: number, M
 end
 
 -- Lets PetManager.luau snap a raw click position to the CENTER of the
--- nearest checkerboard tile (spawnPatch's own grid, PATCH_TILE_SIZE studs
--- each) instead of placing anywhere free-form -- per explicit request, so
--- Estates land in a tidy grid instead of overlapping/scattered. Returns the
--- snapped world position (X/Z only -- Y is left as whatever was passed in,
--- PetManager.luau forces its own ground height anyway) and a stable
--- "col,row" key PetManager.luau can use to detect an already-occupied cell.
--- Nil if that side isn't claimed (no marker/patch to derive the grid from).
--- Math mirrors spawnPatch's own tile-center formula exactly, so a snapped
--- position always lands on the visible tile grid, not just "some" grid.
+-- nearest checkerboard tile (spawnPatch's own grid, 5x5) instead of placing
+-- anywhere free-form -- per explicit request, so Estates land in a tidy
+-- grid instead of overlapping/scattered. Returns the snapped world position
+-- (X/Z only -- Y is left as whatever was passed in, PetManager.luau forces
+-- its own ground height anyway) and a stable "col,row" key PetManager.luau
+-- can use to detect an already-occupied cell. Nil if that side isn't
+-- claimed (no marker/patch to derive the grid from). Math mirrors
+-- spawnPatch's own tile-center formula exactly, so a snapped position
+-- always lands on the visible tile grid, not just "some" grid.
 function EndlessModeClaimManager.SnapToPatchCell(side: string, position: Vector3): (Vector3?, string?)
 	local marker = findMarker(side)
 	if not marker then
@@ -361,16 +364,16 @@ function EndlessModeClaimManager.SnapToPatchCell(side: string, position: Vector3
 
 	local patchCenterX = ROAD_HALF_WIDTH + PATCH_WIDTH / 2
 	local patchCenterZ = marker.Position.Z
-	local tileCountX = math.max(1, math.floor(PATCH_WIDTH / PATCH_TILE_SIZE))
-	local tileCountZ = math.max(1, math.floor(PATCH_DEPTH / PATCH_TILE_SIZE))
-	local halfSpanX = (tileCountX * PATCH_TILE_SIZE) / 2
-	local halfSpanZ = (tileCountZ * PATCH_TILE_SIZE) / 2
+	local tileCountX = math.max(1, math.floor(PATCH_WIDTH / PATCH_TILE_SIZE_X))
+	local tileCountZ = math.max(1, math.floor(PATCH_DEPTH / PATCH_TILE_SIZE_Z))
+	local halfSpanX = (tileCountX * PATCH_TILE_SIZE_X) / 2
+	local halfSpanZ = (tileCountZ * PATCH_TILE_SIZE_Z) / 2
 
-	local col = math.clamp(math.floor((position.X - (patchCenterX - halfSpanX)) / PATCH_TILE_SIZE), 0, tileCountX - 1)
-	local row = math.clamp(math.floor((position.Z - (patchCenterZ - halfSpanZ)) / PATCH_TILE_SIZE), 0, tileCountZ - 1)
+	local col = math.clamp(math.floor((position.X - (patchCenterX - halfSpanX)) / PATCH_TILE_SIZE_X), 0, tileCountX - 1)
+	local row = math.clamp(math.floor((position.Z - (patchCenterZ - halfSpanZ)) / PATCH_TILE_SIZE_Z), 0, tileCountZ - 1)
 
-	local x = patchCenterX - halfSpanX + PATCH_TILE_SIZE * col + PATCH_TILE_SIZE / 2
-	local z = patchCenterZ - halfSpanZ + PATCH_TILE_SIZE * row + PATCH_TILE_SIZE / 2
+	local x = patchCenterX - halfSpanX + PATCH_TILE_SIZE_X * col + PATCH_TILE_SIZE_X / 2
+	local z = patchCenterZ - halfSpanZ + PATCH_TILE_SIZE_Z * row + PATCH_TILE_SIZE_Z / 2
 
 	return Vector3.new(x, position.Y, z), string.format("%d,%d", col, row)
 end
